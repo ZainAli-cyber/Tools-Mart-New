@@ -1,7 +1,7 @@
 /** Temporary DNR rule ids for panel Referer unlock (session rules). */
 const UNLOCK_RULE_TTL_MS = 45000;
 /** Settle after clearing + writing cookies so ChatGPT/session jar is ready before navigate. */
-const SETTLE_MS = 280;
+const SETTLE_MS = 450;
 /** Pak SEO opens panels from the app dashboard host — prefer this Referer. */
 const DEFAULT_PANEL_REFERRER = 'https://app.pakseotools.com/';
 const APEX_PANEL_REFERRER = 'https://pakseotools.com/';
@@ -375,7 +375,8 @@ async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, re
   }
 
   // 2) Clear existing site cookies so personal sessions cannot override admin cookies.
-  if (!destIsPanel) {
+  // Never clear when we have nothing to apply — that leaves the user logged out.
+  if (!destIsPanel && list.length > 0) {
     await clearSiteCookies(destinationUrl, list);
   }
 
@@ -427,9 +428,23 @@ async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, re
     }
   }
 
-  // 4) Brief settle so session DNR + cookie jar are visible to the next navigation.
-  if (openTab && destinationUrl && (ruleIds.length || setCount > 0 || destIsPanel || list.length > 0)) {
+  // 4) Brief settle so cookie jar is visible before portal/extension navigation.
+  if (list.length > 0 || ruleIds.length || destIsPanel) {
     await sleep(SETTLE_MS);
+  }
+
+  // Admin cookies were provided but none could be written — fail closed (don't open logged-out).
+  if (list.length > 0 && setCount === 0 && !destIsPanel) {
+    return {
+      ok: false,
+      error:
+        'Could not write session cookies for this tool. Reload AI Toolz Mart Access v1.3.4+, confirm admin saved valid Copy Cookies JSON, then try again.',
+      count: list.length,
+      setCount: 0,
+      unlockMode,
+      unlockRules: ruleIds.length,
+      unlockReferrer: usedReferrer || referrer || '',
+    };
   }
 
   // Never open a bare toolaccess URL without Referer rules — that is the 403 path.

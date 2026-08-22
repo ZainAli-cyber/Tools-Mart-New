@@ -44,19 +44,14 @@ export class PopupBlockedError extends Error {
 }
 
 /**
- * Open a tool URL in a new tab only. Never uses location.href / assign / replace
- * on the portal tab (that would replace the dashboard).
- *
- * Note: window.open(..., 'noopener,noreferrer') always returns null in modern
- * browsers even when the tab opens — do NOT treat null as "blocked" and navigate.
+ * Open a blank tool tab synchronously (must run inside the click handler).
+ * After awaits, browsers may reuse the current window for window.open — never
+ * call window.open after async work.
  */
-export function openToolInNewTab(url: string): void {
-  const dest = String(url || '').trim();
-  if (!dest) throw new Error('No destination URL');
-
-  // Probe with about:blank first so we can detect a real popup blocker.
+export function reserveToolTab(): Window {
   const probe = window.open('about:blank', '_blank');
-  if (!probe) {
+  // Some browsers return the current window when the popup is blocked.
+  if (!probe || probe === window) {
     throw new PopupBlockedError();
   }
   try {
@@ -65,21 +60,53 @@ export function openToolInNewTab(url: string): void {
     /* ignore */
   }
   try {
-    probe.location.replace(dest);
+    probe.document.title = 'Opening tool…';
+    probe.document.body.innerHTML =
+      '<p style="font-family:system-ui;padding:24px;color:#444">Applying session…</p>';
+  } catch {
+    /* cross-origin / opaque — ignore */
+  }
+  return probe;
+}
+
+/** Navigate a tab reserved at click-time. Never touches the portal window. */
+export function navigateReservedTab(tab: Window | null | undefined, url: string): void {
+  const dest = String(url || '').trim();
+  if (!dest) throw new Error('No destination URL');
+  if (!tab || tab.closed || tab === window) {
+    throw new PopupBlockedError(
+      'The tool tab was closed or blocked. Allow pop-ups for this site, then try again.',
+    );
+  }
+  try {
+    tab.location.replace(dest);
   } catch {
     try {
-      probe.location.href = dest;
+      tab.location.href = dest;
     } catch {
-      try {
-        probe.close();
-      } catch {
-        /* ignore */
-      }
       throw new PopupBlockedError(
         'Could not open the tool in a new tab. Allow pop-ups for this site, then try again.',
       );
     }
   }
+}
+
+export function closeReservedTab(tab: Window | null | undefined) {
+  if (!tab || tab.closed || tab === window) return;
+  try {
+    tab.close();
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Open a tool URL in a new tab only. Prefer reserveToolTab + navigateReservedTab
+ * across async work. Never navigates the portal tab.
+ */
+export function openToolInNewTab(url: string): void {
+  const tab = reserveToolTab();
+  navigateReservedTab(tab, url);
 }
 
 export type ToolCookieFields = {
@@ -802,7 +829,12 @@ export async function isAccessExtensionInstalled(timeoutMs = PING_TIMEOUT_MS): P
 async function applyCookiesViaExtension(
   cookies: any[],
   url: string,
-  opts?: { unlockReferrer?: string; referrerCandidates?: string[] },
+  opts?: {
+    unlockReferrer?: string;
+    referrerCandidates?: string[];
+    /** When false, extension applies cookies only — portal navigates reserved tab. */
+    openTab?: boolean;
+  },
 ): Promise<void> {
   const requestId = nextRequestId();
   const pending = waitForExtensionMessage<{
@@ -819,6 +851,7 @@ async function applyCookiesViaExtension(
     opts?.referrerCandidates?.length
       ? opts.referrerCandidates
       : panelUnlockReferrerCandidates(opts?.unlockReferrer || unlockReferrer);
+  const openTab = opts?.openTab !== false;
 
   window.postMessage(
     {
@@ -827,7 +860,7 @@ async function applyCookiesViaExtension(
       requestId,
       cookies,
       url,
-      openTab: true,
+      openTab,
       waitForAck: true,
       ...(unlockReferrer || panelDest
         ? {
@@ -861,9 +894,20 @@ async function applyCookiesViaExtension(
   }
 }
 
+function finishOpen(dest: string, opts?: LaunchToolOptions, openedByExtension = false) {
+  if (openedByExtension) return;
+  if (opts?.reservedTab) {
+    navigateReservedTab(opts.reservedTab, dest);
+    return;
+  }
+  openToolInNewTab(dest);
+}
+
 export type LaunchToolOptions = {
   onNeedExtension?: () => void;
   onProgress?: (step: LaunchProgressStep) => void;
+  /** Tab opened synchronously on click — portal never navigates away. */
+  reservedTab?: Window | null;
 };
 
 async function reportProgress(opts: LaunchToolOptions | undefined, step: LaunchProgressStep) {
@@ -883,8 +927,14 @@ async function ensureExtension(
   }
 }
 
+/** Extension required for *.toolaccess.click and/or panel unlock referrer. */
+export function needsPanelUnlockExtension(dest: string, unlockReferrer?: string): boolean {
+  return isToolAccessUrl(dest) || Boolean(String(unlockReferrer || '').trim());
+}
+
 /**
  * By-extension path: extension REQUIRED. Never Session Apply / window.open fallback.
+ * Cookies applied with openTab=false; reserved click-tab is navigated after ACK.
  */
 async function openViaExtension(
   dest: string,
@@ -896,20 +946,16 @@ async function openViaExtension(
   const panelDest = isToolAccessUrl(dest);
   const referrer = resolvePanelUnlockReferrer(unlockReferrer, dest);
   const candidates = panelUnlockReferrerCandidates(unlockReferrer || referrer);
-  // allowSessionApply=false — Installation Guide only when missing.
   await ensureExtension(opts, NEED_EXTENSION_MSG, false);
   await reportProgress(opts, 'session');
   if (panelDest || referrer) await reportProgress(opts, 'unlocking');
   await applyCookiesViaExtension(list, dest, {
     unlockReferrer: referrer || undefined,
     referrerCandidates: panelDest ? candidates : undefined,
+    openTab: false,
   });
   await reportProgress(opts, 'launching');
-}
-
-/** Extension required for *.toolaccess.click and/or panel unlock referrer. */
-export function needsPanelUnlockExtension(dest: string, unlockReferrer?: string): boolean {
-  return isToolAccessUrl(dest) || Boolean(String(unlockReferrer || '').trim());
+  finishOpen(dest, opts, false);
 }
 
 async function openOneClick(
@@ -923,9 +969,6 @@ async function openOneClick(
   const referrer = resolvePanelUnlockReferrer(unlockReferrer, dest);
   const needsExt = needsPanelUnlockExtension(dest, unlockReferrer);
 
-  // *.toolaccess.click or non-empty panel unlock referrer ALWAYS uses extension unlock.
-  // Never window.open a bare toolaccess URL (that is the 403 path).
-  // one_click + toolaccess: Session Apply proxy is allowed if extension is missing.
   if (needsExt) {
     await ensureExtension(opts, TOOLACCESS_NEED_EXTENSION_MSG, true);
     await reportProgress(opts, 'session');
@@ -934,6 +977,7 @@ async function openOneClick(
       await applyCookiesViaExtension(list, dest, {
         unlockReferrer: referrer || undefined,
         referrerCandidates: panelUnlockReferrerCandidates(unlockReferrer || referrer),
+        openTab: false,
       });
     } catch (err: any) {
       if (err instanceof NeedExtensionError) throw err;
@@ -945,30 +989,27 @@ async function openOneClick(
       throw err;
     }
     await reportProgress(opts, 'launching');
+    finishOpen(dest, opts, false);
     return;
   }
 
-  // Pure one_click (e.g. chatgpt.com On one click): NEVER force Installation Guide.
-  // With extension → apply cookies + open. Without → Session Apply sub-screen.
-  // No cookies configured → open destination URL directly.
   await reportProgress(opts, 'session');
 
   if (list.length > 0) {
     const installed = await isAccessExtensionInstalled();
     if (installed) {
       try {
-        await applyCookiesViaExtension(list, dest);
+        await applyCookiesViaExtension(list, dest, { openTab: false });
         await reportProgress(opts, 'launching');
-        return; // extension opened the tab after applying admin cookies
+        finishOpen(dest, opts, false);
+        return;
       } catch (err: any) {
-        // Never bare-open without cookies — personal ChatGPT/session would win.
         throw new Error(
           err?.message ||
-            'Extension could not apply admin cookies before opening. Reload the Access extension, then try again.',
+            'Extension could not apply admin cookies before opening. Reload the Access extension (v1.3.4+), then try again.',
         );
       }
     } else {
-      // Extension missing: Session Apply (one_click only). Never for by_extension.
       opts?.onNeedExtension?.();
       throw new NeedExtensionError(
         'Continue without extension: use Session apply to copy cookies and open the tool.',
@@ -978,7 +1019,7 @@ async function openOneClick(
   }
 
   await reportProgress(opts, 'launching');
-  openToolInNewTab(dest);
+  finishOpen(dest, opts, false);
 }
 
 /** Normalize DB/admin values: one_click vs extension (incl. by_extension). */

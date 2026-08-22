@@ -7,10 +7,13 @@ import type { Tool } from '../../admin/data/adminStore';
 import {
   EXTENSION_DOWNLOAD_URL,
   EXTENSION_DISPLAY_NAME,
+  closeReservedTab,
   isAccessExtensionInstalled,
   isOneClick,
   launchAssignedTool,
   NeedExtensionError,
+  PopupBlockedError,
+  reserveToolTab,
   type LaunchProgressStep,
 } from '../../lib/toolCookies';
 import { CookieSessionApplyScreen } from './CookieSessionApplyScreen';
@@ -298,7 +301,7 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
     }
   }, []);
 
-  const runLaunch = useCallback(async (tool: Tool) => {
+  const runLaunch = useCallback(async (tool: Tool, reservedTab?: Window | null) => {
     if (launchingRef.current) return;
     launchingRef.current = true;
     pendingRef.current = tool;
@@ -308,8 +311,8 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
     try {
       setConnecting({ name: tool.name, step: 'check' });
       await launchAssignedTool(tool, {
+        reservedTab: reservedTab || undefined,
         onNeedExtension: () => {
-          // Preview UI while throw propagates — still gated by access method.
           showNeedExtensionUi(tool);
         },
         onProgress: step => {
@@ -321,9 +324,14 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
       setConnecting(null);
       pendingRef.current = null;
     } catch (err: any) {
+      closeReservedTab(reservedTab);
       setConnecting(null);
       if (err instanceof NeedExtensionError) {
         showNeedExtensionUi(tool, err);
+        return;
+      }
+      if (err instanceof PopupBlockedError) {
+        window.alert(err.message);
         return;
       }
       window.alert(err?.message || 'Could not open this tool. Try signing in again.');
@@ -333,12 +341,34 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
   }, [showNeedExtensionUi]);
 
   const launch = useCallback((tool: Tool) => {
-    void runLaunch(tool);
+    // Must open the blank tab inside the click gesture — before any await.
+    let reserved: Window | null = null;
+    try {
+      reserved = reserveToolTab();
+    } catch (err: any) {
+      window.alert(
+        err?.message ||
+          'Pop-up blocked. Allow pop-ups for this site, then open the tool again.',
+      );
+      return;
+    }
+    void runLaunch(tool, reserved);
   }, [runLaunch]);
 
   const onInstalledContinue = useCallback(() => {
     const tool = guideTool || sessionTool || pendingRef.current;
-    if (tool) void runLaunch(tool);
+    if (!tool) return;
+    let reserved: Window | null = null;
+    try {
+      reserved = reserveToolTab();
+    } catch (err: any) {
+      window.alert(
+        err?.message ||
+          'Pop-up blocked. Allow pop-ups for this site, then open the tool again.',
+      );
+      return;
+    }
+    void runLaunch(tool, reserved);
   }, [guideTool, sessionTool, runLaunch]);
 
   const ui = (
