@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Toolz Mart — Panel unlock</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, sans-serif;
+      background: #0d0908;
+      color: #e2e8f0;
+    }
+    .box { text-align: center; padding: 2rem; max-width: 28rem; }
+    .spin {
+      width: 2rem; height: 2rem; margin: 0 auto 1rem;
+      border: 3px solid #3a2a26; border-top-color: #dc2626;
+      border-radius: 50%; animation: s 0.8s linear infinite;
+    }
+    @keyframes s { to { transform: rotate(360deg); } }
+    p { font-size: 0.85rem; color: #94a3b8; line-height: 1.45; }
+    code { color: #fca5a5; font-size: 0.75rem; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spin"></div>
+    <p>Unlocking panel and opening destination…</p>
+    <p id="hint"></p>
+  </div>
+  <script src="unlock.js"></script>
+</body>
+</html>

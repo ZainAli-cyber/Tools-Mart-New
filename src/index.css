@@ -1,0 +1,595 @@
+@import "tailwindcss";
+
+/* ── Dark theme (designed default) ── */
+:root,
+[data-theme="dark"] {
+  --bg-primary:   #0f0c0c;
+  --bg-secondary: #1a1412;
+  --bg-card:      #231a18;
+  --bg-card-alt:  #2a1f1c;
+  --bg-surface:   #130d0d;
+  --bg-input:     #0d0908;
+  --bg-elevated:  #1a1210;
+  --bg-page:      #0a0808;
+  --border:       #3a2a26;
+  --border-light: #4a3530;
+  --border-subtle:#2a1e1c;
+  --text-primary: #f0ebe8;
+  --text-muted:   #a89890;
+  --text-faint:   #6b5c56;
+  --red:          #cc1a1a;
+  --red-dark:     #a31414;
+  --red-light:    #e83030;
+  --red-glow:     rgba(204,26,26,0.15);
+  --shadow-panel: 4px 0 24px rgba(0,0,0,0.4);
+  --glow-card-bg: linear-gradient(145deg, #1e0a0a 0%, #180b0b 35%, #110808 65%, #1a0d0d 100%);
+  --glow-card-bg-hover: linear-gradient(145deg, #250e0e 0%, #1c0a0a 35%, #130909 65%, #200e0e 100%);
+  --hero-bg:           #000000;
+  --hero-card-bg:      #0d0808;
+  --hero-chip-bg:      rgba(15, 23, 42, 0.8);
+  --hero-tile-bg:      #1a0a0a;
+  --hero-panel-bg:     #130808;
+  --hero-fade:         linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+  --hero-ticker-bg:    rgba(0, 0, 0, 0.6);
+  --alert-danger-bg:   rgba(127, 29, 29, 0.3);
+  --alert-danger-border: rgba(239, 68, 68, 0.4);
+  --alert-danger-text: #fca5a5;
+  --btn-secondary-bg:  rgba(220, 38, 38, 0.2);
+  --btn-secondary-bg-hover: rgba(220, 38, 38, 0.3);
+  --btn-secondary-border: rgba(239, 68, 68, 0.4);
+  --btn-secondary-text: #fca5a5;
+  --tip-amber: #fde68a;
+}
+
+/* ── Light theme — warm paper surfaces + Tools-Mart red accents ── */
+[data-theme="light"] {
+  --bg-primary:   #f6f3f2;
+  --bg-secondary: #ffffff;
+  --bg-card:      #ffffff;
+  --bg-card-alt:  #f0ebe9;
+  --bg-surface:   #ffffff;
+  --bg-input:     #faf8f7;
+  --bg-elevated:  #f3efed;
+  --bg-page:      #f6f3f2;
+  --border:       #cbb8b1;
+  --border-light: #b9a49c;
+  --border-subtle:#ddd0cb;
+  --text-primary: #1c1412;
+  --text-muted:   #3f3531;
+  --text-faint:   #5c4f4a;
+  --red:          #c41717;
+  --red-dark:     #9e1212;
+  --red-light:    #e02525;
+  --red-glow:     rgba(196,23,23,0.12);
+  --shadow-panel: 4px 0 24px rgba(28,20,18,0.08);
+  --glow-card-bg: linear-gradient(145deg, #fff8f6 0%, #ffffff 40%, #faf6f4 100%);
+  --glow-card-bg-hover: linear-gradient(145deg, #fff2ef 0%, #ffffff 40%, #faf0ed 100%);
+  --hero-bg:           #f3eeec;
+  --hero-card-bg:      #ffffff;
+  --hero-chip-bg:      #ebe4e1;
+  --hero-tile-bg:      #f7f1ef;
+  --hero-panel-bg:     #faf6f4;
+  --hero-fade:         linear-gradient(to top, rgba(246, 243, 242, 0.95), transparent);
+  --hero-ticker-bg:    rgba(255, 255, 255, 0.85);
+  --alert-danger-bg:   #fde8e8;
+  --alert-danger-border: #e11d1d;
+  --alert-danger-text: #8b1212;
+  --btn-secondary-bg:  rgba(196, 23, 23, 0.12);
+  --btn-secondary-bg-hover: rgba(196, 23, 23, 0.2);
+  --btn-secondary-border: rgba(158, 18, 18, 0.55);
+  --btn-secondary-text: #9e1212;
+  --tip-amber: #92400e;
+}
+
+/* Apply base colours */
+html {
+  color-scheme: dark;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Override Tailwind slate-950 / slate-900 / slate-800 with warm palette tokens */
+.bg-slate-950 { background-color: var(--bg-primary) !important; }
+.bg-slate-900 { background-color: var(--bg-secondary) !important; }
+.bg-slate-800 { background-color: var(--bg-card) !important; }
+.bg-slate-800\/50 { background-color: color-mix(in srgb, var(--bg-card) 50%, transparent) !important; }
+.bg-slate-900\/40 { background-color: color-mix(in srgb, var(--bg-secondary) 40%, transparent) !important; }
+.bg-slate-900\/50 { background-color: color-mix(in srgb, var(--bg-secondary) 50%, transparent) !important; }
+.bg-slate-900\/60 { background-color: color-mix(in srgb, var(--bg-secondary) 60%, transparent) !important; }
+.bg-slate-900\/80 { background-color: color-mix(in srgb, var(--bg-secondary) 80%, transparent) !important; }
+.bg-slate-950\/80 { background-color: color-mix(in srgb, var(--bg-primary) 80%, transparent) !important; }
+.bg-slate-950\/95 { background-color: color-mix(in srgb, var(--bg-primary) 95%, transparent) !important; }
+
+.border-slate-800   { border-color: var(--border) !important; }
+.border-slate-800\/50 { border-color: color-mix(in srgb, var(--border) 50%, transparent) !important; }
+.border-slate-700   { border-color: var(--border-light) !important; }
+.border-slate-900   { border-color: var(--bg-secondary) !important; }
+
+.hover\:bg-slate-800:hover { background-color: var(--bg-card) !important; }
+.hover\:bg-slate-700:hover { background-color: var(--bg-card-alt) !important; }
+.hover\:bg-slate-900:hover { background-color: var(--bg-secondary) !important; }
+.focus-within\:border-red-500\/50:focus-within { border-color: rgba(204,26,26,0.5) !important; }
+
+.bg-slate-900.border-slate-800 { border-color: var(--border) !important; }
+
+/* Glow adjustment */
+.bg-red-600\/10 { background-color: var(--red-glow) !important; }
+.shadow-red-900\/30 { --tw-shadow-color: rgba(100,0,0,0.3) !important; }
+.shadow-red-900\/20 { --tw-shadow-color: rgba(100,0,0,0.2) !important; }
+
+[data-theme="light"] .shadow-red-900\/30 { --tw-shadow-color: rgba(196,23,23,0.18) !important; }
+[data-theme="light"] .shadow-red-900\/20 { --tw-shadow-color: rgba(196,23,23,0.12) !important; }
+
+/* ── Light: remap hardcoded dark hex utilities used across panels ── */
+[data-theme="light"] .bg-\[\#0a0808\],
+[data-theme="light"] .bg-\[\#0d0908\] { background-color: var(--bg-input) !important; }
+[data-theme="light"] .bg-\[\#0d0908\]\/95 { background-color: color-mix(in srgb, var(--bg-secondary) 95%, transparent) !important; }
+[data-theme="light"] .bg-\[\#130d0d\],
+[data-theme="light"] .bg-\[\#130d0d\]\/90 { background-color: var(--bg-surface) !important; }
+[data-theme="light"] .bg-\[\#1a1210\],
+[data-theme="light"] .hover\:bg-\[\#1a1210\]:hover { background-color: var(--bg-elevated) !important; }
+[data-theme="light"] .bg-\[\#231a18\],
+[data-theme="light"] .hover\:bg-\[\#231a18\]:hover { background-color: var(--bg-card-alt) !important; }
+[data-theme="light"] .border-\[\#1a1210\],
+[data-theme="light"] .border-\[\#2a1e1c\],
+[data-theme="light"] .border-\[\#3a2a26\] { border-color: var(--border-subtle) !important; }
+[data-theme="light"] .hover\:border-\[\#3a2a26\]:hover { border-color: var(--border) !important; }
+
+/* Light: readable body / panel text (keep white on brand solid buttons) */
+[data-theme="light"] .text-white { color: var(--text-primary) !important; }
+[data-theme="light"] .text-slate-100,
+[data-theme="light"] .text-slate-200 { color: var(--text-primary) !important; }
+[data-theme="light"] .text-slate-300 { color: #2e2623 !important; }
+[data-theme="light"] .text-slate-400 { color: var(--text-muted) !important; }
+[data-theme="light"] .text-slate-500 { color: var(--text-faint) !important; }
+/* In dark UI slate-600/700 are faint; in light they must stay readable muted */
+[data-theme="light"] .text-slate-600 { color: var(--text-faint) !important; }
+[data-theme="light"] .text-slate-700 { color: #7a6b64 !important; }
+[data-theme="light"] .placeholder-slate-600::placeholder { color: #8a7b74 !important; }
+[data-theme="light"] .hover\:text-white:hover { color: var(--text-primary) !important; }
+
+/* Light: danger alerts (device-limit, form errors) — high contrast */
+[data-theme="light"] .bg-red-900\/30,
+[data-theme="light"] .bg-red-900\/20 {
+  background-color: var(--alert-danger-bg) !important;
+}
+[data-theme="light"] .text-red-300,
+[data-theme="light"] .text-red-200 {
+  color: var(--alert-danger-text) !important;
+}
+[data-theme="light"] .border-red-500\/40,
+[data-theme="light"] .border-red-500\/30 {
+  border-color: var(--alert-danger-border) !important;
+}
+
+/* Light: secondary / ghost red CTAs (pale pink → readable) */
+[data-theme="light"] .bg-red-600\/20 {
+  background-color: var(--btn-secondary-bg) !important;
+}
+[data-theme="light"] .hover\:bg-red-600\/30:hover {
+  background-color: var(--btn-secondary-bg-hover) !important;
+}
+[data-theme="light"] .bg-red-600\/20.text-red-300,
+[data-theme="light"] a.bg-red-600\/20,
+[data-theme="light"] button.bg-red-600\/20 {
+  color: var(--btn-secondary-text) !important;
+  border-color: var(--btn-secondary-border) !important;
+}
+
+/* Light: outlined slate buttons (View Full Details etc.) */
+[data-theme="light"] button.bg-slate-900,
+[data-theme="light"] a.bg-slate-900 {
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 1px 3px rgba(28, 20, 18, 0.08);
+}
+[data-theme="light"] .bg-slate-900\/40 {
+  background-color: var(--bg-card-alt) !important;
+}
+
+/* Theme-aware tip / instructional amber text */
+.tip-amber {
+  color: var(--tip-amber) !important;
+}
+[data-theme="light"] .text-amber-100,
+[data-theme="light"] .text-amber-200,
+[data-theme="light"] .text-amber-200\/90,
+[data-theme="light"] .text-amber-300,
+[data-theme="light"] .text-amber-400,
+[data-theme="light"] .text-yellow-200,
+[data-theme="light"] .text-yellow-300,
+[data-theme="light"] .text-yellow-400 {
+  color: #92400e !important;
+}
+[data-theme="light"] .text-amber-500,
+[data-theme="light"] .text-yellow-500 {
+  color: #b45309 !important;
+}
+[data-theme="light"] .bg-amber-500\/10,
+[data-theme="light"] .bg-amber-900\/25 {
+  background-color: #fef3c7 !important;
+}
+[data-theme="light"] .border-amber-500\/25,
+[data-theme="light"] .border-amber-500\/30,
+[data-theme="light"] .border-amber-500\/35,
+[data-theme="light"] .border-amber-500\/40 {
+  border-color: #d97706 !important;
+}
+
+/* Keep white label text on solid brand / status fills (not pale remapped gradients) */
+[data-theme="light"] .bg-red-600,
+[data-theme="light"] .bg-red-600\/90,
+[data-theme="light"] .bg-red-700,
+[data-theme="light"] .bg-red-800,
+[data-theme="light"] .bg-emerald-500,
+[data-theme="light"] .bg-emerald-600,
+[data-theme="light"] .bg-emerald-700,
+[data-theme="light"] .bg-amber-500,
+[data-theme="light"] .bg-amber-600,
+[data-theme="light"] .bg-blue-600,
+[data-theme="light"] .bg-blue-700,
+[data-theme="light"] .bg-green-600,
+[data-theme="light"] .bg-red-600 .text-white,
+[data-theme="light"] .bg-red-700 .text-white,
+[data-theme="light"] .bg-emerald-500 .text-white,
+[data-theme="light"] .bg-emerald-600 .text-white,
+[data-theme="light"] .bg-amber-600 .text-white,
+[data-theme="light"] .bg-blue-600 .text-white,
+[data-theme="light"] .bg-red-600.text-white,
+[data-theme="light"] .bg-red-700.text-white,
+[data-theme="light"] .bg-red-800.text-white,
+[data-theme="light"] .bg-emerald-500.text-white,
+[data-theme="light"] .bg-emerald-600.text-white,
+[data-theme="light"] .bg-emerald-700.text-white,
+[data-theme="light"] .bg-amber-500.text-white,
+[data-theme="light"] .bg-amber-600.text-white,
+[data-theme="light"] .bg-blue-600.text-white,
+[data-theme="light"] .bg-blue-700.text-white,
+[data-theme="light"] .bg-green-600.text-white {
+  color: #ffffff !important;
+}
+
+/* Solid red gradient bands / avatar chips — keep white labels (not pale /10 washes) */
+[data-theme="light"] .to-red-700 .text-white,
+[data-theme="light"] .to-red-800 .text-white,
+[data-theme="light"] .from-red-500.to-amber-500 .text-white,
+[data-theme="light"] .from-red-600.to-red-700,
+[data-theme="light"] .from-red-600.to-red-700 .text-white,
+[data-theme="light"] .from-red-600.to-red-800 .text-white {
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .from-red-950\/80 {
+  --tw-gradient-from: color-mix(in srgb, #fecaca 55%, white) !important;
+  --tw-gradient-to: transparent !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+[data-theme="light"] .to-\[\#130d0d\],
+[data-theme="light"] .to-\[var\(--bg-surface\)\] {
+  --tw-gradient-to: var(--bg-surface) !important;
+}
+
+/* Soften harsh dark-only translucency on light */
+[data-theme="light"] .bg-black\/80 { background-color: rgba(28, 20, 18, 0.45) !important; }
+[data-theme="light"] .bg-\[\#0a0808\]\/90 { background-color: rgba(246, 243, 242, 0.92) !important; }
+
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee { animation: marquee 30s linear infinite; }
+
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* ── Gradient glow card effect ── */
+.glow-card {
+  position: relative;
+  background: var(--glow-card-bg);
+  border: 1px solid rgba(180, 40, 20, 0.25);
+  border-radius: 1rem;
+  overflow: visible;
+}
+
+[data-theme="light"] .glow-card {
+  border-color: rgba(196, 23, 23, 0.32);
+  box-shadow: 0 8px 28px rgba(28, 20, 18, 0.08);
+}
+
+.glow-card.overflow-hidden { overflow: hidden; }
+
+.glow-card::before,
+.glow-card::after { border-radius: inherit; overflow: hidden; }
+
+.glow-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(220, 60, 20, 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(180, 20, 0, 0.10) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.3s ease;
+}
+
+[data-theme="light"] .glow-card::after {
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(220, 60, 20, 0.10) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(180, 20, 0, 0.05) 0%, transparent 50%);
+}
+
+.glow-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg,
+    rgba(220, 60, 20, 0.55) 0%,
+    rgba(180, 30, 10, 0.25) 35%,
+    rgba(60, 10, 5, 0.15) 65%,
+    rgba(200, 40, 20, 0.35) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.3s ease;
+}
+
+[data-theme="light"] .glow-card::before {
+  background: linear-gradient(135deg,
+    rgba(196, 23, 23, 0.45) 0%,
+    rgba(180, 30, 10, 0.18) 35%,
+    rgba(200, 160, 150, 0.2) 65%,
+    rgba(196, 23, 23, 0.28) 100%
+  );
+}
+
+.glow-card:hover {
+  background: var(--glow-card-bg-hover);
+  border-color: rgba(210, 50, 20, 0.45);
+}
+
+[data-theme="light"] .glow-card:hover {
+  border-color: rgba(196, 23, 23, 0.35);
+}
+
+.glow-card:hover::before {
+  background: linear-gradient(135deg,
+    rgba(240, 70, 20, 0.85) 0%,
+    rgba(200, 40, 10, 0.50) 35%,
+    rgba(100, 20, 5, 0.25) 65%,
+    rgba(230, 50, 20, 0.65) 100%
+  );
+}
+
+[data-theme="light"] .glow-card:hover::before {
+  background: linear-gradient(135deg,
+    rgba(196, 23, 23, 0.7) 0%,
+    rgba(200, 40, 10, 0.35) 35%,
+    rgba(200, 160, 150, 0.25) 65%,
+    rgba(196, 23, 23, 0.5) 100%
+  );
+}
+
+.glow-card:hover::after {
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(240, 70, 20, 0.32) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(200, 30, 0, 0.16) 0%, transparent 50%);
+}
+
+[data-theme="light"] .glow-card:hover::after {
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(220, 60, 20, 0.16) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(180, 20, 0, 0.08) 0%, transparent 50%);
+}
+
+/* ── Force border-radius on ALL rounded-* elements (Tailwind + custom) ── */
+*[class*="rounded-xl"]  { border-radius: 0.75rem !important; }
+*[class*="rounded-2xl"] { border-radius: 1rem !important; }
+*[class*="rounded-3xl"] { border-radius: 1.5rem !important; }
+
+input, textarea, select { border-radius: 0.75rem !important; }
+
+button:not(.rounded-full) { border-radius: 0.75rem !important; }
+a.rounded-xl, a.rounded-2xl, a.rounded-3xl { border-radius: inherit; }
+
+[data-theme="light"] .border-red-900\/20,
+[data-theme="light"] .border-red-900\/30 {
+  border-color: rgba(196, 23, 23, 0.22) !important;
+}
+
+[data-theme="light"] .bg-emerald-900\/30 {
+  background-color: #d1fae5 !important;
+}
+[data-theme="light"] .text-emerald-300 {
+  color: #065f46 !important;
+}
+[data-theme="light"] .border-emerald-500\/40 {
+  border-color: #059669 !important;
+}
+
+/* Soften marketing hero glows in light mode */
+[data-theme="light"] .hero-glow-tl,
+[data-theme="light"] .hero-glow-tr {
+  opacity: 0.45;
+}
+
+/* Theme-aware secondary red CTA (replaces pale red-600/20 + red-300) */
+.btn-secondary-red {
+  background: var(--btn-secondary-bg) !important;
+  border: 1px solid var(--btn-secondary-border) !important;
+  color: var(--btn-secondary-text) !important;
+}
+.btn-secondary-red:hover {
+  background: var(--btn-secondary-bg-hover) !important;
+}
+
+/* Reseller / dashboard band — light surface; force readable dark text (beats to-slate-900 exceptions) */
+[data-theme="light"] .reseller-band {
+  background: linear-gradient(
+    135deg,
+    var(--bg-card) 0%,
+    color-mix(in srgb, var(--red) 8%, white) 45%,
+    var(--bg-card-alt) 100%
+  ) !important;
+}
+[data-theme="light"] .reseller-band.border-red-500\/30,
+[data-theme="light"] .reseller-band.border-red-500\/25 {
+  border-color: color-mix(in srgb, var(--red) 35%, var(--border)) !important;
+}
+[data-theme="light"] .reseller-band .text-white,
+[data-theme="light"] .reseller-band .hover\:text-white:hover {
+  color: var(--text-primary) !important;
+}
+[data-theme="light"] .reseller-band .text-white\/70 {
+  color: var(--text-muted) !important;
+}
+[data-theme="light"] .reseller-band .text-slate-100,
+[data-theme="light"] .reseller-band .text-slate-200,
+[data-theme="light"] .reseller-band .text-slate-300 {
+  color: #2e2623 !important;
+}
+[data-theme="light"] .reseller-band .text-slate-400,
+[data-theme="light"] .reseller-band .text-slate-500 {
+  color: var(--text-muted) !important;
+}
+[data-theme="light"] .reseller-band .text-red-300 {
+  color: var(--red-dark) !important;
+}
+[data-theme="light"] .reseller-band .bg-black\/20 {
+  background-color: var(--bg-card) !important;
+  border-color: color-mix(in srgb, var(--red) 30%, var(--border)) !important;
+}
+[data-theme="light"] .reseller-band .bg-white\/10 {
+  background-color: var(--btn-secondary-bg) !important;
+}
+[data-theme="light"] .reseller-band .hover\:bg-white\/20:hover {
+  background-color: var(--btn-secondary-bg-hover) !important;
+}
+[data-theme="light"] .reseller-band .border-white\/15 {
+  border-color: var(--btn-secondary-border) !important;
+}
+[data-theme="light"] .reseller-band .bg-red-600 .text-white,
+[data-theme="light"] .reseller-band .bg-red-700 .text-white,
+[data-theme="light"] .reseller-band a.bg-red-600,
+[data-theme="light"] .reseller-band button.bg-red-600 {
+  color: #ffffff !important;
+}
+[data-theme="light"] .reseller-band .glow-card .text-white {
+  color: var(--text-primary) !important;
+}
+[data-theme="light"] .reseller-band .glow-card .text-slate-400 {
+  color: var(--text-muted) !important;
+}
+
+/* Keep brand CTA on white buttons inside red channel banner */
+[data-theme="light"] .from-red-600 a.bg-white,
+[data-theme="light"] .from-red-600 .bg-white {
+  color: #c41717 !important;
+  background-color: #ffffff !important;
+}
+
+/* Admin / form danger banners sharing the same pattern */
+.alert-danger,
+[data-theme="light"] .bg-red-900\/30.text-red-300 {
+  background-color: var(--alert-danger-bg) !important;
+  border-color: var(--alert-danger-border) !important;
+  color: var(--alert-danger-text) !important;
+}
+
+/* Light: stronger red accent labels on cards */
+[data-theme="light"] .text-red-400 {
+  color: #b91c1c !important;
+}
+
+/*
+ * Surfaces that stay dark in both themes (promo modal, live toast, featured plans).
+ * Opt in with .theme-dark-surface so global light remaps cannot force dark-on-dark.
+ * Use html[data-theme] for higher specificity than bare [data-theme] remaps.
+ */
+.theme-dark-surface {
+  color: #f5f0ed !important;
+}
+html[data-theme="light"] .theme-dark-surface .text-white,
+html[data-theme="light"] .theme-dark-surface .hover\:text-white:hover,
+.theme-dark-surface .text-white,
+.theme-dark-surface .hover\:text-white:hover {
+  color: #ffffff !important;
+}
+html[data-theme="light"] .theme-dark-surface .text-slate-100,
+html[data-theme="light"] .theme-dark-surface .text-slate-200,
+html[data-theme="light"] .theme-dark-surface .text-slate-300,
+.theme-dark-surface .text-slate-100,
+.theme-dark-surface .text-slate-200,
+.theme-dark-surface .text-slate-300 {
+  color: #e8dfd9 !important;
+}
+html[data-theme="light"] .theme-dark-surface .text-slate-400,
+html[data-theme="light"] .theme-dark-surface .text-slate-500,
+.theme-dark-surface .text-slate-400,
+.theme-dark-surface .text-slate-500 {
+  color: #c4b8b0 !important;
+}
+html[data-theme="light"] .theme-dark-surface .text-slate-600,
+html[data-theme="light"] .theme-dark-surface .text-slate-700,
+.theme-dark-surface .text-slate-600,
+.theme-dark-surface .text-slate-700 {
+  color: #a89890 !important;
+}
+html[data-theme="light"] .theme-dark-surface .text-red-400,
+html[data-theme="light"] .theme-dark-surface .text-red-500,
+.theme-dark-surface .text-red-400,
+.theme-dark-surface .text-red-500 {
+  color: #f87171 !important;
+}
+html[data-theme="light"] .theme-dark-surface .bg-red-600,
+html[data-theme="light"] .theme-dark-surface .bg-red-600 .text-white,
+html[data-theme="light"] .theme-dark-surface .bg-red-700 .text-white,
+html[data-theme="light"] .theme-dark-surface button.bg-red-600,
+html[data-theme="light"] .theme-dark-surface a.bg-red-600,
+.theme-dark-surface .bg-red-600,
+.theme-dark-surface .bg-red-600 .text-white,
+.theme-dark-surface .bg-red-700 .text-white,
+.theme-dark-surface button.bg-red-600,
+.theme-dark-surface a.bg-red-600 {
+  color: #ffffff !important;
+}
+
+/*
+ * Featured plan cards keep a dark gradient in both themes.
+ * Scoped so lightened bands (e.g. .reseller-band) are not forced white-on-pink.
+ */
+html[data-theme="light"] .theme-dark-surface.to-slate-900 .text-white,
+html[data-theme="light"] .theme-dark-surface.from-red-600\/10 .text-white,
+html[data-theme="light"] .theme-dark-surface.from-amber-600\/10 .text-white {
+  color: #ffffff !important;
+}
+html[data-theme="light"] .theme-dark-surface.to-slate-900 .text-slate-400,
+html[data-theme="light"] .theme-dark-surface.from-red-600\/10 .text-slate-400,
+html[data-theme="light"] .theme-dark-surface.from-amber-600\/10 .text-slate-400 {
+  color: #ddd4ce !important;
+}
+html[data-theme="light"] .theme-dark-surface.to-slate-900 .text-slate-300,
+html[data-theme="light"] .theme-dark-surface.from-red-600\/10 .text-slate-300,
+html[data-theme="light"] .theme-dark-surface.from-amber-600\/10 .text-slate-300 {
+  color: #efe8e3 !important;
+}
+html[data-theme="light"] .theme-dark-surface.to-slate-900 .text-red-400,
+html[data-theme="light"] .theme-dark-surface.from-red-600\/10 .text-red-400 {
+  color: #f87171 !important;
+}
+
+/* Admin muted labels stay readable on light panels */
+[data-theme="light"] .text-slate-500 {
+  color: #5c4f4a !important;
+}

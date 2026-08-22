@@ -1,0 +1,822 @@
+/**
+ * Server-side tool panel proxy — unlocks *.toolaccess.click without the Chrome extension.
+ * Uses admin-stored cookies + panel Referer on the server; never exposes the service role.
+ */
+import { Router } from 'express';
+import { createClient } from '@supabase/supabase-js';
+import { createHash, randomBytes } from 'crypto';
+import { planIsActive } from './accountStore';
+import {
+  registerOrHeartbeatDevice,
+  readDeviceFromRequest,
+  DEVICE_LIMIT_MESSAGE,
+} from './deviceSessions';
+
+const router = Router();
+
+const SESSION_TTL_MS = 15 * 60 * 1000;
+const MAX_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_REDIRECTS = 12;
+
+type ProxySession = {
+  token: string;
+  accountId: string;
+  toolId: string;
+  toolName: string;
+  targetUrl: string;
+  origin: string;
+  cookieHeader: string;
+  referrer: string;
+  /** Ordered Referer candidates to retry on 403 panel denial. */
+  referrerCandidates: string[];
+  expiresAt: number;
+};
+
+const sessions = new Map<string, ProxySession>();
+
+function pruneSessions() {
+  const now = Date.now();
+  for (const [key, session] of sessions) {
+    if (session.expiresAt <= now) sessions.delete(key);
+  }
+}
+
+setInterval(pruneSessions, 60_000).unref?.();
+
+function config() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !anon) throw new Error('Supabase authentication is not configured');
+  return { url, anon };
+}
+
+function client(token?: string) {
+  const { url, anon } = config();
+  return createClient(url, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+  });
+}
+
+function toolsDb() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !(serviceKey || anon)) throw new Error('Supabase authentication is not configured');
+  return createClient(url, serviceKey || anon!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+function slugify(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function toolMatchesKey(tool: any, key: string) {
+  const want = String(key || '').trim().toLowerCase();
+  if (!want) return false;
+  const id = String(tool?.id || '').trim().toLowerCase();
+  const name = String(tool?.name || '').trim().toLowerCase();
+  return id === want || name === want || slugify(name) === want || slugify(id) === want;
+}
+
+function parseExtraJson(raw: any): Record<string, any> {
+  if (!raw) return {};
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch {
+      /* ignore */
+    }
+  }
+  return {};
+}
+
+function parseCookiesPayload(raw?: string | null): any[] {
+  let text = String(raw || '').trim();
+  if (!text) return [];
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    const start = text.indexOf('[');
+    const end = text.lastIndexOf(']');
+    if (start >= 0 && end > start) {
+      try {
+        parsed = JSON.parse(text.slice(start, end + 1));
+      } catch {
+        return [];
+      }
+    } else {
+      return [];
+    }
+  }
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(parsed)) return parsed.filter(c => c && typeof c === 'object');
+  if (parsed && typeof parsed === 'object') {
+    if (Array.isArray(parsed.cookies)) return parsed.cookies.filter((c: any) => c && typeof c === 'object');
+    if (Array.isArray(parsed.data)) return parsed.data.filter((c: any) => c && typeof c === 'object');
+    if (parsed.name) return [parsed];
+  }
+  return [];
+}
+
+/** Build a Cookie request header from Chrome Copy-Cookies JSON objects. */
+export function cookiesToHeader(cookies: any[]): string {
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  for (const c of cookies || []) {
+    const name = String(c?.name || '').trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const value = c?.value == null ? '' : String(c.value);
+    parts.push(`${name}=${value}`);
+  }
+  return parts.join('; ');
+}
+
+function isToolAccessUrl(url?: string | null): boolean {
+  try {
+    const host = new URL(String(url || '').trim()).hostname.toLowerCase();
+    return host === 'toolaccess.click' || host.endsWith('.toolaccess.click');
+  } catch {
+    return /toolaccess\.click/i.test(String(url || ''));
+  }
+}
+
+const DEFAULT_PANEL_REFERRER = 'https://app.pakseotools.com/';
+const APEX_PANEL_REFERRER = 'https://pakseotools.com/';
+const PANEL_REFERRER_FALLBACKS = [
+  DEFAULT_PANEL_REFERRER,
+  APEX_PANEL_REFERRER,
+  'https://app.pakseotools.com/member',
+] as const;
+
+function normalizePanelUnlockReferrer(raw?: string | null): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  try {
+    const u = new URL(trimmed);
+    if (!/^https?:$/i.test(u.protocol)) return trimmed;
+    if (/\/(login|signin|sign-in|sign_in|register|signup|sign-up)\/?$/i.test(u.pathname)) {
+      return `${u.origin}/`;
+    }
+    if (!u.pathname || u.pathname === '/') return `${u.origin}/`;
+    return trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+function panelUnlockReferrerCandidates(raw?: string | null): string[] {
+  const normalized = normalizePanelUnlockReferrer(raw);
+  const asIs = String(raw || '').trim();
+  const out: string[] = [];
+  const push = (v: string) => {
+    const s = String(v || '').trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
+  push(normalized);
+  push(asIs);
+  for (const s of PANEL_REFERRER_FALLBACKS) push(s);
+  if (normalized) {
+    try {
+      push(`${new URL(normalized).origin}/`);
+    } catch {
+      /* ignore */
+    }
+  }
+  return out;
+}
+
+function resolvePanelUnlockReferrer(raw?: string | null, dest?: string | null): string {
+  if (!isToolAccessUrl(dest) && !String(raw || '').trim()) return '';
+  const normalized = normalizePanelUnlockReferrer(raw);
+  if (normalized) return normalized;
+  if (isToolAccessUrl(dest)) return DEFAULT_PANEL_REFERRER;
+  return '';
+}
+
+function isPanelAccessDenied(status: number, contentType: string | null, bodyPreview: string): boolean {
+  if (status !== 403) return false;
+  const text = String(bodyPreview || '');
+  return /access denied|pak seo|tool dashboard/i.test(text) || /text\/html/i.test(String(contentType || ''));
+}
+
+/** Merge upstream Set-Cookie into the session Cookie header (keeps PHPSESSID continuity). */
+function mergeSetCookies(existingHeader: string, response: Response): string {
+  const jar = new Map<string, string>();
+  for (const part of String(existingHeader || '').split(';')) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    const name = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1).trim();
+    if (name) jar.set(name, value);
+  }
+
+  const rawList: string[] =
+    typeof (response.headers as any).getSetCookie === 'function'
+      ? (response.headers as any).getSetCookie()
+      : [];
+  if (!rawList.length) {
+    const single = response.headers.get('set-cookie');
+    if (single) rawList.push(single);
+  }
+
+  for (const raw of rawList) {
+    const first = String(raw || '').split(';')[0] || '';
+    const eq = first.indexOf('=');
+    if (eq <= 0) continue;
+    const name = first.slice(0, eq).trim();
+    const value = first.slice(eq + 1).trim();
+    if (name) jar.set(name, value);
+  }
+
+  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+}
+
+async function selectToolsRows(sb: ReturnType<typeof toolsDb>, idEq?: string) {
+  const attempts = [
+    '*',
+    'id,name,access_method,tool_url,cookies_json,panel_referrer,extra',
+    'id,name,access_method,tool_url,cookies_json,extra',
+    'id,name,extra',
+    'id,name',
+  ];
+  for (const cols of attempts) {
+    const q = idEq
+      ? sb.from('tools').select(cols).eq('id', idEq).maybeSingle()
+      : sb.from('tools').select(cols);
+    const result = await q;
+    if (!result.error) {
+      return idEq ? (result.data ? [result.data] : []) : result.data || [];
+    }
+  }
+  return [];
+}
+
+async function findToolByKey(key: string) {
+  const sb = toolsDb();
+  const raw = decodeURIComponent(String(key || '')).trim();
+  if (!raw) return null;
+  const byIdRows = await selectToolsRows(sb, raw);
+  if (byIdRows[0]) return byIdRows[0];
+  const rows = (await selectToolsRows(sb)) as any[];
+  return rows.find((row: any) => toolMatchesKey(row, raw)) || null;
+}
+
+async function profileForToken(token: string) {
+  const supabase = client(token);
+  const { data: authData, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !authData.user) return null;
+
+  const db = toolsDb();
+  const { data: profile, error } = await db
+    .from('customers')
+    .select('id,customer_code,name,email,role,status,plan,expiry,tools')
+    .eq('auth_user_id', authData.user.id)
+    .maybeSingle();
+  if (!error && profile) return profile;
+
+  const fallback = await supabase
+    .from('customers')
+    .select('id,customer_code,name,email,role,status,plan,expiry,tools')
+    .eq('auth_user_id', authData.user.id)
+    .single();
+  if (fallback.error || !fallback.data) return null;
+  return fallback.data;
+}
+
+function toolAssigned(profile: { tools?: any }, tool: { id?: string; name?: string }) {
+  const assigned = Array.isArray(profile.tools) ? profile.tools : [];
+  return assigned.some((entry: any) => {
+    const value = String(entry || '').trim();
+    if (!value) return false;
+    return toolMatchesKey(tool, value) || value.toLowerCase() === String(tool.name || '').trim().toLowerCase();
+  });
+}
+
+function cookieFields(tool: any) {
+  const extra = parseExtraJson(tool?.extra);
+  const method = tool?.access_method || extra.accessMethod || extra.access_method;
+  const url = tool?.tool_url || extra.toolUrl || extra.tool_url || '';
+  const cookiesRaw = tool?.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? '';
+  const panelReferrer =
+    tool?.panel_referrer ||
+    extra.panelReferrer ||
+    extra.unlockReferrer ||
+    extra.panel_referrer ||
+    '';
+  const normalized =
+    String(method || '').trim().toLowerCase() === 'one_click'
+      ? ('one_click' as const)
+      : ('extension' as const);
+  return {
+    accessMethod: normalized,
+    url: String(url || '').trim(),
+    cookiesRaw: String(cookiesRaw || ''),
+    panelReferrer: String(panelReferrer || '').trim(),
+  };
+}
+
+async function requireEntitledLaunch(req: any): Promise<
+  | { ok: true; profile: any; tool: any; fields: ReturnType<typeof cookieFields>; cookies: any[] }
+  | { ok: false; status: number; error: string }
+> {
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!token) return { ok: false, status: 401, error: 'Authentication required' };
+
+  const profile = await profileForToken(token);
+  if (!profile) return { ok: false, status: 401, error: 'Session expired. Please sign in again.' };
+  if (profile.status === 'blocked') return { ok: false, status: 403, error: 'Account suspended' };
+
+  const fp = readDeviceFromRequest(req);
+  if (!fp.deviceId) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Device id required. Refresh the portal, then try again.',
+    };
+  }
+  const deviceCheck = await registerOrHeartbeatDevice({
+    accountId: profile.id,
+    deviceId: fp.deviceId,
+    deviceLabel: fp.deviceLabel,
+    userAgent: fp.userAgent,
+  });
+  if (deviceCheck.ok === false) {
+    return { ok: false, status: deviceCheck.status, error: deviceCheck.error || DEVICE_LIMIT_MESSAGE };
+  }
+
+  if (!planIsActive(profile.plan, profile.expiry)) {
+    return { ok: false, status: 403, error: 'Activate or renew a plan to access tools.' };
+  }
+
+  const toolKey = String(req.body?.toolId || req.body?.toolKey || req.query?.toolId || '').trim();
+  if (!toolKey) return { ok: false, status: 400, error: 'toolId is required' };
+
+  const tool = await findToolByKey(toolKey);
+  if (!tool) return { ok: false, status: 404, error: 'Tool not found' };
+  if (!toolAssigned(profile, tool)) {
+    return { ok: false, status: 403, error: 'This tool is not assigned to your account.' };
+  }
+
+  const fields = cookieFields(tool);
+  if (!fields.url) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'No destination URL is set for this tool. Ask admin to save Cookies settings again.',
+    };
+  }
+
+  return {
+    ok: true,
+    profile,
+    tool,
+    fields,
+    cookies: parseCookiesPayload(fields.cookiesRaw),
+  };
+}
+
+function newToken() {
+  return randomBytes(24).toString('hex');
+}
+
+function resolveAgainst(base: string, href: string): string | null {
+  try {
+    return new URL(href, base).href;
+  } catch {
+    return null;
+  }
+}
+
+function shouldProxyUrl(session: ProxySession, absoluteUrl: string): boolean {
+  try {
+    const u = new URL(absoluteUrl);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    const originHost = new URL(session.origin).hostname.toLowerCase();
+    if (host === originHost) return true;
+    if (host === 'toolaccess.click' || host.endsWith('.toolaccess.click')) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function proxyAssetUrl(token: string, absoluteUrl: string): string {
+  return `/api/tool-proxy/asset?token=${encodeURIComponent(token)}&u=${encodeURIComponent(absoluteUrl)}`;
+}
+
+function rewriteHtml(html: string, session: ProxySession, pageUrl: string): string {
+  const baseHref = pageUrl;
+  const token = session.token;
+
+  const rewriteAttr = (attr: string, value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('blob:') || trimmed.startsWith('javascript:')) {
+      return value;
+    }
+    if (trimmed.startsWith('#')) return value;
+    const abs = resolveAgainst(baseHref, trimmed);
+    if (!abs || !shouldProxyUrl(session, abs)) return value;
+    return proxyAssetUrl(token, abs);
+  };
+
+  let out = html;
+
+  // <base href> — point relative resolution through proxy view of the page URL
+  out = out.replace(/<base\b[^>]*>/gi, '');
+
+  out = out.replace(
+    /\b(href|src|action|data-src|poster)=["']([^"']+)["']/gi,
+    (_m, attr: string, val: string) => `${attr}="${rewriteAttr(attr, val)}"`,
+  );
+
+  out = out.replace(/\bsrcset=["']([^"']+)["']/gi, (_m, val: string) => {
+    const parts = val.split(',').map((chunk: string) => {
+      const bit = chunk.trim();
+      if (!bit) return bit;
+      const [urlPart, ...rest] = bit.split(/\s+/);
+      const rewritten = rewriteAttr('srcset', urlPart);
+      return [rewritten, ...rest].join(' ');
+    });
+    return `srcset="${parts.join(', ')}"`;
+  });
+
+  out = out.replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, (_m, _q: string, val: string) => {
+    const rewritten = rewriteAttr('css', val.trim());
+    return `url("${rewritten}")`;
+  });
+
+  // Soften common frame/CSP blockers for proxied panels
+  out = out.replace(/<meta[^>]+http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, '');
+
+  const banner = `<div style="position:sticky;top:0;z-index:99999;background:#1a0f0f;color:#fecaca;font:12px/1.4 system-ui,sans-serif;padding:8px 12px;border-bottom:1px solid #7f1d1d;">AI Toolz Mart proxy · ${escapeHtml(session.toolName)} · session expires in ~15 min</div>`;
+  if (/<body\b/i.test(out)) {
+    out = out.replace(/<body([^>]*)>/i, `<body$1>${banner}`);
+  } else {
+    out = banner + out;
+  }
+
+  return out;
+}
+
+function escapeHtml(s: string) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildUpstreamHeaders(
+  session: ProxySession,
+  forUrl: string,
+  opts?: { referrerOverride?: string; navigation?: boolean },
+): Record<string, string> {
+  const referrer = String(opts?.referrerOverride || session.referrer || '').trim();
+  const navigation = opts?.navigation !== false;
+  const headers: Record<string, string> = {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    Accept: navigation
+      ? 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
+      : '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+    'Upgrade-Insecure-Requests': '1',
+  };
+  if (navigation) {
+    headers['Sec-Fetch-Dest'] = 'document';
+    headers['Sec-Fetch-Mode'] = 'navigate';
+    headers['Sec-Fetch-User'] = '?1';
+    headers['Sec-Fetch-Site'] = referrer ? 'cross-site' : 'none';
+  }
+  if (session.cookieHeader) headers.Cookie = session.cookieHeader;
+  if (referrer) {
+    headers.Referer = referrer;
+    try {
+      headers.Origin = new URL(referrer).origin;
+    } catch {
+      /* ignore */
+    }
+  } else {
+    try {
+      headers.Referer = new URL(forUrl).origin + '/';
+    } catch {
+      /* ignore */
+    }
+  }
+  return headers;
+}
+
+async function fetchUpstream(
+  session: ProxySession,
+  url: string,
+  init?: { method?: string; body?: Buffer | string | null },
+): Promise<Response> {
+  let current = url;
+  let method = init?.method || 'GET';
+  let body = init?.body ?? null;
+
+  const candidates = (session.referrerCandidates?.length
+    ? session.referrerCandidates
+    : [session.referrer]
+  ).filter(Boolean);
+  // Try primary referrer first; on panel 403, walk remaining candidates once each.
+  let candidateIdx = 0;
+  const tried = new Set<string>();
+
+  for (let i = 0; i < MAX_REDIRECTS; i++) {
+    const activeReferrer = candidates[candidateIdx] || session.referrer || '';
+    if (activeReferrer) {
+      session.referrer = activeReferrer;
+      tried.add(activeReferrer);
+    }
+
+    const response = await fetch(current, {
+      method,
+      redirect: 'manual',
+      headers: buildUpstreamHeaders(session, current, {
+        referrerOverride: activeReferrer,
+        navigation: true,
+      }),
+      body: method === 'GET' || method === 'HEAD' ? undefined : body || undefined,
+    });
+
+    // Persist PHPSESSID / other Set-Cookie values for follow-up asset requests.
+    session.cookieHeader = mergeSetCookies(session.cookieHeader, response);
+
+    if (response.status >= 300 && response.status < 400) {
+      const loc = response.headers.get('location');
+      if (!loc) return response;
+      const next = resolveAgainst(current, loc);
+      if (!next) return response;
+      current = next;
+      method = 'GET';
+      body = null;
+      continue;
+    }
+
+    if (response.status === 403 && isToolAccessUrl(current)) {
+      const contentType = response.headers.get('content-type') || '';
+      const previewBuf = await response.clone().arrayBuffer();
+      const preview = Buffer.from(previewBuf).toString('utf8').slice(0, 400);
+      if (isPanelAccessDenied(403, contentType, preview)) {
+        let advanced = false;
+        while (candidateIdx + 1 < candidates.length) {
+          candidateIdx += 1;
+          const nextRef = candidates[candidateIdx];
+          if (nextRef && !tried.has(nextRef)) {
+            advanced = true;
+            break;
+          }
+        }
+        if (advanced) {
+          // Retry same URL with the next Referer candidate (fresh GET).
+          method = 'GET';
+          body = null;
+          continue;
+        }
+      }
+    }
+
+    return response;
+  }
+  throw new Error('Too many redirects from upstream tool panel');
+}
+
+async function readLimited(response: Response): Promise<Buffer> {
+  const ab = await response.arrayBuffer();
+  if (ab.byteLength > MAX_BODY_BYTES) {
+    throw new Error('Upstream response too large to proxy');
+  }
+  return Buffer.from(ab);
+}
+
+/**
+ * POST /api/tool-proxy/launch
+ * Body: { toolId }
+ * Creates a short-lived proxy session and returns a same-origin view URL.
+ */
+router.post('/launch', async (req, res) => {
+  try {
+    const gate = await requireEntitledLaunch(req);
+    if (gate.ok === false) {
+      return res.status(gate.status).json({ error: gate.error });
+    }
+
+    const { profile, tool, fields, cookies } = gate;
+    const dest = fields.url;
+
+    // By extension tools must use the Access extension — never Session Apply / proxy bypass.
+    if (fields.accessMethod !== 'one_click') {
+      return res.status(403).json({
+        error:
+          'This tool requires the AI Toolz Mart Access browser extension. Install it from the Installation Guide, then open again.',
+        accessMethod: 'extension',
+      });
+    }
+
+    const preferProxy =
+      isToolAccessUrl(dest) || Boolean(fields.panelReferrer) || Boolean(req.body?.forceProxy);
+
+    if (!preferProxy) {
+      return res.json({
+        mode: 'direct',
+        url: dest,
+        name: tool.name,
+        toolId: tool.id,
+        // Cookies already available via /api/extension/launch for entitled users
+        message: 'This destination is opened directly; use Copy cookies + open for HttpOnly sites.',
+      });
+    }
+
+    const cookieHeader = cookiesToHeader(cookies);
+    let origin: string;
+    try {
+      origin = new URL(dest).origin;
+    } catch {
+      return res.status(400).json({ error: 'Invalid tool destination URL' });
+    }
+
+    const referrer = resolvePanelUnlockReferrer(fields.panelReferrer, dest);
+    const referrerCandidates = panelUnlockReferrerCandidates(
+      fields.panelReferrer || referrer || DEFAULT_PANEL_REFERRER,
+    );
+
+    pruneSessions();
+    const token = newToken();
+    const session: ProxySession = {
+      token,
+      accountId: String(profile.id),
+      toolId: String(tool.id || ''),
+      toolName: String(tool.name || 'Tool'),
+      targetUrl: dest,
+      origin,
+      cookieHeader,
+      referrer: referrer || DEFAULT_PANEL_REFERRER,
+      referrerCandidates:
+        referrerCandidates.length > 0 ? referrerCandidates : [DEFAULT_PANEL_REFERRER],
+      expiresAt: Date.now() + SESSION_TTL_MS,
+    };
+    sessions.set(token, session);
+
+    const viewUrl = `/api/tool-proxy/view?token=${encodeURIComponent(token)}`;
+    return res.json({
+      mode: 'proxy',
+      viewUrl,
+      url: dest,
+      name: tool.name,
+      toolId: tool.id,
+      expiresInSec: Math.floor(SESSION_TTL_MS / 1000),
+      fingerprint: createHash('sha256').update(cookieHeader || dest).digest('hex').slice(0, 12),
+    });
+  } catch (error: any) {
+    const message = String(error?.message || '').trim();
+    console.error('[tool-proxy/launch]', message || error);
+    return res.status(500).json({
+      error: message || 'Could not start tool proxy',
+      detail: process.env.NODE_ENV === 'production' ? undefined : message || undefined,
+    });
+  }
+});
+
+/**
+ * GET /api/tool-proxy/view?token=
+ * Fetches the panel HTML with Cookie + Referer and rewrites assets through this proxy.
+ */
+router.get('/view', async (req, res) => {
+  try {
+    const token = String(req.query.token || '').trim();
+    const session = sessions.get(token);
+    if (!session || session.expiresAt <= Date.now()) {
+      sessions.delete(token);
+      return res
+        .status(410)
+        .type('html')
+        .send(
+          `<!doctype html><meta charset="utf-8"><title>Session expired</title>
+           <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem">
+           <h1>Proxy session expired</h1>
+           <p>Return to the dashboard and click Open again.</p></body>`,
+        );
+    }
+
+    session.expiresAt = Date.now() + SESSION_TTL_MS;
+    const upstream = await fetchUpstream(session, session.targetUrl);
+    const buf = await readLimited(upstream);
+    const contentType = upstream.headers.get('content-type') || 'text/html; charset=utf-8';
+
+    if (!/text\/html|application\/xhtml/i.test(contentType)) {
+      res.status(upstream.status);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send(buf);
+    }
+
+    const html = rewriteHtml(buf.toString('utf8'), session, upstream.url || session.targetUrl);
+
+    if (upstream.status === 403 && isPanelAccessDenied(403, contentType, html)) {
+      return res
+        .status(403)
+        .type('html')
+        .send(
+          `<!doctype html><meta charset="utf-8"><title>Panel locked</title>
+           <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem;max-width:40rem">
+           <h1>Tool panel still locked (403)</h1>
+           <p>The vendor returned <em>Access from Pak seo tool dashboard</em>. Referer alone is not enough — admin must paste cookies from an <strong>already unlocked</strong> toolaccess session, and set Panel unlock referrer to <code>https://app.pakseotools.com/</code> (not /login).</p>
+           <p style="color:#94a3b8;font-size:0.85rem">Tried referrer: ${escapeHtml(session.referrer || '—')}</p>
+           </body>`,
+        );
+    }
+
+    res.status(upstream.status);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    return res.send(html);
+  } catch (error: any) {
+    return res
+      .status(502)
+      .type('html')
+      .send(
+        `<!doctype html><meta charset="utf-8"><title>Proxy error</title>
+         <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem">
+         <h1>Could not open panel</h1>
+         <p>${escapeHtml(error?.message || 'Upstream fetch failed')}</p>
+         <p>Ask admin to refresh unlocked cookies / panel referrer, or install the extension.</p></body>`,
+      );
+  }
+});
+
+/**
+ * GET /api/tool-proxy/asset?token=&u=
+ * Continues proxying same-origin (and toolaccess) assets with the session cookies.
+ */
+router.get('/asset', async (req, res) => {
+  try {
+    const token = String(req.query.token || '').trim();
+    const target = String(req.query.u || '').trim();
+    const session = sessions.get(token);
+    if (!session || session.expiresAt <= Date.now()) {
+      sessions.delete(token);
+      return res.status(410).json({ error: 'Proxy session expired' });
+    }
+    if (!target || !shouldProxyUrl(session, target)) {
+      return res.status(400).json({ error: 'URL not allowed for this proxy session' });
+    }
+
+    session.expiresAt = Date.now() + SESSION_TTL_MS;
+    const upstream = await fetchUpstream(session, target);
+    const buf = await readLimited(upstream);
+    const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+
+    if (/text\/html|application\/xhtml/i.test(contentType)) {
+      const html = rewriteHtml(buf.toString('utf8'), session, upstream.url || target);
+      res.status(upstream.status);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send(html);
+    }
+
+    if (/text\/css/i.test(contentType)) {
+      const css = buf.toString('utf8').replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, (_m, _q, val: string) => {
+        const abs = resolveAgainst(target, val.trim());
+        if (!abs || !shouldProxyUrl(session, abs)) return `url("${val.trim()}")`;
+        return `url("${proxyAssetUrl(token, abs)}")`;
+      });
+      res.status(upstream.status);
+      res.setHeader('Content-Type', 'text/css; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send(css);
+    }
+
+    res.status(upstream.status);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'no-store');
+    const cacheControl = upstream.headers.get('cache-control');
+    if (cacheControl) res.setHeader('Cache-Control', cacheControl);
+    return res.send(buf);
+  } catch (error: any) {
+    return res.status(502).json({ error: error.message || 'Asset proxy failed' });
+  }
+});
+
+export default router;

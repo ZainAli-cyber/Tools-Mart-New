@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Toolz Mart Access</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <img class="mark" src="logo.png" alt="AI Toolz Mart" />
+        <div>
+          <h1>AI Toolz Mart</h1>
+          <p>Secure Tool Access</p>
+        </div>
+        <span id="statusDot" class="dot"></span>
+      </header>
+
+      <section id="message" class="message hidden"></section>
+
+      <form id="loginForm">
+        <label>
+          Portal URL
+          <input id="portalUrl" type="url" value="http://localhost:3000" required />
+        </label>
+        <label>
+          Email
+          <input id="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        </label>
+        <label>
+          Password
+          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+        </label>
+        <button id="loginButton" type="submit">Sign In</button>
+        <p class="privacy">Your password is sent only to your configured Tools‑Mart server and is never saved by this extension.</p>
+      </form>
+
+      <section id="accountView" class="hidden">
+        <div class="account-card">
+          <div>
+            <small>Signed in as</small>
+            <strong id="accountName"></strong>
+          </div>
+          <span id="customerId" class="customer-id"></span>
+        </div>
+
+        <div class="plan-row">
+          <div><small>Plan</small><strong id="planName"></strong></div>
+          <span id="planStatus" class="pill"></span>
+        </div>
+
+        <div class="tools-head">
+          <strong>Accessible tools</strong>
+          <button id="refreshButton" type="button" class="text-button">Refresh</button>
+        </div>
+        <div id="toolsList" class="tools"></div>
+
+        <button id="dashboardButton" type="button">Open My Dashboard</button>
+        <button id="logoutButton" type="button" class="secondary">Sign Out</button>
+      </section>
+    </main>
+    <script src="deviceId.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

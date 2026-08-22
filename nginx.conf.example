@@ -1,0 +1,4 @@
+# Add this inside your server {} block in nginx.conf
+location / {
+    try_files $uri $uri/ /index.html;
+}

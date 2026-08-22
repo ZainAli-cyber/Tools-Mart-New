@@ -1,0 +1,68 @@
+import { CategoryInfo } from '../types';
+
+export const CATEGORIES: CategoryInfo[] = [
+  {
+    id: 'text',
+    name: 'Text & Content Analysis',
+    description: 'AI-powered rewriters, plagiarism checkers, grammar fixers, and text manipulators.',
+    iconName: 'FileText',
+    color: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
+    badge: 'AI Powered',
+  },
+  {
+    id: 'keyword',
+    name: 'Keywords & SERP Research',
+    description: 'Discover high-volume keywords, density breakdowns, search competition, and rank checkers.',
+    iconName: 'Key',
+    color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+    badge: 'Popular',
+  },
+  {
+    id: 'meta',
+    name: 'Meta Tags & On-Page SEO',
+    description: 'Generate and inspect Meta titles, Open Graph tags, Schema JSON-LD, Robots.txt, and Sitemaps.',
+    iconName: 'Code',
+    color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+    badge: 'Essential',
+  },
+  {
+    id: 'website',
+    name: 'Website Performance & IP',
+    description: 'Monitor domain authority, page speed, HTTP response headers, IP details, and SSL health.',
+    iconName: 'Globe',
+    color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+    badge: 'Realtime',
+  },
+  {
+    id: 'backlink',
+    name: 'Backlink & Link Analysis',
+    description: 'Inspect dofollow/nofollow backlink ratios, anchor text distributions, and broken URLs.',
+    iconName: 'Link',
+    color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+    badge: 'Auditing',
+  },
+  {
+    id: 'image',
+    name: 'Image & Visual Utilities',
+    description: 'QR Code generator, image resizers, format converters, and favicon creators.',
+    iconName: 'Image',
+    color: 'bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20',
+    badge: 'Interactive',
+  },
+  {
+    id: 'developer',
+    name: 'Developer & Code Utilities',
+    description: 'HTML, CSS, JS minifiers, JSON formatters, MD5/SHA generators, and Base64 tools.',
+    iconName: 'Terminal',
+    color: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+    badge: 'Developer',
+  },
+  {
+    id: 'utility',
+    name: 'URL & Utility Tools',
+    description: 'Slug generators, Word to PDF exporters, Lorem Ipsum generators, and text converters.',
+    iconName: 'Wrench',
+    color: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
+    badge: 'Utilities',
+  },
+];

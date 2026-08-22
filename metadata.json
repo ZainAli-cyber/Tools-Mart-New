@@ -1,0 +1,6 @@
+{
+  "name": "Trump SEO Tools",
+  "description": "100% free online SEO tools, text analysis, keyword research, meta tag generator, image, and webmaster utilities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
