@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "AI Toolz Mart Access",
-  "version": "1.3.4",
-  "description": "Checks your AI Toolz Mart plan, applies tool cookies before open, and unlocks toolaccess panels via temporary Referer rewrite.",
+  "version": "1.3.5",
+  "description": "Applies AI Toolz Mart admin cookies (clears personal ChatGPT session first) and unlocks toolaccess panels.",
   "permissions": [
     "storage",
     "cookies",
     "tabs",
+    "browsingData",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess"
   ],

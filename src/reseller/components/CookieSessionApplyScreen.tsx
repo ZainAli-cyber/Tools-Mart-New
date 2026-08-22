@@ -98,6 +98,15 @@ export const CookieSessionApplyScreen: React.FC<CookieSessionApplyScreenProps> =
       onClose();
       return;
     }
+    // ChatGPT / real domains: browser cannot set HttpOnly cookies without the extension.
+    // Opening bare URL keeps the customer's personal logged-in account — block that.
+    if (!panelMode) {
+      setError(
+        'This tool needs AI Toolz Mart Access to load the admin cookie account. Install the extension, then open again — do not open chatgpt.com without it or your personal account will stay logged in.',
+      );
+      onShowInstallGuide?.();
+      return;
+    }
     setApplying(true);
     setError('');
     setHint('');
@@ -107,17 +116,12 @@ export const CookieSessionApplyScreen: React.FC<CookieSessionApplyScreenProps> =
         toolId,
         dest,
         unlockReferrer,
-        // Cookies applied server-side from DB — do not send client cookie JSON.
       });
 
       if (result.opened === 'proxy') {
         setHint('Opened unlocked panel in a new tab (server proxy). You can close this screen.');
       } else {
-        setHint(
-          panelMode
-            ? 'Opened destination. If you still see 403, ask admin to refresh cookies / panel referrer.'
-            : 'Opened tool URL. For sites with HttpOnly cookies, install the Access extension for auto-apply.',
-        );
+        setHint('Opened destination. If you still see 403, ask admin to refresh cookies / panel referrer.');
       }
     } catch (err: any) {
       setError(err?.message || 'Could not open the tool.');

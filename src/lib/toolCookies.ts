@@ -1058,11 +1058,27 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
     const unlockReferrer = String(
       payload.unlockReferrer || payload.panelReferrer || tool.panelReferrer || '',
     ).trim();
+    const cookies = Array.isArray(payload.cookies) ? payload.cookies : [];
+
+    // Cookie-based tools must never open a bare URL (customer personal session would win).
+    if (cookies.length === 0 && (method === 'extension' || method === 'one_click')) {
+      const hasLocal = Boolean(String(tool.cookiesJson || '').trim());
+      if (!hasLocal && method === 'extension') {
+        throw new Error(
+          'No admin cookies are saved for this tool. Ask admin to Save Cookies (Copy Cookies JSON) for ChatGPT, then try again.',
+        );
+      }
+    }
 
     if (method === 'one_click') {
-      await openOneClick(dest, payload.cookies || [], opts, unlockReferrer);
+      await openOneClick(dest, cookies, opts, unlockReferrer);
     } else {
-      await openViaExtension(dest, payload.cookies || [], opts, unlockReferrer);
+      if (cookies.length === 0) {
+        throw new Error(
+          'No admin cookies are saved for this tool. Ask admin to open Admin → Cookies → paste Copy Cookies JSON → Save, then reload the Access extension.',
+        );
+      }
+      await openViaExtension(dest, cookies, opts, unlockReferrer);
     }
     opts?.onProgress?.('done');
     return;

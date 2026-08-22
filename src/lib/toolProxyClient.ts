@@ -96,12 +96,16 @@ export async function applyAndOpenTool(opts: {
   if (shouldUseServerProxy(dest, opts.unlockReferrer)) {
     const result = await launchToolProxy(opts.toolId);
     if (result.mode === 'proxy' && result.viewUrl) {
-      // Never fall back to location.href — that replaces the dashboard tab.
-      // (window.open with noopener returns null even when the tab opens.)
       openToolInNewTab(result.viewUrl);
       return { opened: 'proxy', url: result.viewUrl };
     }
-    // Server declined proxy — fall through to direct open
+  }
+
+  // Never bare-open ChatGPT/real cookie sites — personal session would win without extension.
+  if (/chatgpt\.com|chat\.openai\.com/i.test(dest)) {
+    throw new Error(
+      'Install AI Toolz Mart Access to load the admin ChatGPT cookie account. Opening without the extension keeps your personal login.',
+    );
   }
 
   openToolInNewTab(dest);

@@ -1,7 +1,7 @@
 /** Temporary DNR rule ids for panel Referer unlock (session rules). */
 const UNLOCK_RULE_TTL_MS = 45000;
 /** Settle after clearing + writing cookies so ChatGPT/session jar is ready before navigate. */
-const SETTLE_MS = 450;
+const SETTLE_MS = 700;
 /** Pak SEO opens panels from the app dashboard host — prefer this Referer. */
 const DEFAULT_PANEL_REFERRER = 'https://app.pakseotools.com/';
 const APEX_PANEL_REFERRER = 'https://pakseotools.com/';
@@ -60,18 +60,29 @@ function buildSetDetails(cookie, url, domain) {
   if (secure == null) secure = secureDest;
   else secure = Boolean(secure);
 
+  const name = String(cookie.name || '');
   const site = sameSite(cookie.sameSite);
   if (site === 'no_restriction') secure = true;
 
+  // Chrome rejects domain on __Host- cookies; __Secure- must be Secure.
+  if (name.startsWith('__Host-')) {
+    secure = true;
+  } else if (name.startsWith('__Secure-')) {
+    secure = true;
+  }
+
   const details = {
     url,
-    name: String(cookie.name),
+    name,
     value: String(cookie.value ?? ''),
-    path: cookie.path || '/',
+    path: name.startsWith('__Host-') ? '/' : cookie.path || '/',
     secure: Boolean(secure),
     httpOnly: Boolean(cookie.httpOnly),
   };
-  if (domain) details.domain = domain;
+
+  const hostOnly = cookie.hostOnly === true || name.startsWith('__Host-');
+  if (domain && !hostOnly) details.domain = domain;
+
   const exp = expirationDate(cookie);
   if (exp != null) details.expirationDate = exp;
   if (site) details.sameSite = site;
@@ -83,6 +94,18 @@ async function setOne(details) {
     await chrome.cookies.set(details);
     return true;
   } catch (error) {
+    // Retry host-only (no domain) — common for ChatGPT session cookies.
+    if (details.domain) {
+      try {
+        const retry = { ...details };
+        delete retry.domain;
+        await chrome.cookies.set(retry);
+        return true;
+      } catch (error2) {
+        console.warn('Could not set cookie', details.name, details.url, error2);
+        return false;
+      }
+    }
     console.warn('Could not set cookie', details.name, details.url, details.domain, error);
     return false;
   }
@@ -109,6 +132,7 @@ async function removeOne(cookie) {
  */
 async function clearSiteCookies(destinationUrl, cookieList) {
   const hosts = new Set();
+  const urls = new Set();
   const pushHost = (raw) => {
     const host = normalizeDomain(raw);
     if (!host) return;
@@ -116,12 +140,24 @@ async function clearSiteCookies(destinationUrl, cookieList) {
     const parts = host.split('.');
     if (parts.length >= 2) hosts.add(parts.slice(-2).join('.'));
   };
+  const pushUrl = (raw) => {
+    try {
+      const u = new URL(String(raw));
+      urls.add(`${u.protocol}//${u.hostname}/`);
+    } catch {
+      /* ignore */
+    }
+  };
 
   pushHost(destinationHost(destinationUrl));
+  pushUrl(destinationUrl);
   for (const cookie of Array.isArray(cookieList) ? cookieList : []) {
     if (!cookie) continue;
     if (cookie.domain) pushHost(cookie.domain);
-    if (cookie.url) pushHost(destinationHost(String(cookie.url)));
+    if (cookie.url) {
+      pushHost(destinationHost(String(cookie.url)));
+      pushUrl(cookie.url);
+    }
   }
 
   // ChatGPT / OpenAI aliases — personal sessions often live across these hosts.
@@ -131,9 +167,23 @@ async function clearSiteCookies(destinationUrl, cookieList) {
     pushHost('auth0.openai.com');
     pushHost('auth.openai.com');
     pushHost('oaistatic.com');
+    urls.add('https://chatgpt.com/');
+    urls.add('https://chat.openai.com/');
+    urls.add('https://auth0.openai.com/');
+    urls.add('https://auth.openai.com/');
   }
 
   let removed = 0;
+  for (const url of urls) {
+    try {
+      const existing = await chrome.cookies.getAll({ url });
+      for (const cookie of existing || []) {
+        if (await removeOne(cookie)) removed += 1;
+      }
+    } catch (error) {
+      console.warn('Could not list cookies for url', url, error);
+    }
+  }
   for (const host of hosts) {
     try {
       const existing = await chrome.cookies.getAll({ domain: host });
@@ -145,6 +195,40 @@ async function clearSiteCookies(destinationUrl, cookieList) {
     }
   }
   return removed;
+}
+
+/**
+ * Clear cookies + localStorage + indexedDB for the tool origin so a customer's
+ * personal ChatGPT session cannot revive after we set admin cookies.
+ */
+async function clearSiteStorage(destinationUrl) {
+  if (!chrome.browsingData?.remove) return false;
+  let origin = '';
+  try {
+    origin = new URL(destinationUrl).origin;
+  } catch {
+    return false;
+  }
+  const origins = [origin];
+  if (/chatgpt\.com|openai\.com/i.test(origin)) {
+    origins.push(
+      'https://chatgpt.com',
+      'https://www.chatgpt.com',
+      'https://chat.openai.com',
+      'https://auth0.openai.com',
+      'https://auth.openai.com',
+    );
+  }
+  try {
+    await chrome.browsingData.remove(
+      { origins: [...new Set(origins)] },
+      { cookies: true, localStorage: true, indexedDB: true },
+    );
+    return true;
+  } catch (error) {
+    console.warn('browsingData.remove failed', error);
+    return false;
+  }
 }
 
 /**
@@ -374,9 +458,10 @@ async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, re
     usedReferrer = installed.referrer || referrer;
   }
 
-  // 2) Clear existing site cookies so personal sessions cannot override admin cookies.
-  // Never clear when we have nothing to apply — that leaves the user logged out.
+  // 2) Wipe personal session (cookies + localStorage/IDB) so customer ChatGPT
+  //    cannot keep "my own account" after we apply admin cookies.
   if (!destIsPanel && list.length > 0) {
+    await clearSiteStorage(destinationUrl);
     await clearSiteCookies(destinationUrl, list);
   }
 
