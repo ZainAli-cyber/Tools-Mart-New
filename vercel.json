@@ -1,12 +1,12 @@
 {
-  "buildCommand": "vite build",
+  "buildCommand": "vite build && npm run build:api",
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "functions": {
-    "api/index.ts": {
+    "api/index.js": {
       "maxDuration": 60
     }
   }

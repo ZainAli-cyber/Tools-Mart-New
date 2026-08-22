@@ -10,3 +10,4 @@ coverage/
 .contrast-shots/
 tools-mart/
 *.bak*
+api/index.js

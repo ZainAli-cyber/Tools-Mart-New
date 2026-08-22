@@ -1,13 +1,14 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import express from 'express';
+import { createApiApp } from '../src/lib/createApiApp';
 
 /**
- * Vercel serverless entry for all /api/* (see vercel.json rewrite → /api).
+ * Vercel serverless entry (bundled to api/index.js via `npm run build:api`).
+ * vercel.json rewrites `/api/(.*)` → `/api`.
  *
- * Critical for cold start:
- * - No dotenv here (Vercel injects env; local `server.ts` loads dotenv)
- * - /api/health never loads the heavy Express route graph
- * - Default export is a plain function (ESM-interop safe vs exporting Express app)
+ * - Default export is a plain function (safe with ESM/CJS interop)
+ * - /api/health never calls createApiApp() (still safe if route graph misbehaves)
+ * - Static import of createApiApp so the esbuild bundle includes src/lib/**
  */
 
 type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void;
@@ -26,29 +27,20 @@ function isHealthPath(url: string | undefined) {
 
 let fullApp: express.Express | null = null;
 let fullAppError: string | null = null;
-let fullAppPromise: Promise<express.Express> | null = null;
 
-async function getFullApp(): Promise<express.Express> {
+function getFullApp(): express.Express {
   if (fullApp) return fullApp;
   if (fullAppError) throw new Error(fullAppError);
-  if (!fullAppPromise) {
-    fullAppPromise = (async () => {
-      try {
-        const { createApiApp } = await import('../src/lib/createApiApp');
-        fullApp = createApiApp();
-        return fullApp;
-      } catch (err) {
-        fullAppError = err instanceof Error ? err.stack || err.message : String(err);
-        console.error('[api] createApiApp failed during lazy init:\n', fullAppError);
-        fullAppPromise = null;
-        throw err;
-      }
-    })();
+  try {
+    fullApp = createApiApp();
+    return fullApp;
+  } catch (err) {
+    fullAppError = err instanceof Error ? err.stack || err.message : String(err);
+    console.error('[api] createApiApp failed:\n', fullAppError);
+    throw err;
   }
-  return fullAppPromise;
 }
 
-/** Minimal app: health always works; everything else lazy-loads createApiApp. */
 function createBootstrapApp() {
   const app = express();
 
@@ -56,13 +48,12 @@ function createBootstrapApp() {
     res.status(200).json(healthPayload());
   });
 
-  app.use(async (req, res, next) => {
+  app.use((req, res, next) => {
     if (isHealthPath(req.url) || isHealthPath(req.originalUrl)) {
       return res.status(200).json(healthPayload());
     }
     try {
-      const api = await getFullApp();
-      return api(req, res, next);
+      return getFullApp()(req, res, next);
     } catch (err) {
       console.error('[api] request failed after init error:', err);
       if (!res.headersSent) {
@@ -80,7 +71,6 @@ function createBootstrapApp() {
 const bootstrap = createBootstrapApp();
 
 const handler: NodeHandler = (req, res) => {
-  // Fast path — never touch Supabase / Gemini / route modules
   if (isHealthPath(req.url)) {
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
