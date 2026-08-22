@@ -233,9 +233,9 @@ export const TOOLACCESS_USER_WARNING =
 export const TOOLACCESS_NEED_EXTENSION_MSG =
   'toolaccess.click panels need session unlock (Access extension or Session apply proxy). Use Apply & Open without the extension, or install the extension for auto-login.';
 
-/** @deprecated Pure one_click never requires the extension; kept for older error-string checks only. */
+/** One-click auto-login needs the Access extension to write admin cookies into the browser. */
 export const COOKIES_NEED_EXTENSION_MSG =
-  'Install the AI Toolz Mart Access extension for auto-login with saved cookies. Download it from the Installation Guide, then open the tool again.';
+  'Install AI Toolz Mart Access once so one-click can apply saved cookies and open the tool logged in. Without the extension, ChatGPT only shows the login page (browsers cannot set those cookies from the dashboard).';
 
 export function cookiesAreSet(raw?: string | null): boolean {
   const text = String(raw || '').trim();
@@ -995,20 +995,27 @@ async function openOneClick(
 
   await reportProgress(opts, 'session');
 
-  // Pure one_click (ChatGPT etc.): same for customer + reseller dashboards.
-  // - Extension present → apply admin cookies, then open (best experience)
-  // - Extension missing → still open in one click (no install guide / Session Apply)
+  // One-click WITH admin cookies (ChatGPT etc.) — customer + reseller same:
+  // Portal pages cannot set HttpOnly chatgpt.com cookies. Opening without the
+  // Access extension always lands on the login page. Require extension, apply
+  // cookies, then open the reserved tab logged in.
   if (list.length > 0) {
-    const installed = await isAccessExtensionInstalled();
-    if (installed) {
-      try {
-        await applyCookiesViaExtension(list, dest, { openTab: false });
-      } catch {
-        // Still open — one_click must not block when apply fails
-      }
+    await ensureExtension(opts, COOKIES_NEED_EXTENSION_MSG, false);
+    try {
+      await applyCookiesViaExtension(list, dest, { openTab: false });
+    } catch (err: any) {
+      if (err instanceof NeedExtensionError) throw err;
+      throw new Error(
+        err?.message ||
+          'Could not apply admin cookies. Reload AI Toolz Mart Access v1.3.5+, ask admin to Save Cookies again, then retry.',
+      );
     }
+    await reportProgress(opts, 'launching');
+    finishOpen(dest, opts, false);
+    return;
   }
 
+  // One-click with no cookies configured → just open the URL.
   await reportProgress(opts, 'launching');
   finishOpen(dest, opts, false);
 }
@@ -1020,8 +1027,9 @@ export function resolveAccessMethod(method?: string | null): ToolAccessMethod {
 
 /**
  * Launch an entitled tool. Same rules for customer + reseller dashboards:
- * - one_click → open without requiring extension (apply cookies if extension is already installed)
- * - extension / by_extension → Access extension required; Installation Guide if missing
+ * - one_click + saved cookies → Access extension applies cookies, then open (else install guide)
+ * - one_click + no cookies → open URL only
+ * - extension / by_extension → Access extension required
  */
 export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
   const key = String(tool.id || tool.name || '').trim();
