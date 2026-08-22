@@ -101,13 +101,6 @@ export async function applyAndOpenTool(opts: {
     }
   }
 
-  // Never bare-open ChatGPT/real cookie sites — personal session would win without extension.
-  if (/chatgpt\.com|chat\.openai\.com/i.test(dest)) {
-    throw new Error(
-      'Install AI Toolz Mart Access to load the admin ChatGPT cookie account. Opening without the extension keeps your personal login.',
-    );
-  }
-
   openToolInNewTab(dest);
   return { opened: 'direct', url: dest };
 }

@@ -995,26 +995,17 @@ async function openOneClick(
 
   await reportProgress(opts, 'session');
 
+  // Pure one_click (ChatGPT etc.): same for customer + reseller dashboards.
+  // - Extension present → apply admin cookies, then open (best experience)
+  // - Extension missing → still open in one click (no install guide / Session Apply)
   if (list.length > 0) {
     const installed = await isAccessExtensionInstalled();
     if (installed) {
       try {
         await applyCookiesViaExtension(list, dest, { openTab: false });
-        await reportProgress(opts, 'launching');
-        finishOpen(dest, opts, false);
-        return;
-      } catch (err: any) {
-        throw new Error(
-          err?.message ||
-            'Extension could not apply admin cookies before opening. Reload the Access extension (v1.3.4+), then try again.',
-        );
+      } catch {
+        // Still open — one_click must not block when apply fails
       }
-    } else {
-      opts?.onNeedExtension?.();
-      throw new NeedExtensionError(
-        'Continue without extension: use Session apply to copy cookies and open the tool.',
-        { allowSessionApply: true },
-      );
     }
   }
 
@@ -1028,10 +1019,9 @@ export function resolveAccessMethod(method?: string | null): ToolAccessMethod {
 }
 
 /**
- * Launch an entitled tool. Never opens the public buy page.
- * access_method decides the flow — not whether cookies exist:
- * - one_click → openOneClick (Session Apply OK if extension missing + cookies)
- * - extension / by_extension → openViaExtension ONLY (install guide if missing; NEVER Session Apply)
+ * Launch an entitled tool. Same rules for customer + reseller dashboards:
+ * - one_click → open without requiring extension (apply cookies if extension is already installed)
+ * - extension / by_extension → Access extension required; Installation Guide if missing
  */
 export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
   const key = String(tool.id || tool.name || '').trim();
@@ -1042,8 +1032,7 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
     await reportProgress(opts, 'authenticating');
     const payload = await fetchLaunchPayload(key);
     const fromPayload = resolveAccessMethod(payload.accessMethod);
-    // If catalog badge is EXTENSION, never demote to one_click / Session Apply.
-    // Do not treat missing accessMethod as extension here — trust the launch API.
+    // Trust launch API; only force extension when catalog badge is explicitly By extension.
     const catalogRaw = String(tool.accessMethod || '').trim().toLowerCase();
     const method =
       catalogRaw === 'extension' || catalogRaw === 'by_extension'
@@ -1060,24 +1049,9 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
     ).trim();
     const cookies = Array.isArray(payload.cookies) ? payload.cookies : [];
 
-    // Cookie-based tools must never open a bare URL (customer personal session would win).
-    if (cookies.length === 0 && (method === 'extension' || method === 'one_click')) {
-      const hasLocal = Boolean(String(tool.cookiesJson || '').trim());
-      if (!hasLocal && method === 'extension') {
-        throw new Error(
-          'No admin cookies are saved for this tool. Ask admin to Save Cookies (Copy Cookies JSON) for ChatGPT, then try again.',
-        );
-      }
-    }
-
     if (method === 'one_click') {
       await openOneClick(dest, cookies, opts, unlockReferrer);
     } else {
-      if (cookies.length === 0) {
-        throw new Error(
-          'No admin cookies are saved for this tool. Ask admin to open Admin → Cookies → paste Copy Cookies JSON → Save, then reload the Access extension.',
-        );
-      }
       await openViaExtension(dest, cookies, opts, unlockReferrer);
     }
     opts?.onProgress?.('done');

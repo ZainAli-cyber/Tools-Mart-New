@@ -278,10 +278,10 @@ export const ExtensionInstallGuide: React.FC<{
 };
 
 /**
- * Hook used by dashboard / shop Open buttons.
+ * Hook used by customer + reseller dashboards (same launch logic).
  * Branches on access_method FIRST:
  * - extension / by_extension → require Access extension; Installation Guide if missing; NEVER Session Apply
- * - one_click → Session Apply OK when extension missing (toolaccess proxy / cookie open)
+ * - one_click → open without requiring extension (cookies applied only if extension is already installed)
  */
 export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
   const [guideTool, setGuideTool] = useState<Tool | null>(null);
