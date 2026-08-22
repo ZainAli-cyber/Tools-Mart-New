@@ -349,12 +349,32 @@ export async function getAdminAccessToken(): Promise<string> {
 
 function mapAdminSaveError(status: number, body: any, fallback: string): string {
   if (status === 401 || status === 403) return SESSION_EXPIRED_MSG;
-  const raw = String(body?.error || fallback || '').trim();
+  const raw = String(body?.error || body?.message || fallback || '').trim();
   // Misconfigured service role is a server/config issue — do not label it as session expiry.
   if (/SUPABASE_SERVICE_ROLE_KEY|not configured|service.?role/i.test(raw)) {
     return raw;
   }
   return raw || fallback;
+}
+
+function looksLikeHtmlResponse(text: string): boolean {
+  const t = String(text || '').trimStart().slice(0, 32).toLowerCase();
+  return t.startsWith('<!doctype') || t.startsWith('<html');
+}
+
+async function readAdminJson(res: Response): Promise<any> {
+  const text = await res.text();
+  if (looksLikeHtmlResponse(text)) {
+    throw new Error(
+      'API is not available on this URL (got website HTML instead of JSON). Open the Production domain https://tools-mart-latest.vercel.app — not a preview link like *-uplaps.vercel.app — then sign in and Save again.',
+    );
+  }
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Save failed (${res.status}): invalid API response`);
+  }
 }
 
 async function loadToolsViaAdminApi(): Promise<Tool[] | null> {
@@ -535,7 +555,7 @@ export async function saveToolCookieSettings(
           panelReferrer: fields.panelReferrer || '',
         }),
       });
-      const body = await res.json().catch(() => ({}));
+      const body = await readAdminJson(res);
       if (res.ok) {
         writeCookieFallback(tool.id, fields);
         db.saveTool({ ...tool, ...fields });

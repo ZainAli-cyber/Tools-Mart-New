@@ -13,10 +13,15 @@ function toolsAdminDb() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !(serviceKey || anon)) {
-    throw new Error('Supabase is not configured (need SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)');
+  if (!url) {
+    throw new Error('Supabase is not configured (need SUPABASE_URL on Vercel)');
   }
-  return createClient(url, serviceKey || anon!, {
+  if (!serviceKey) {
+    throw new Error(
+      'SUPABASE_SERVICE_ROLE_KEY is missing on Vercel. Add it under Project → Settings → Environment Variables (Production + Preview), then Redeploy. Cookie Save needs the service role key.',
+    );
+  }
+  return createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
