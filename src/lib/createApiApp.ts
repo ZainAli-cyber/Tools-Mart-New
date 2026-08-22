@@ -1,5 +1,4 @@
 import express from 'express';
-import { GoogleGenAI } from '@google/genai';
 import adminRouter from './adminRoutes';
 import accountRouter from './accountRoutes';
 import extensionRouter from './extensionRoutes';
@@ -10,6 +9,9 @@ import toolProxyRouter from './toolProxyRoutes';
 /**
  * Express app with all /api/* routes. Used by local server.ts and Vercel api/index.ts.
  * Does not serve static assets or SPA fallback — Vercel serves dist/ separately.
+ *
+ * Heavy deps (e.g. @google/genai) are lazy-loaded so importing this module does not
+ * pull Gemini into every cold start before routes run.
  */
 export function createApiApp() {
   const app = express();
@@ -35,7 +37,7 @@ export function createApiApp() {
     return next(err);
   });
 
-  app.get('/api/health', (_req, res) => {
+  app.get(['/api/health', '/health'], (_req, res) => {
     res.json({ status: 'ok', service: 'AI TOOLZ MART', timestamp: new Date().toISOString() });
   });
 
@@ -46,9 +48,10 @@ export function createApiApp() {
   app.use('/api/tool-proxy', toolProxyRouter);
   app.use('/api/notifications', notificationRouter);
 
-  const getAI = () => {
+  const getAI = async () => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+    const { GoogleGenAI } = await import('@google/genai');
     return new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
   };
 
@@ -56,7 +59,7 @@ export function createApiApp() {
     try {
       const { text } = req.body;
       if (!text?.trim()) return res.status(400).json({ success: false, error: 'Text required.' });
-      const ai = getAI();
+      const ai = await getAI();
       const response = await ai.models.generateContent({
         model: 'gemini-3.6-flash',
         contents: `Analyze for plagiarism. Return JSON: {uniquenessPercent,plagiarismPercent,totalWords,duplicateSentences:[],uniqueSentences:[],summaryReport}. TEXT: "${text.slice(0,4000)}"`,
@@ -83,7 +86,7 @@ export function createApiApp() {
     try {
       const { text, tone = 'SEO Optimized' } = req.body;
       if (!text) return res.status(400).json({ success: false, error: 'Text required.' });
-      const ai = getAI();
+      const ai = await getAI();
       const response = await ai.models.generateContent({
         model: 'gemini-3.6-flash',
         contents: `Rewrite uniquely in ${tone} tone:\n${text.slice(0, 4000)}`,
@@ -98,7 +101,7 @@ export function createApiApp() {
     try {
       const { text } = req.body;
       if (!text) return res.status(400).json({ success: false, error: 'Text required.' });
-      const ai = getAI();
+      const ai = await getAI();
       const response = await ai.models.generateContent({
         model: 'gemini-3.6-flash',
         contents: `Fix grammar. Return JSON: {correctedText,totalErrors,issues:[{error,fix,reason}]}. TEXT: "${text.slice(0, 3000)}"`,
@@ -114,7 +117,7 @@ export function createApiApp() {
     try {
       const { text, format = 'bullet' } = req.body;
       if (!text) return res.status(400).json({ success: false, error: 'Text required.' });
-      const ai = getAI();
+      const ai = await getAI();
       const response = await ai.models.generateContent({
         model: 'gemini-3.6-flash',
         contents: `Summarize in ${format === 'bullet' ? 'bullet points' : 'a paragraph'}:\n${text.slice(0, 5000)}`,
@@ -129,7 +132,7 @@ export function createApiApp() {
     try {
       const { seedKeyword } = req.body;
       if (!seedKeyword) return res.status(400).json({ success: false, error: 'Seed keyword required.' });
-      const ai = getAI();
+      const ai = await getAI();
       const response = await ai.models.generateContent({
         model: 'gemini-3.6-flash',
         contents: `Generate 15 long-tail keywords for "${seedKeyword}". Return JSON array: [{keyword,searchVolume,difficulty,intent,cpc}]`,
@@ -144,7 +147,7 @@ export function createApiApp() {
   app.post('/api/ai/schema', async (req, res) => {
     try {
       const { schemaType, details } = req.body;
-      const ai = getAI();
+      const ai = await getAI();
       const response = await ai.models.generateContent({
         model: 'gemini-3.6-flash',
         contents: `Generate valid JSON-LD schema for type "${schemaType}" with: ${JSON.stringify(details)}. Return only the script tag.`,

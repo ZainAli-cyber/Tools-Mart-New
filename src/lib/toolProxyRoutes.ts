@@ -41,7 +41,10 @@ function pruneSessions() {
   }
 }
 
-setInterval(pruneSessions, 60_000).unref?.();
+// Avoid sticky timers on Vercel serverless cold starts; prune on demand instead.
+if (!process.env.VERCEL) {
+  setInterval(pruneSessions, 60_000).unref?.();
+}
 
 function config() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;

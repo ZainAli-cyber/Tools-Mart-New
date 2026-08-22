@@ -1,16 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
 
-const viteEnv = (import.meta as any).env || {};
+/**
+ * Avoid `import.meta.env` here — this module is shared by the Vite client and the
+ * Vercel serverless API. Vercel's Node builder may emit CJS, where `import.meta`
+ * is a SyntaxError and crashes the whole function (FUNCTION_INVOCATION_FAILED).
+ * Vite inlines `process.env.VITE_*` via vite.config.ts `define`.
+ */
 const nodeEnv = typeof process !== 'undefined' ? process.env : {};
 const SUPABASE_URL =
-  viteEnv.VITE_SUPABASE_URL ||
   nodeEnv.SUPABASE_URL ||
+  nodeEnv.VITE_SUPABASE_URL ||
   'https://duvwpbetvftqissnstoy.supabase.co';
 const SUPABASE_ANON =
-  viteEnv.VITE_SUPABASE_ANON_KEY ||
   nodeEnv.SUPABASE_ANON_KEY ||
+  nodeEnv.VITE_SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1dndwYmV0dmZ0cWlzc25zdG95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4NjkxMTksImV4cCI6MjEwMjQ0NTExOX0.2_-KYBcp3z4xa9MMsg4GAAdWpABhOIWInfN2SIFiv1w';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
