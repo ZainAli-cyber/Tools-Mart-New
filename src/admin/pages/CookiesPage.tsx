@@ -320,6 +320,20 @@ export const CookiesPage: React.FC = () => {
                     </button>
                   ))}
                 </div>
+                <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
+                  <strong className="text-slate-400">By extension</strong> — member must install Access; cookies auto-apply.
+                  <br />
+                  <strong className="text-slate-400">On one click</strong> — one click from the dashboard. If Cookies JSON is saved
+                  (ChatGPT etc.), Access extension is still required to write those cookies into the browser. Without it,
+                  the tool opens but shows the normal login page. URL-only one-click = leave Cookies empty.
+                </p>
+                {form.accessMethod === 'one_click' && String(form.cookiesJson || '').trim().length > 2 && (
+                  <div className="mt-2 bg-amber-900/25 border border-amber-500/35 rounded-xl px-3 py-2 text-[11px] tip-amber leading-relaxed">
+                    Cookies JSON is set. Auto-login still needs the Access extension (Chrome blocks websites from setting
+                    ChatGPT HttpOnly cookies). Prefer <strong>By extension</strong> for cookie tools, or clear Cookies for
+                    true URL-only one-click (no auto-login).
+                  </div>
+                )}
               </div>
 
               <div>
@@ -337,7 +351,7 @@ export const CookiesPage: React.FC = () => {
                 )}
                 {oneClickToolaccess && (
                   <div className="mt-2 bg-amber-900/25 border border-amber-500/35 rounded-xl px-3 py-2 text-[11px] tip-amber leading-relaxed">
-                    One click still uses Access extension to unlock panel (required by vendor). ChatGPT-style real URLs do not.
+                    toolaccess panels need Access extension (or Session apply proxy) to unlock — even on one click.
                   </div>
                 )}
               </div>
