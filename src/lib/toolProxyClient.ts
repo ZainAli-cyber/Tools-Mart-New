@@ -3,7 +3,7 @@
  * Cookies stay on the server (DB); this client never needs raw cookie JSON for proxy opens.
  */
 import { supabase } from './db';
-import { isToolAccessUrl } from './toolCookies';
+import { isToolAccessUrl, openToolInNewTab } from './toolCookies';
 
 export type ProxyLaunchResult =
   | { mode: 'proxy'; viewUrl: string; url: string; name: string; toolId?: string; expiresInSec?: number }
@@ -96,17 +96,14 @@ export async function applyAndOpenTool(opts: {
   if (shouldUseServerProxy(dest, opts.unlockReferrer)) {
     const result = await launchToolProxy(opts.toolId);
     if (result.mode === 'proxy' && result.viewUrl) {
-      const win = window.open(result.viewUrl, '_blank');
-      if (!win) {
-        // Popup blocked — navigate current tab as last resort
-        window.location.href = result.viewUrl;
-      }
+      // Never fall back to location.href — that replaces the dashboard tab.
+      // (window.open with noopener returns null even when the tab opens.)
+      openToolInNewTab(result.viewUrl);
       return { opened: 'proxy', url: result.viewUrl };
     }
     // Server declined proxy — fall through to direct open
   }
 
-  const win = window.open(dest, '_blank', 'noopener,noreferrer');
-  if (!win) window.location.href = dest;
+  openToolInNewTab(dest);
   return { opened: 'direct', url: dest };
 }

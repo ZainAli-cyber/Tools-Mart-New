@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Toolz Mart Access",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Checks your AI Toolz Mart plan, applies one-click tool cookies, and unlocks toolaccess panels via temporary Referer rewrite (prefers https://app.pakseotools.com/).",
   "permissions": [
     "storage",

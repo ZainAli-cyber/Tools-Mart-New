@@ -1,6 +1,7 @@
 /** Temporary DNR rule ids for panel Referer unlock (session rules). */
 const UNLOCK_RULE_TTL_MS = 45000;
-const SETTLE_MS = 120;
+/** Settle after clearing + writing cookies so ChatGPT/session jar is ready before navigate. */
+const SETTLE_MS = 280;
 /** Pak SEO opens panels from the app dashboard host — prefer this Referer. */
 const DEFAULT_PANEL_REFERRER = 'https://app.pakseotools.com/';
 const APEX_PANEL_REFERRER = 'https://pakseotools.com/';
@@ -85,6 +86,65 @@ async function setOne(details) {
     console.warn('Could not set cookie', details.name, details.url, details.domain, error);
     return false;
   }
+}
+
+async function removeOne(cookie) {
+  try {
+    const host = normalizeDomain(cookie.domain) || destinationHost(cookie.url || '');
+    if (!host && !cookie.url) return false;
+    const url =
+      cookie.url ||
+      cookieUrlFor(host, cookie.path || '/', cookie.secure !== false);
+    await chrome.cookies.remove({ url, name: String(cookie.name) });
+    return true;
+  } catch (error) {
+    console.warn('Could not remove cookie', cookie?.name, error);
+    return false;
+  }
+}
+
+/**
+ * Wipe existing cookies for destination + export domains BEFORE applying admin
+ * cookies. Otherwise a customer's personal ChatGPT/session cookies can win.
+ */
+async function clearSiteCookies(destinationUrl, cookieList) {
+  const hosts = new Set();
+  const pushHost = (raw) => {
+    const host = normalizeDomain(raw);
+    if (!host) return;
+    hosts.add(host);
+    const parts = host.split('.');
+    if (parts.length >= 2) hosts.add(parts.slice(-2).join('.'));
+  };
+
+  pushHost(destinationHost(destinationUrl));
+  for (const cookie of Array.isArray(cookieList) ? cookieList : []) {
+    if (!cookie) continue;
+    if (cookie.domain) pushHost(cookie.domain);
+    if (cookie.url) pushHost(destinationHost(String(cookie.url)));
+  }
+
+  // ChatGPT / OpenAI aliases — personal sessions often live across these hosts.
+  if ([...hosts].some((h) => /chatgpt\.com|openai\.com|oaistatic\.com/i.test(h))) {
+    pushHost('chatgpt.com');
+    pushHost('chat.openai.com');
+    pushHost('auth0.openai.com');
+    pushHost('auth.openai.com');
+    pushHost('oaistatic.com');
+  }
+
+  let removed = 0;
+  for (const host of hosts) {
+    try {
+      const existing = await chrome.cookies.getAll({ domain: host });
+      for (const cookie of existing || []) {
+        if (await removeOne(cookie)) removed += 1;
+      }
+    } catch (error) {
+      console.warn('Could not list cookies for', host, error);
+    }
+  }
+  return removed;
 }
 
 /**
@@ -314,7 +374,12 @@ async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, re
     usedReferrer = installed.referrer || referrer;
   }
 
-  // 2) Apply all cookies and wait for each set to finish.
+  // 2) Clear existing site cookies so personal sessions cannot override admin cookies.
+  if (!destIsPanel) {
+    await clearSiteCookies(destinationUrl, list);
+  }
+
+  // 3) Apply all cookies and wait for each set to finish.
   for (const cookie of list) {
     if (!cookie || !cookie.name) continue;
     const path = cookie.path || '/';
@@ -362,8 +427,8 @@ async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, re
     }
   }
 
-  // 3) Brief settle so session DNR + cookie jar are visible to the next navigation.
-  if (openTab && destinationUrl && (ruleIds.length || setCount > 0 || destIsPanel)) {
+  // 4) Brief settle so session DNR + cookie jar are visible to the next navigation.
+  if (openTab && destinationUrl && (ruleIds.length || setCount > 0 || destIsPanel || list.length > 0)) {
     await sleep(SETTLE_MS);
   }
 

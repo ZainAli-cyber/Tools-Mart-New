@@ -33,6 +33,55 @@ export class NeedExtensionError extends Error {
   }
 }
 
+/** Thrown when the browser blocks opening the tool in a new tab. Never navigate the portal. */
+export class PopupBlockedError extends Error {
+  constructor(
+    message = 'Pop-up blocked. Allow pop-ups for this site, then try again. Your dashboard was left open.',
+  ) {
+    super(message);
+    this.name = 'PopupBlockedError';
+  }
+}
+
+/**
+ * Open a tool URL in a new tab only. Never uses location.href / assign / replace
+ * on the portal tab (that would replace the dashboard).
+ *
+ * Note: window.open(..., 'noopener,noreferrer') always returns null in modern
+ * browsers even when the tab opens — do NOT treat null as "blocked" and navigate.
+ */
+export function openToolInNewTab(url: string): void {
+  const dest = String(url || '').trim();
+  if (!dest) throw new Error('No destination URL');
+
+  // Probe with about:blank first so we can detect a real popup blocker.
+  const probe = window.open('about:blank', '_blank');
+  if (!probe) {
+    throw new PopupBlockedError();
+  }
+  try {
+    probe.opener = null;
+  } catch {
+    /* ignore */
+  }
+  try {
+    probe.location.replace(dest);
+  } catch {
+    try {
+      probe.location.href = dest;
+    } catch {
+      try {
+        probe.close();
+      } catch {
+        /* ignore */
+      }
+      throw new PopupBlockedError(
+        'Could not open the tool in a new tab. Allow pop-ups for this site, then try again.',
+      );
+    }
+  }
+}
+
 export type ToolCookieFields = {
   accessMethod: ToolAccessMethod;
   toolUrl: string;
@@ -910,9 +959,13 @@ async function openOneClick(
       try {
         await applyCookiesViaExtension(list, dest);
         await reportProgress(opts, 'launching');
-        return; // extension opened the tab
-      } catch {
-        // Apply failed — still open destination below.
+        return; // extension opened the tab after applying admin cookies
+      } catch (err: any) {
+        // Never bare-open without cookies — personal ChatGPT/session would win.
+        throw new Error(
+          err?.message ||
+            'Extension could not apply admin cookies before opening. Reload the Access extension, then try again.',
+        );
       }
     } else {
       // Extension missing: Session Apply (one_click only). Never for by_extension.
@@ -925,7 +978,7 @@ async function openOneClick(
   }
 
   await reportProgress(opts, 'launching');
-  window.open(dest, '_blank', 'noopener,noreferrer');
+  openToolInNewTab(dest);
 }
 
 /** Normalize DB/admin values: one_click vs extension (incl. by_extension). */
