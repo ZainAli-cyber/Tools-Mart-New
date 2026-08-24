@@ -4,7 +4,7 @@ import accountRouter from './accountRoutes';
 import extensionRouter from './extensionRoutes';
 import notificationRouter from './notificationRoutes';
 import deviceRouter from './deviceRoutes';
-import toolProxyRouter from './toolProxyRoutes';
+import toolProxyRouter, { handleProxyView } from './toolProxyRoutes';
 import settingsRouter from './settingsRoutes';
 
 /**
@@ -48,6 +48,9 @@ export function createApiApp() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/extension', extensionRouter);
   app.use('/api/tool-proxy', toolProxyRouter);
+  app.get(['/go', '/go/*'], (req, res) => {
+    void handleProxyView(req, res);
+  });
   app.use('/api/notifications', notificationRouter);
 
   const getAI = async () => {

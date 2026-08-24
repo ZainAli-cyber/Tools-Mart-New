@@ -2959,6 +2959,32 @@ async function requireEntitledLaunch(req) {
 function newToken() {
   return randomBytes2(24).toString("hex");
 }
+function publicGoPath(dest) {
+  try {
+    const u = new URL(dest);
+    const path = u.pathname && u.pathname !== "/" ? u.pathname : "/";
+    return `/go/${u.host}${path}`;
+  } catch {
+    return "/go";
+  }
+}
+function tokenFromRequest(req) {
+  const fromQuery = String(req.query?.token || "").trim();
+  if (fromQuery) return fromQuery;
+  const fromParam = String(req.params?.token || "").trim();
+  if (fromParam) return fromParam;
+  const cookie = String(req.headers?.cookie || "");
+  const match = cookie.match(/(?:^|;\s*)atm_px=([^;]+)/);
+  return match ? decodeURIComponent(match[1].trim()) : "";
+}
+function setProxyCookie(res, token) {
+  const maxAge = Math.floor(SESSION_TTL_MS / 1e3);
+  const secure = process.env.VERCEL || process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `atm_px=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; SameSite=Lax; HttpOnly${secure}`
+  );
+}
 function resolveAgainst(base, href) {
   try {
     return new URL(href, base).href;
@@ -3043,6 +3069,7 @@ function proxyBootstrapScript(session) {
   );
   return `<script data-atm-proxy="1">
 (function(){
+  try { if (location.search) history.replaceState(null, '', location.pathname); } catch (e) {}
   var TOKEN=${token};
   var ROOT=${root};
   var ALLOW=${allow};
@@ -3125,16 +3152,10 @@ function rewriteHtml(html, session, pageUrl) {
   });
   out = rewriteEmbeddedUrls(out, session, baseHref);
   const boot = proxyBootstrapScript(session);
-  const banner = `<div style="position:sticky;top:0;z-index:99999;background:#1a0f0f;color:#fecaca;font:12px/1.4 system-ui,sans-serif;padding:8px 12px;border-bottom:1px solid #7f1d1d;">AI Toolz Mart proxy \xB7 ${escapeHtml(session.toolName)} \xB7 session expires in ~20 min</div>`;
   if (/<head[\s>]/i.test(out)) {
     out = out.replace(/<head([^>]*)>/i, `<head$1>${boot}`);
   } else {
     out = boot + out;
-  }
-  if (/<body\b/i.test(out)) {
-    out = out.replace(/<body([^>]*)>/i, `<body$1>${banner}`);
-  } else {
-    out = banner + out;
   }
   return out;
 }
@@ -3298,7 +3319,8 @@ router6.post("/launch", async (req, res) => {
     };
     sessions.set(token, session);
     await rememberSession(session);
-    const viewUrl = `/api/tool-proxy/view?token=${encodeURIComponent(token)}`;
+    setProxyCookie(res, token);
+    const viewUrl = `${publicGoPath(dest)}?token=${encodeURIComponent(token)}`;
     return res.json({
       mode: "proxy",
       viewUrl,
@@ -3318,20 +3340,21 @@ router6.post("/launch", async (req, res) => {
     });
   }
 });
-router6.get("/view", async (req, res) => {
+async function handleProxyView(req, res) {
   try {
-    const token = String(req.query.token || "").trim();
+    const token = tokenFromRequest(req);
     const session = await resolveSession(token);
     if (!session) {
       return res.status(410).type("html").send(
         `<!doctype html><meta charset="utf-8"><title>Session expired</title>
            <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem">
-           <h1>Proxy session expired</h1>
+           <h1>Session expired</h1>
            <p>Return to the dashboard and click Open again.</p></body>`
       );
     }
     session.expiresAt = Date.now() + SESSION_TTL_MS;
     void rememberSession(session);
+    setProxyCookie(res, session.token);
     const upstream = await fetchUpstream(session, session.targetUrl);
     const buf = await readLimited(upstream);
     const contentType = upstream.headers.get("content-type") || "text/html; charset=utf-8";
@@ -3359,13 +3382,16 @@ router6.get("/view", async (req, res) => {
     return res.send(html);
   } catch (error) {
     return res.status(502).type("html").send(
-      `<!doctype html><meta charset="utf-8"><title>Proxy error</title>
+      `<!doctype html><meta charset="utf-8"><title>Error</title>
          <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem">
-         <h1>Could not open panel</h1>
+         <h1>Could not open tool</h1>
          <p>${escapeHtml(error?.message || "Upstream fetch failed")}</p>
-         <p>Ask admin to refresh unlocked cookies / panel referrer, or install the extension.</p></body>`
+         <p>Ask admin to refresh cookies, or try again from the dashboard.</p></body>`
     );
   }
+}
+router6.get("/view", (req, res) => {
+  void handleProxyView(req, res);
 });
 router6.get("/asset", async (req, res) => {
   try {
@@ -3588,6 +3614,9 @@ function createApiApp() {
   app.use("/api/settings", settingsRoutes_default);
   app.use("/api/extension", extensionRoutes_default);
   app.use("/api/tool-proxy", toolProxyRoutes_default);
+  app.get(["/go", "/go/*"], (req, res) => {
+    void handleProxyView(req, res);
+  });
   app.use("/api/notifications", notificationRoutes_default);
   const getAI = async () => {
     const apiKey = process.env.GEMINI_API_KEY;
