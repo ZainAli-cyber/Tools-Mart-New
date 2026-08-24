@@ -33,6 +33,8 @@ export type ProxyTarget = {
   cookies: JarCookie[];
   /** Referer to spoof for panels that require a dashboard origin. */
   referrer?: string;
+  /** Ordered Referer fallbacks for panel unlock (Pak SEO style). */
+  referrerCandidates?: string[];
 };
 
 const HOP_BY_HOP = new Set([
@@ -74,15 +76,24 @@ const STRIP_RESPONSE_HEADERS = new Set([
   'link',
 ]);
 
-export function normalizeCookies(raw: any[]): JarCookie[] {
+export function normalizeCookies(raw: any[], fallbackHost = ''): JarCookie[] {
   const out: JarCookie[] = [];
+  const fallback = String(fallbackHost || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\./, '');
   for (const c of Array.isArray(raw) ? raw : []) {
     const name = String(c?.name || '').trim();
     if (!name) continue;
+    const domain =
+      String(c?.domain || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^\./, '') || fallback;
     out.push({
       name,
       value: c?.value == null ? '' : String(c.value),
-      domain: String(c?.domain || '').trim().toLowerCase().replace(/^\./, ''),
+      domain,
       path: String(c?.path || '/') || '/',
       secure: Boolean(c?.secure),
     });
@@ -422,6 +433,52 @@ function runtimeScript(target: ProxyTarget): string {
     if (typeof url==='string') args[0]=map(url);
     return oopenwin.apply(window, args);
   };
+
+  // Never let a form navigate the whole tab — that is what made ChatGPT
+  // "reload with no reply" when Enter was pressed before fetch took over.
+  document.addEventListener('submit', function(e){
+    try {
+      var form=e.target;
+      if(!form || form.tagName!=='FORM') return;
+      var action=form.getAttribute('action') || location.href;
+      var method=(form.getAttribute('method')||'GET').toUpperCase();
+      var abs=new URL(action, virtualHref()).href;
+      e.preventDefault();
+      e.stopPropagation();
+      if (method==='GET') {
+        var dest=new URL(abs);
+        var fd=new FormData(form);
+        fd.forEach(function(v,k){ dest.searchParams.set(k, String(v)); });
+        location.href=map(dest.href);
+        return;
+      }
+      var body=new FormData(form);
+      if (ofetch) {
+        ofetch(map(abs), { method: method, body: body, credentials: 'same-origin' })
+          .then(function(r){ return r.text(); })
+          .then(function(html){
+            if (html && /<html/i.test(html)) { document.open(); document.write(html); document.close(); }
+          })
+          .catch(function(){});
+      }
+    } catch(err){}
+  }, true);
+
+  // Keyboard Enter in composers should not fall through to a native form post.
+  document.addEventListener('keydown', function(e){
+    try {
+      if (e.key!=='Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      var el=e.target;
+      if (!el) return;
+      var tag=String(el.tagName||'').toLowerCase();
+      var role=String(el.getAttribute && el.getAttribute('role') || '').toLowerCase();
+      if (tag==='textarea' || role==='textbox' || el.isContentEditable) {
+        // Let the app handle it; just stop the browser's default form submit.
+        var form=el.form || (el.closest && el.closest('form'));
+        if (form) { e.stopPropagation(); }
+      }
+    } catch(err){}
+  }, true);
 })();
 </script>`;
 }
@@ -474,11 +531,20 @@ export function rewriteHtml(target: ProxyTarget, html: string, pageUrl: string):
   return out;
 }
 
+function isPanelDenied(status: number, contentType: string, bodyPreview: string): boolean {
+  if (status === 403) return true;
+  if (!/text\/html|application\/json|text\/plain/i.test(contentType) && status !== 401) return false;
+  return /session expired|access again from dashboard|access denied|pak seo|tool dashboard|login to continue|please\s+login/i.test(
+    String(bodyPreview || ''),
+  );
+}
+
 function buildRequestHeaders(
   target: ProxyTarget,
   clientHeaders: Record<string, any>,
   url: string,
   method: string,
+  refererOverride?: string,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
   for (const [rawKey, rawValue] of Object.entries(clientHeaders || {})) {
@@ -524,7 +590,10 @@ function buildRequestHeaders(
     }
   }
 
-  const referer = String(target.referrer || '').trim() || mappedReferer || `${sameOrigin}/`;
+  // Panel unlock Referer wins when set (Pak SEO algorithm). Otherwise map the
+  // browser's proxy-path Referer back to the real tool URL.
+  const referer =
+    String(refererOverride || target.referrer || '').trim() || mappedReferer || `${sameOrigin}/`;
   headers.Referer = referer;
   if (method !== 'GET' && method !== 'HEAD') {
     try {
@@ -536,11 +605,12 @@ function buildRequestHeaders(
   return headers;
 }
 
-export type ForwardResult = { cookies: JarCookie[] };
+export type ForwardResult = { cookies: JarCookie[]; referrerUsed?: string };
 
 /**
  * Core proxy: forward one client request to the tool and write the response.
  * Rewrites HTML/CSS only; everything else is streamed untouched.
+ * For panel tools, retries with alternate dashboard Referers (Pak SEO algorithm).
  */
 export async function forwardRequest(opts: {
   target: ProxyTarget;
@@ -559,109 +629,169 @@ export async function forwardRequest(opts: {
     if (Buffer.isBuffer(req.body)) body = req.body;
     else if (typeof req.body === 'string') body = Buffer.from(req.body);
     else if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) {
-      // Body was already parsed upstream (fallback route) — re-encode in its own format.
       body = /application\/x-www-form-urlencoded/i.test(contentType)
         ? Buffer.from(new URLSearchParams(req.body as Record<string, string>).toString())
         : Buffer.from(JSON.stringify(req.body));
     }
   }
 
-  let current = opts.url;
+  const referrerList: string[] = [];
+  const pushRef = (v?: string) => {
+    const s = String(v || '').trim();
+    if (s && !referrerList.includes(s)) referrerList.push(s);
+  };
+  pushRef(target.referrer);
+  for (const c of target.referrerCandidates || []) pushRef(c);
+  if (!referrerList.length) referrerList.push('');
+
   let cookies = target.cookies;
-  let upstream: Response | null = null;
+  let chosenReferrer = referrerList[0] || '';
+  let finalUrl = opts.url;
+  let finalUpstream: Response | null = null;
+  let finalBuf: Buffer | null = null;
 
-  for (let hop = 0; hop < 8; hop++) {
-    const activeTarget: ProxyTarget = { ...target, cookies };
-    const headers = buildRequestHeaders(
-      activeTarget,
-      req.headers || {},
-      current,
-      hop === 0 ? method : 'GET',
-    );
-    if (body && hop === 0) headers['Content-Length'] = String(body.byteLength);
+  for (let r = 0; r < referrerList.length; r++) {
+    const refererOverride = referrerList[r] || undefined;
+    let current = opts.url;
+    let upstream: Response | null = null;
+    let hopCookies = cookies;
 
-    upstream = await proxyAwareFetch(current, {
-      method: hop === 0 ? method : 'GET',
-      redirect: 'manual',
-      headers,
-      body: hop === 0 && method !== 'GET' && method !== 'HEAD' ? body : undefined,
-    });
-    cookies = mergeSetCookies(cookies, upstream, current);
+    for (let hop = 0; hop < 8; hop++) {
+      const activeTarget: ProxyTarget = { ...target, cookies: hopCookies, referrer: refererOverride || '' };
+      const headers = buildRequestHeaders(
+        activeTarget,
+        req.headers || {},
+        current,
+        hop === 0 ? method : 'GET',
+        refererOverride,
+      );
+      if (body && hop === 0) headers['Content-Length'] = String(body.byteLength);
 
-    if (upstream.status < 300 || upstream.status >= 400) break;
-    const location = upstream.headers.get('location');
-    if (!location) break;
-    const next = resolveAgainst(current, location);
-    if (!next) break;
+      upstream = await proxyAwareFetch(current, {
+        method: hop === 0 ? method : 'GET',
+        redirect: 'manual',
+        headers,
+        body: hop === 0 && method !== 'GET' && method !== 'HEAD' ? body : undefined,
+      });
+      hopCookies = mergeSetCookies(hopCookies, upstream, current);
 
-    // Document navigations should redirect the browser so the URL bar follows.
-    if (opts.document) {
-      res.status(upstream.status);
-      res.setHeader('Location', toProxyPath({ ...target, cookies }, next));
-      res.end();
-      return { cookies };
+      if (upstream.status < 300 || upstream.status >= 400) break;
+      const location = upstream.headers.get('location');
+      if (!location) break;
+      const next = resolveAgainst(current, location);
+      if (!next) break;
+
+      if (opts.document) {
+        cookies = hopCookies;
+        res.status(upstream.status);
+        res.setHeader('Location', toProxyPath({ ...target, cookies }, next));
+        res.end();
+        return { cookies, referrerUsed: refererOverride || '' };
+      }
+      current = next;
     }
-    current = next;
+
+    if (!upstream) continue;
+
+    const contentType = upstream.headers.get('content-type') || '';
+    const shouldRewriteHtml = REWRITE_HTML.test(contentType);
+    const shouldRewriteCss = REWRITE_CSS.test(contentType);
+    const shouldStream =
+      !shouldRewriteHtml && !shouldRewriteCss && (STREAM_TYPES.test(contentType) || !contentType);
+
+    // Only buffer when we may need to inspect for panel denial + retry.
+    const mayRetry = r < referrerList.length - 1 && Boolean(target.referrer || target.referrerCandidates?.length);
+    if (shouldStream && !mayRetry) {
+      cookies = hopCookies;
+      for (const [key, value] of upstream.headers.entries()) {
+        if (STRIP_RESPONSE_HEADERS.has(key.toLowerCase())) continue;
+        res.setHeader(key, value);
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      if (/event-stream/i.test(contentType)) res.setHeader('X-Accel-Buffering', 'no');
+      res.status(upstream.status);
+      if (!upstream.body) {
+        res.end();
+        return { cookies, referrerUsed: refererOverride || '' };
+      }
+      if (typeof (res as any).flushHeaders === 'function') (res as any).flushHeaders();
+      // @ts-expect-error Node typings for Readable.fromWeb
+      Readable.fromWeb(upstream.body).pipe(res);
+      return { cookies, referrerUsed: refererOverride || '' };
+    }
+
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    const preview = buf.subarray(0, 4096).toString('utf8');
+    cookies = hopCookies;
+    finalUpstream = upstream;
+    finalBuf = buf;
+    finalUrl = upstream.url || current;
+    chosenReferrer = refererOverride || '';
+
+    if (mayRetry && isPanelDenied(upstream.status, contentType, preview)) {
+      continue;
+    }
+    break;
   }
 
-  if (!upstream) {
+  if (!finalUpstream || !finalBuf) {
     res.status(502).json({ error: 'No upstream response' });
-    return { cookies };
+    return { cookies, referrerUsed: chosenReferrer };
   }
 
-  const activeTarget: ProxyTarget = { ...target, cookies };
-  const contentType = upstream.headers.get('content-type') || '';
+  const activeTarget: ProxyTarget = { ...target, cookies, referrer: chosenReferrer };
+  const contentType = finalUpstream.headers.get('content-type') || '';
 
-  for (const [key, value] of upstream.headers.entries()) {
+  for (const [key, value] of finalUpstream.headers.entries()) {
     if (STRIP_RESPONSE_HEADERS.has(key.toLowerCase())) continue;
     res.setHeader(key, value);
   }
-  const location = upstream.headers.get('location');
+  const location = finalUpstream.headers.get('location');
   if (location) {
-    const abs = resolveAgainst(current, location);
+    const abs = resolveAgainst(finalUrl, location);
     if (abs) res.setHeader('Location', toProxyPath(activeTarget, abs));
   }
   res.setHeader('Cache-Control', 'no-store');
+  res.status(finalUpstream.status);
 
-  const shouldRewriteHtml = REWRITE_HTML.test(contentType);
-  const shouldRewriteCss = REWRITE_CSS.test(contentType);
-  const shouldStream = !shouldRewriteHtml && !shouldRewriteCss && (STREAM_TYPES.test(contentType) || !contentType);
-
-  res.status(upstream.status);
-
-  if (!upstream.body) {
-    res.end();
-    return { cookies };
-  }
-
-  if (shouldStream) {
-    if (/event-stream/i.test(contentType)) {
-      // Streamed chat replies must not be buffered by the edge.
-      res.setHeader('X-Accel-Buffering', 'no');
+  if (REWRITE_HTML.test(contentType)) {
+    let html = rewriteHtml(activeTarget, finalBuf.toString('utf8'), finalUrl);
+    // Friendly page when a panel still rejects after every Referer candidate.
+    if (
+      opts.document &&
+      target.referrer &&
+      isPanelDenied(finalUpstream.status, contentType, finalBuf.subarray(0, 4096).toString('utf8'))
+    ) {
+      html = `<!doctype html><meta charset="utf-8"><title>Panel locked</title>
+<body style="font-family:system-ui;background:#0d0908;color:#fecaca;padding:2.5rem;max-width:36rem;margin:auto">
+<h1 style="font-size:1.2rem">Panel session rejected</h1>
+<p style="color:#94a3b8;font-size:.9rem;line-height:1.5">
+The tool panel returned <em>Session expired / Access denied</em>. This is the same check
+Pak SEO / aitoolzmart-style panels use: they need a <strong>fresh unlocked cookie</strong>
+(proxy_token / PHPSESSID) <em>and</em> Referer from the dashboard.
+</p>
+<ol style="color:#cbd5e1;font-size:.85rem;line-height:1.6">
+<li>Open the panel once from the original seller dashboard until it unlocks.</li>
+<li>Copy cookies again and paste them in Admin → Cookies for this tool.</li>
+<li>Set Panel unlock referrer to <code>https://app.pakseotools.com/</code> (not /login).</li>
+<li>Save, then open the tool again from your dashboard.</li>
+</ol>
+<p style="color:#64748b;font-size:.75rem">Tried referrer: ${String(chosenReferrer || '—')}</p>
+</body>`;
     }
-    if (typeof (res as any).flushHeaders === 'function') (res as any).flushHeaders();
-    // @ts-expect-error Node typings for Readable.fromWeb
-    Readable.fromWeb(upstream.body).pipe(res);
-    return { cookies };
-  }
-
-  const buf = Buffer.from(await upstream.arrayBuffer());
-
-  if (shouldRewriteHtml) {
-    const html = rewriteHtml(activeTarget, buf.toString('utf8'), upstream.url || current);
     res.setHeader('Content-Type', contentType || 'text/html; charset=utf-8');
     res.send(html);
-    return { cookies };
+    return { cookies, referrerUsed: chosenReferrer };
   }
 
-  if (shouldRewriteCss) {
-    const css = rewriteCss(activeTarget, buf.toString('utf8'), upstream.url || current);
+  if (REWRITE_CSS.test(contentType)) {
+    const css = rewriteCss(activeTarget, finalBuf.toString('utf8'), finalUrl);
     res.setHeader('Content-Type', contentType || 'text/css; charset=utf-8');
     res.send(css);
-    return { cookies };
+    return { cookies, referrerUsed: chosenReferrer };
   }
 
   if (contentType) res.setHeader('Content-Type', contentType);
-  res.send(buf);
-  return { cookies };
+  res.send(finalBuf);
+  return { cookies, referrerUsed: chosenReferrer };
 }

@@ -26,6 +26,8 @@ import {
 import {
   loadStoredSession,
   persistStoredSession,
+  sealSession,
+  unsealSession,
   type StoredProxySession,
 } from './proxySessionStore';
 
@@ -186,13 +188,45 @@ function hostsFromCookies(cookies: any[], origin: string): string[] {
   return [...hosts];
 }
 
-function isToolAccessUrl(url?: string | null): boolean {
+/** Panel hosts that gate on dashboard Referer + proxy_token (Pak SEO style). */
+function isPanelUnlockUrl(url?: string | null): boolean {
   try {
     const host = new URL(String(url || '').trim()).hostname.toLowerCase();
-    return host === 'toolaccess.click' || host.endsWith('.toolaccess.click');
+    return (
+      host === 'toolaccess.click' ||
+      host.endsWith('.toolaccess.click') ||
+      host.endsWith('.xemrush.site') ||
+      host.endsWith('.semrush.site') ||
+      host.endsWith('.groupbuy.tools') ||
+      /\.(toolpanel|sharedpanel|panelhub)\./i.test(host)
+    );
   } catch {
-    return /toolaccess\.click/i.test(String(url || ''));
+    return /toolaccess\.click|xemrush\.site|semrush\.site/i.test(String(url || ''));
   }
+}
+
+/** Real first-party sites — never spoof a Pak SEO Referer on these. */
+function isRealToolOrigin(url?: string | null): boolean {
+  try {
+    const host = new URL(String(url || '').trim()).hostname.toLowerCase();
+    return (
+      host === 'chatgpt.com' ||
+      host.endsWith('.chatgpt.com') ||
+      host === 'chat.openai.com' ||
+      host.endsWith('.openai.com') ||
+      host === 'claude.ai' ||
+      host.endsWith('.claude.ai') ||
+      host === 'gemini.google.com' ||
+      host === 'www.midjourney.com' ||
+      host.endsWith('.midjourney.com')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isToolAccessUrl(url?: string | null): boolean {
+  return isPanelUnlockUrl(url);
 }
 
 const DEFAULT_PANEL_REFERRER = 'https://app.pakseotools.com/';
@@ -241,10 +275,17 @@ function panelUnlockReferrerCandidates(raw?: string | null): string[] {
 }
 
 function resolvePanelUnlockReferrer(raw?: string | null, dest?: string | null): string {
-  if (!isToolAccessUrl(dest) && !String(raw || '').trim()) return '';
+  // Real sites (ChatGPT etc.) must keep their own Referer/Origin — a Pak SEO
+  // referrer breaks API calls even when the HTML shell still loads.
+  if (isRealToolOrigin(dest)) return '';
+  if (!isPanelUnlockUrl(dest) && !String(raw || '').trim()) return '';
+  if (!isPanelUnlockUrl(dest) && String(raw || '').trim()) {
+    // Admin set a referrer on a non-panel URL — only honor it for panel hosts.
+    return '';
+  }
   const normalized = normalizePanelUnlockReferrer(raw);
   if (normalized) return normalized;
-  if (isToolAccessUrl(dest)) return DEFAULT_PANEL_REFERRER;
+  if (isPanelUnlockUrl(dest)) return DEFAULT_PANEL_REFERRER;
   return '';
 }
 
@@ -420,31 +461,60 @@ function tokenFromReferer(req: any): string {
   }
 }
 
-function setProxyCookie(res: any, token: string) {
+function setProxyCookie(res: any, token: string, sealed?: string) {
   const maxAge = Math.floor(SESSION_TTL_MS / 1000);
   const secure = process.env.VERCEL || process.env.NODE_ENV === 'production' ? '; Secure' : '';
-  const value = `atm_px=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; SameSite=Lax; HttpOnly${secure}`;
-  if (typeof res.append === 'function') res.append('Set-Cookie', value);
-  else res.setHeader('Set-Cookie', value);
+  const parts = [
+    `atm_px=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; SameSite=Lax; HttpOnly${secure}`,
+  ];
+  // Browser cookie limit ~4KB — only attach sealed backup when it fits (panel tools).
+  if (sealed && sealed.length < 2800) {
+    parts.push(
+      `atm_px_s=${encodeURIComponent(sealed)}; Path=/; Max-Age=${maxAge}; SameSite=Lax; HttpOnly${secure}`,
+    );
+  }
+  if (typeof res.append === 'function') {
+    for (const p of parts) res.append('Set-Cookie', p);
+  } else {
+    res.setHeader('Set-Cookie', parts);
+  }
 }
 
 function hydrateSession(stored: StoredProxySession & { cookies?: JarCookie[] }): ProxySession {
-  const cookies = Array.isArray(stored.cookies) && stored.cookies.length
-    ? normalizeCookies(stored.cookies)
-    : normalizeCookies(
-        String(stored.cookieHeader || '')
-          .split(';')
-          .map(part => {
-            const eq = part.indexOf('=');
-            if (eq <= 0) return null;
-            return { name: part.slice(0, eq).trim(), value: part.slice(eq + 1).trim() };
-          })
-          .filter(Boolean) as any[],
-      );
+  let originHost = '';
+  try {
+    originHost = new URL(stored.origin).hostname;
+  } catch {
+    /* ignore */
+  }
+  const cookies =
+    Array.isArray(stored.cookies) && stored.cookies.length
+      ? normalizeCookies(stored.cookies, originHost)
+      : normalizeCookies(
+          String(stored.cookieHeader || '')
+            .split(';')
+            .map(part => {
+              const eq = part.indexOf('=');
+              if (eq <= 0) return null;
+              return {
+                name: part.slice(0, eq).trim(),
+                value: part.slice(eq + 1).trim(),
+                domain: originHost,
+              };
+            })
+            .filter(Boolean) as any[],
+          originHost,
+        );
   return { ...(stored as any), cookies } as ProxySession;
 }
 
-async function resolveSession(token: string): Promise<ProxySession | null> {
+function sealedFromRequest(req: { headers?: any }): string {
+  const cookie = String(req.headers?.cookie || '');
+  const match = cookie.match(/(?:^|;\s*)atm_px_s=([^;]+)/);
+  return match ? decodeURIComponent(match[1].trim()) : '';
+}
+
+async function resolveSession(token: string, req?: { headers?: any }): Promise<ProxySession | null> {
   pruneSessions();
   const id = String(token || '').trim();
   if (!id) return null;
@@ -454,20 +524,39 @@ async function resolveSession(token: string): Promise<ProxySession | null> {
     return mem;
   }
   const stored = await loadStoredSession(id);
-  if (!stored || stored.expiresAt <= Date.now()) return null;
-  const session = hydrateSession(stored as any);
-  session.expiresAt = Date.now() + SESSION_TTL_MS;
-  sessions.set(id, session);
-  return session;
+  if (stored && stored.expiresAt > Date.now()) {
+    const session = hydrateSession(stored as any);
+    session.expiresAt = Date.now() + SESSION_TTL_MS;
+    sessions.set(id, session);
+    return session;
+  }
+
+  // Last resort: sealed blob carried by the browser (survives missing DB table).
+  if (req) {
+    const sealed = sealedFromRequest(req);
+    if (sealed) {
+      const parsed = unsealSession(sealed);
+      if (parsed && parsed.token === id && parsed.expiresAt > Date.now()) {
+        const session = hydrateSession(parsed as any);
+        session.expiresAt = Date.now() + SESSION_TTL_MS;
+        sessions.set(id, session);
+        void persistStoredSession(session as unknown as StoredProxySession);
+        return session;
+      }
+    }
+  }
+  return null;
 }
 
-async function rememberSession(session: ProxySession): Promise<void> {
+async function rememberSession(session: ProxySession): Promise<string> {
   sessions.set(session.token, session);
+  const sealed = sealSession(session as unknown as StoredProxySession);
   try {
     await persistStoredSession(session as unknown as StoredProxySession);
   } catch (err) {
     console.error('[tool-proxy] persist session failed', (err as any)?.message || err);
   }
+  return sealed;
 }
 
 function escapeHtml(s: string) {
@@ -508,11 +597,16 @@ function isDocumentRequest(req: any): boolean {
 /** Run one proxied request for a session and keep the cookie jar fresh. */
 async function proxyThrough(session: ProxySession, req: any, res: any, url: string) {
   const document = isDocumentRequest(req);
+  // Pak SEO algorithm: panel tools spoof the dashboard Referer on every request
+  // (not only the first HTML document). Real sites keep an empty referrer so the
+  // browser's mapped /fx/… Referer becomes chatgpt.com / etc.
+  const panelMode = Boolean(session.referrer);
   const target: ProxyTarget = {
     token: session.token,
     origin: session.origin,
     cookies: session.cookies,
-    referrer: document ? session.referrer : '',
+    referrer: panelMode ? session.referrer : '',
+    referrerCandidates: panelMode ? session.referrerCandidates : [],
   };
 
   const before = session.cookies.length;
@@ -524,9 +618,14 @@ async function proxyThrough(session: ProxySession, req: any, res: any, url: stri
       JSON.stringify(result.cookies) !== JSON.stringify(session.cookies));
   session.cookies = result.cookies;
   session.cookieHeader = cookiesToHeader(result.cookies);
+  if (result.referrerUsed && panelMode) session.referrer = result.referrerUsed;
   session.expiresAt = Date.now() + SESSION_TTL_MS;
-  if (changed) void rememberSession(session);
-  else sessions.set(session.token, session);
+  if (changed || result.referrerUsed) {
+    const sealed = await rememberSession(session);
+    setProxyCookie(res, session.token, sealed);
+  } else {
+    sessions.set(session.token, session);
+  }
 }
 
 router.post('/launch', async (req, res) => {
@@ -557,7 +656,13 @@ router.post('/launch', async (req, res) => {
 
     const proxyStatus = await getGlobalProxyPublicStatus();
     const referrer = resolvePanelUnlockReferrer(fields.panelReferrer, dest);
-    const jar = normalizeCookies(cookies);
+    let originHost = '';
+    try {
+      originHost = new URL(origin).hostname;
+    } catch {
+      /* ignore */
+    }
+    const jar = normalizeCookies(cookies, originHost);
 
     pruneSessions();
     const token = newToken();
@@ -571,12 +676,14 @@ router.post('/launch', async (req, res) => {
       cookies: jar,
       cookieHeader: cookiesToHeader(cookies),
       cookieHosts: hostsFromCookies(cookies, origin),
-      referrer: referrer || (isToolAccessUrl(dest) ? DEFAULT_PANEL_REFERRER : ''),
-      referrerCandidates: panelUnlockReferrerCandidates(fields.panelReferrer || referrer || ''),
+      referrer: referrer || (isPanelUnlockUrl(dest) ? DEFAULT_PANEL_REFERRER : ''),
+      referrerCandidates: isPanelUnlockUrl(dest)
+        ? panelUnlockReferrerCandidates(fields.panelReferrer || referrer || DEFAULT_PANEL_REFERRER)
+        : [],
       expiresAt: Date.now() + SESSION_TTL_MS,
     };
-    await rememberSession(session);
-    setProxyCookie(res, token);
+    const sealed = await rememberSession(session);
+    setProxyCookie(res, token, sealed);
 
     return res.json({
       mode: 'proxy',
@@ -605,7 +712,7 @@ export async function handleFxProxy(req: any, res: any) {
     const token = tokenFromRequest(req);
     if (!token) return sessionLostPage(res, 400);
 
-    session = await resolveSession(token);
+    session = await resolveSession(token, req);
     if (!session) return sessionLostPage(res);
 
     const remainder = String(req.url || '/');
@@ -623,7 +730,8 @@ export async function handleFxProxy(req: any, res: any) {
       : fromProxyPath(target, remainder);
     if (!url) return res.status(400).json({ error: 'Invalid proxy path' });
 
-    setProxyCookie(res, session.token);
+    const sealed = sealSession(session as unknown as StoredProxySession);
+    setProxyCookie(res, session.token, sealed);
     await proxyThrough(session, req, res, url);
   } catch (error: any) {
     const message = String(error?.message || 'Proxy request failed');
@@ -651,7 +759,7 @@ export async function handleFxProxy(req: any, res: any) {
  */
 export async function handleOriginToolApi(req: any, res: any) {
   try {
-    const session = await resolveSession(tokenFromReferer(req) || tokenFromRequest(req));
+    const session = await resolveSession(tokenFromReferer(req) || tokenFromRequest(req), req);
     if (!session) {
       return res.status(401).json({ error: 'No tool session. Open the tool from the dashboard again.' });
     }
@@ -703,7 +811,7 @@ export async function handlePortalToolFallback(req: any, res: any, next: any) {
     const isSubresource = Boolean(dest) && dest !== 'document' && dest !== 'empty';
     if (!fromProxiedPage && !isSubresource) return next();
 
-    const session = await resolveSession(token);
+    const session = await resolveSession(token, req);
     if (!session) return next();
 
     const base = session.origin.endsWith('/') ? session.origin : `${session.origin}/`;
@@ -719,15 +827,16 @@ export async function handlePortalToolFallback(req: any, res: any, next: any) {
 export async function handleProxyView(req: any, res: any) {
   const token = tokenFromRequest(req);
   if (!token) return sessionLostPage(res, 400);
-  const session = await resolveSession(token);
+  const session = await resolveSession(token, req);
   if (!session) return sessionLostPage(res);
-  setProxyCookie(res, session.token);
+  const sealed = sealSession(session as unknown as StoredProxySession);
+  setProxyCookie(res, session.token, sealed);
   return res.redirect(302, publicFxPath(session.token));
 }
 
 export async function handleProxyAsset(req: any, res: any) {
   try {
-    const session = await resolveSession(tokenFromRequest(req));
+    const session = await resolveSession(tokenFromRequest(req), req);
     if (!session) return res.status(410).json({ error: 'Tool session ended' });
     const url = String(req.query?.u || '').trim();
     if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Invalid asset URL' });

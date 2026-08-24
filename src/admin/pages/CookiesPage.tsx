@@ -193,8 +193,8 @@ export const CookiesPage: React.FC = () => {
           </span>
           <span className="block mt-2 font-medium" style={{ color: 'var(--tip-amber)' }}>
             Prefer real tool destinations (example: <code className="font-semibold" style={{ color: 'inherit' }}>https://chatgpt.com/</code>) + Copy Cookies from that site.
-            For <code className="font-semibold" style={{ color: 'inherit' }}>*.toolaccess.click</code>, set <strong>Panel unlock referrer</strong> to{' '}
-            <code className="font-semibold" style={{ color: 'inherit' }}>https://app.pakseotools.com/</code> (Pak dashboard — not /login) and paste cookies from an already unlocked toolaccess session — Referer alone is not enough.
+            For <code className="font-semibold" style={{ color: 'inherit' }}>*.toolaccess.click</code> / <code className="font-semibold" style={{ color: 'inherit' }}>*.xemrush.site</code>, set <strong>Panel unlock referrer</strong> to{' '}
+            <code className="font-semibold" style={{ color: 'inherit' }}>https://app.pakseotools.com/</code> (Pak dashboard — not /login) and paste cookies from an already unlocked panel session — Referer alone is not enough.
           </span>
         </div>
       </div>
@@ -360,7 +360,7 @@ export const CookiesPage: React.FC = () => {
                 <label className={lblCls}>
                   Panel unlock referrer{' '}
                   <span className="normal-case tracking-normal text-slate-500 font-semibold">
-                    (optional · toolaccess)
+                    (optional · panels only)
                   </span>
                 </label>
                 <input
