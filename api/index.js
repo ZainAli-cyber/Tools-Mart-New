@@ -82,8 +82,8 @@ async function getGlobalProxyConfig(admin) {
     return { ...cache.value };
   }
   try {
-    const db = admin || serviceClient2();
-    const { data, error } = await db.from("app_settings").select("value").eq("key", GLOBAL_PROXY_SETTING_KEY).maybeSingle();
+    const db2 = admin || serviceClient2();
+    const { data, error } = await db2.from("app_settings").select("value").eq("key", GLOBAL_PROXY_SETTING_KEY).maybeSingle();
     if (error) {
       const setupRequired = isAppSettingsMissing2(error.message);
       const value2 = { enabled: false, url: "", setupRequired: setupRequired || void 0 };
@@ -115,8 +115,8 @@ async function getActiveOutboundProxyUrl(admin) {
   }
 }
 async function setGlobalProxyConfig(input, admin) {
-  const db = admin || serviceClient2();
-  const prev = await getGlobalProxyConfig(db);
+  const db2 = admin || serviceClient2();
+  const prev = await getGlobalProxyConfig(db2);
   let url3 = prev.url;
   if (typeof input.url === "string") {
     const trimmed = input.url.trim();
@@ -124,7 +124,7 @@ async function setGlobalProxyConfig(input, admin) {
   }
   const enabled = Boolean(input.enabled) && Boolean(url3);
   const value = { enabled, url: url3 };
-  const { error } = await db.from("app_settings").upsert(
+  const { error } = await db2.from("app_settings").upsert(
     {
       key: GLOBAL_PROXY_SETTING_KEY,
       value: { enabled: value.enabled, url: value.url },
@@ -1619,8 +1619,8 @@ async function getDeviceLimitsSetting(admin) {
     return { enabled: deviceLimitsEnabledCache.value };
   }
   try {
-    const db = admin || serviceClient();
-    const { data, error } = await db.from("app_settings").select("value").eq("key", DEVICE_LIMITS_SETTING_KEY).maybeSingle();
+    const db2 = admin || serviceClient();
+    const { data, error } = await db2.from("app_settings").select("value").eq("key", DEVICE_LIMITS_SETTING_KEY).maybeSingle();
     if (error) {
       const setupRequired = isAppSettingsMissing(error.message);
       deviceLimitsEnabledCache = { value: false, at: now, setupRequired };
@@ -1644,9 +1644,9 @@ async function areDeviceLimitsEnabled(admin) {
   return setting.enabled;
 }
 async function setDeviceLimitsEnabled(enabled, admin) {
-  const db = admin || serviceClient();
+  const db2 = admin || serviceClient();
   const value = Boolean(enabled);
-  const { error } = await db.from("app_settings").upsert(
+  const { error } = await db2.from("app_settings").upsert(
     {
       key: DEVICE_LIMITS_SETTING_KEY,
       value,
@@ -1670,14 +1670,14 @@ function normalizeDeviceLabel(raw) {
   return String(raw || "").trim().slice(0, 160) || "Browser";
 }
 async function loadAccountDevices(accountId, admin) {
-  const db = admin || serviceClient();
-  const { data, error } = await db.from("device_sessions").select("*").eq("account_id", accountId).order("last_seen", { ascending: false });
+  const db2 = admin || serviceClient();
+  const { data, error } = await db2.from("device_sessions").select("*").eq("account_id", accountId).order("last_seen", { ascending: false });
   if (error) throw new Error(error.message);
   return data || [];
 }
 async function loadAccountMaxDevices(accountId, admin) {
-  const db = admin || serviceClient();
-  const { data, error } = await db.from("customers").select("id,max_devices,status,role,owner_id").eq("id", accountId).maybeSingle();
+  const db2 = admin || serviceClient();
+  const { data, error } = await db2.from("customers").select("id,max_devices,status,role,owner_id").eq("id", accountId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
   const max = Math.max(1, Math.min(50, Number(data.max_devices) || 1));
@@ -1688,10 +1688,10 @@ async function registerOrHeartbeatDevice(input) {
   if (!deviceId) {
     return { ok: false, error: "Device id is required", status: 400 };
   }
-  const db = input.admin || serviceClient();
+  const db2 = input.admin || serviceClient();
   let account;
   try {
-    account = await loadAccountMaxDevices(input.accountId, db);
+    account = await loadAccountMaxDevices(input.accountId, db2);
   } catch (err) {
     if (/max_devices|does not exist|schema cache|column/i.test(String(err?.message || ""))) {
       return {
@@ -1725,7 +1725,7 @@ async function registerOrHeartbeatDevice(input) {
       deviceCount: 0
     });
   }
-  const limitsOn = await areDeviceLimitsEnabled(db);
+  const limitsOn = await areDeviceLimitsEnabled(db2);
   if (!limitsOn) {
     return softPassDevice({
       accountId: input.accountId,
@@ -1738,7 +1738,7 @@ async function registerOrHeartbeatDevice(input) {
   const maxDevices = account.max_devices;
   const ua = String(input.userAgent || "").slice(0, 400) || null;
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const { data: existing, error: existingError } = await db.from("device_sessions").select("*").eq("account_id", input.accountId).eq("device_id", deviceId).maybeSingle();
+  const { data: existing, error: existingError } = await db2.from("device_sessions").select("*").eq("account_id", input.accountId).eq("device_id", deviceId).maybeSingle();
   if (existingError && /device_sessions|does not exist|schema cache/i.test(existingError.message || "")) {
     return {
       ok: true,
@@ -1756,13 +1756,13 @@ async function registerOrHeartbeatDevice(input) {
     };
   }
   if (existing) {
-    const { data: updated, error } = await db.from("device_sessions").update({
+    const { data: updated, error } = await db2.from("device_sessions").update({
       last_seen: now,
       device_label: label || existing.device_label,
       user_agent: ua || existing.user_agent
     }).eq("id", existing.id).select().single();
     if (error) return { ok: false, error: error.message, status: 500 };
-    const sessions3 = await loadAccountDevices(input.accountId, db);
+    const sessions3 = await loadAccountDevices(input.accountId, db2);
     return {
       ok: true,
       session: updated || existing,
@@ -1772,7 +1772,7 @@ async function registerOrHeartbeatDevice(input) {
   }
   let sessions2 = [];
   try {
-    sessions2 = await loadAccountDevices(input.accountId, db);
+    sessions2 = await loadAccountDevices(input.accountId, db2);
   } catch (err) {
     if (/device_sessions|does not exist|schema cache/i.test(String(err?.message || ""))) {
       return {
@@ -1801,7 +1801,7 @@ async function registerOrHeartbeatDevice(input) {
       deviceCount: sessions2.length
     };
   }
-  const { data: created, error: insertError } = await db.from("device_sessions").insert({
+  const { data: created, error: insertError } = await db2.from("device_sessions").insert({
     account_id: input.accountId,
     device_id: deviceId,
     device_label: label,
@@ -1827,10 +1827,10 @@ async function registerOrHeartbeatDevice(input) {
       };
     }
     if (/duplicate|unique/i.test(insertError.message || "")) {
-      const { data: raced } = await db.from("device_sessions").select("*").eq("account_id", input.accountId).eq("device_id", deviceId).maybeSingle();
+      const { data: raced } = await db2.from("device_sessions").select("*").eq("account_id", input.accountId).eq("device_id", deviceId).maybeSingle();
       if (raced) {
-        await db.from("device_sessions").update({ last_seen: now }).eq("id", raced.id);
-        const again = await loadAccountDevices(input.accountId, db);
+        await db2.from("device_sessions").update({ last_seen: now }).eq("id", raced.id);
+        const again = await loadAccountDevices(input.accountId, db2);
         return { ok: true, session: raced, maxDevices, deviceCount: again.length };
       }
     }
@@ -1844,15 +1844,15 @@ async function registerOrHeartbeatDevice(input) {
   };
 }
 async function revokeDeviceSession(input) {
-  const db = input.admin || serviceClient();
-  const { data, error } = await db.from("device_sessions").delete().eq("id", input.sessionId).eq("account_id", input.accountId).select("id").maybeSingle();
+  const db2 = input.admin || serviceClient();
+  const { data, error } = await db2.from("device_sessions").delete().eq("id", input.sessionId).eq("account_id", input.accountId).select("id").maybeSingle();
   if (error) throw new Error(error.message);
   return Boolean(data?.id);
 }
 async function setAccountMaxDevices(input) {
-  const db = input.admin || serviceClient();
+  const db2 = input.admin || serviceClient();
   const max = Math.max(1, Math.min(50, Math.floor(Number(input.maxDevices) || 1)));
-  const { data, error } = await db.from("customers").update({ max_devices: max }).eq("id", input.accountId).select("id,max_devices").single();
+  const { data, error } = await db2.from("customers").update({ max_devices: max }).eq("id", input.accountId).select("id,max_devices").single();
   if (error) throw new Error(error.message);
   return data;
 }
@@ -1996,8 +1996,8 @@ async function profileForToken(token) {
   const supabase2 = client2(token);
   const { data: authData, error: authError } = await supabase2.auth.getUser(token);
   if (authError || !authData.user) return null;
-  const db = toolsDb();
-  const { data: profile, error } = await db.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).maybeSingle();
+  const db2 = toolsDb();
+  const { data: profile, error } = await db2.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).maybeSingle();
   if (!error && profile) return profile;
   const fallback = await supabase2.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).single();
   if (fallback.error || !fallback.data) return null;
@@ -2454,8 +2454,8 @@ var deviceRoutes_default = router5;
 
 // src/lib/toolProxyRoutes.ts
 import { Router as Router6 } from "express";
-import { createClient as createClient10 } from "@supabase/supabase-js";
-import { createHash, randomBytes } from "crypto";
+import { createClient as createClient11 } from "@supabase/supabase-js";
+import { createHash as createHash2, randomBytes as randomBytes2 } from "crypto";
 init_globalProxySettings();
 
 // src/lib/proxyFetch.ts
@@ -2535,9 +2535,87 @@ async function testProxyUrl(proxyUrlRaw) {
   }
 }
 
+// src/lib/proxySessionStore.ts
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
+import { createClient as createClient10 } from "@supabase/supabase-js";
+function db() {
+  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url3 || !(serviceKey3 || anon)) throw new Error("Supabase authentication is not configured");
+  return createClient10(url3, serviceKey3 || anon, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+}
+function keyBuf() {
+  return createHash("sha256").update(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "atm-proxy").digest();
+}
+function sealSession(s) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", keyBuf(), iv);
+  const enc = Buffer.concat([cipher.update(JSON.stringify(s), "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, enc]).toString("base64url");
+}
+function unsealSession(blob) {
+  try {
+    const buf = Buffer.from(String(blob || ""), "base64url");
+    if (buf.length < 29) return null;
+    const iv = buf.subarray(0, 12);
+    const tag = buf.subarray(12, 28);
+    const data = buf.subarray(28);
+    const decipher = createDecipheriv("aes-256-gcm", keyBuf(), iv);
+    decipher.setAuthTag(tag);
+    const json = Buffer.concat([decipher.update(data), decipher.final()]).toString("utf8");
+    const parsed = JSON.parse(json);
+    if (!parsed?.token || !parsed?.origin) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+async function persistStoredSession(s) {
+  const client4 = db();
+  const sealed = sealSession(s);
+  const { error } = await client4.from("tool_proxy_sessions").upsert(
+    {
+      token: s.token,
+      sealed,
+      expires_at: new Date(s.expiresAt).toISOString()
+    },
+    { onConflict: "token" }
+  );
+  if (!error) return;
+  await client4.from("app_settings").upsert(
+    {
+      key: `pxs_${s.token}`,
+      value: { sealed, expiresAt: s.expiresAt },
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    { onConflict: "key" }
+  );
+}
+async function loadStoredSession(token) {
+  const id = String(token || "").trim();
+  if (!id) return null;
+  const client4 = db();
+  const table = await client4.from("tool_proxy_sessions").select("sealed,expires_at").eq("token", id).maybeSingle();
+  if (!table.error && table.data?.sealed) {
+    if (new Date(String(table.data.expires_at)).getTime() <= Date.now()) return null;
+    return unsealSession(table.data.sealed);
+  }
+  const fallback = await client4.from("app_settings").select("value").eq("key", `pxs_${id}`).maybeSingle();
+  const v = fallback.data?.value;
+  if (v?.sealed) {
+    if (Number(v.expiresAt || 0) <= Date.now()) return null;
+    return unsealSession(v.sealed);
+  }
+  return null;
+}
+
 // src/lib/toolProxyRoutes.ts
 var router6 = Router6();
-var SESSION_TTL_MS = 15 * 60 * 1e3;
+var SESSION_TTL_MS = 20 * 60 * 1e3;
 var MAX_BODY_BYTES = 8 * 1024 * 1024;
 var MAX_REDIRECTS = 12;
 var sessions = /* @__PURE__ */ new Map();
@@ -2558,7 +2636,7 @@ function config2() {
 }
 function client3(token) {
   const { url: url3, anon } = config2();
-  return createClient10(url3, anon, {
+  return createClient11(url3, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
   });
@@ -2568,7 +2646,7 @@ function toolsDb2() {
   const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!url3 || !(serviceKey3 || anon)) throw new Error("Supabase authentication is not configured");
-  return createClient10(url3, serviceKey3 || anon, {
+  return createClient11(url3, serviceKey3 || anon, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
 }
@@ -2652,6 +2730,38 @@ function hostsFromCookies(cookies, origin) {
     if (d) hosts.add(d);
   }
   return [...hosts];
+}
+function relatedHostsForOrigin(origin) {
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    if (/(chatgpt|openai|oaistatic)/i.test(host)) {
+      return [
+        "chatgpt.com",
+        "chat.openai.com",
+        "openai.com",
+        "oaistatic.com",
+        "oaiusercontent.com",
+        "auth.openai.com",
+        "ab.chatgpt.com"
+      ];
+    }
+    if (host === "toolaccess.click" || host.endsWith(".toolaccess.click")) {
+      return ["toolaccess.click"];
+    }
+  } catch {
+  }
+  return [];
+}
+function hostAllowed(host, domains) {
+  const h = host.toLowerCase();
+  return domains.some((d) => {
+    const domain = String(d || "").replace(/^\./, "").toLowerCase();
+    return Boolean(domain) && (h === domain || h.endsWith(`.${domain}`));
+  });
+}
+function isStaticCdnHost(host) {
+  const h = host.toLowerCase();
+  return h === "oaistatic.com" || h.endsWith(".oaistatic.com") || h.endsWith(".oaiusercontent.com");
 }
 function isToolAccessUrl(url3) {
   try {
@@ -2768,8 +2878,8 @@ async function profileForToken2(token) {
   const supabase2 = client3(token);
   const { data: authData, error: authError } = await supabase2.auth.getUser(token);
   if (authError || !authData.user) return null;
-  const db = toolsDb2();
-  const { data: profile, error } = await db.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).maybeSingle();
+  const db2 = toolsDb2();
+  const { data: profile, error } = await db2.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).maybeSingle();
   if (!error && profile) return profile;
   const fallback = await supabase2.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).single();
   if (fallback.error || !fallback.data) return null;
@@ -2847,7 +2957,7 @@ async function requireEntitledLaunch(req) {
   };
 }
 function newToken() {
-  return randomBytes(24).toString("hex");
+  return randomBytes2(24).toString("hex");
 }
 function resolveAgainst(base, href) {
   try {
@@ -2862,25 +2972,127 @@ function shouldProxyUrl(session, absoluteUrl) {
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
     const host = u.hostname.toLowerCase();
     const originHost = new URL(session.origin).hostname.toLowerCase();
-    if (host === originHost) return true;
+    if (host === originHost || host.endsWith(`.${originHost}`)) return true;
     if (host === "toolaccess.click" || host.endsWith(".toolaccess.click")) return true;
-    for (const d of session.cookieHosts || []) {
-      const domain = String(d || "").toLowerCase();
-      if (!domain) continue;
-      if (host === domain || host.endsWith(`.${domain}`)) return true;
-    }
+    if (hostAllowed(host, session.cookieHosts || [])) return true;
+    if (hostAllowed(host, relatedHostsForOrigin(session.origin))) return true;
     return false;
   } catch {
     return false;
   }
 }
+function cookieHeaderForTarget(session, url3) {
+  try {
+    const host = new URL(url3).hostname.toLowerCase();
+    if (isStaticCdnHost(host)) return "";
+    const originHost = new URL(session.origin).hostname.toLowerCase();
+    if (host === originHost || host.endsWith(`.${originHost}`) || originHost.endsWith(`.${host}`)) {
+      return session.cookieHeader;
+    }
+    if (hostAllowed(host, session.cookieHosts || [])) return session.cookieHeader;
+    if (hostAllowed(host, relatedHostsForOrigin(session.origin)) && !isStaticCdnHost(host)) {
+      return session.cookieHeader;
+    }
+    return "";
+  } catch {
+    return session.cookieHeader;
+  }
+}
+async function resolveSession(token) {
+  pruneSessions();
+  const id = String(token || "").trim();
+  if (!id) return null;
+  const mem = sessions.get(id);
+  if (mem && mem.expiresAt > Date.now()) {
+    mem.expiresAt = Date.now() + SESSION_TTL_MS;
+    return mem;
+  }
+  const stored = await loadStoredSession(id);
+  if (!stored || stored.expiresAt <= Date.now()) return null;
+  stored.expiresAt = Date.now() + SESSION_TTL_MS;
+  sessions.set(id, stored);
+  return stored;
+}
+async function rememberSession(session) {
+  sessions.set(session.token, session);
+  try {
+    await persistStoredSession(session);
+  } catch (err) {
+    console.error("[tool-proxy] persist session failed", err?.message || err);
+  }
+}
 function proxyAssetUrl(token, absoluteUrl) {
   return `/api/tool-proxy/asset?token=${encodeURIComponent(token)}&u=${encodeURIComponent(absoluteUrl)}`;
 }
+function rewriteEmbeddedUrls(text, session, pageUrl) {
+  return String(text || "").replace(
+    /https?:\/\/[^\s"'<>\\)]+/gi,
+    (raw) => {
+      const cleaned = raw.replace(/[.,;]+$/, "");
+      const abs = resolveAgainst(pageUrl, cleaned);
+      if (!abs || !shouldProxyUrl(session, abs)) return raw;
+      return proxyAssetUrl(session.token, abs);
+    }
+  );
+}
+function proxyBootstrapScript(session) {
+  const token = JSON.stringify(session.token);
+  const root = JSON.stringify(session.origin.endsWith("/") ? session.origin : `${session.origin}/`);
+  const allow = JSON.stringify(
+    [.../* @__PURE__ */ new Set([...session.cookieHosts || [], ...relatedHostsForOrigin(session.origin)])]
+  );
+  return `<script data-atm-proxy="1">
+(function(){
+  var TOKEN=${token};
+  var ROOT=${root};
+  var ALLOW=${allow};
+  function hostOk(h){
+    h=String(h||'').toLowerCase();
+    for (var i=0;i<ALLOW.length;i++){
+      var d=String(ALLOW[i]||'').replace(/^\\./,'').toLowerCase();
+      if(d && (h===d || h.slice(-(d.length+1))==='.'+d)) return true;
+    }
+    return false;
+  }
+  function abs(u){
+    try { return new URL(u, ROOT).href; } catch(e){ return null; }
+  }
+  function wrap(u){
+    var a=abs(u);
+    if(!a) return u;
+    try {
+      var h=new URL(a).hostname;
+      if(!hostOk(h)) return u;
+    } catch(e){ return u; }
+    return '/api/tool-proxy/asset?token='+encodeURIComponent(TOKEN)+'&u='+encodeURIComponent(a);
+  }
+  var ofetch=window.fetch;
+  window.fetch=function(input, init){
+    try {
+      var raw=typeof input==='string'?input:(input&&input.url);
+      if(raw){
+        var w=wrap(raw);
+        if(w!==raw){
+          if(typeof input==='string') return ofetch.call(this, w, init);
+          return ofetch.call(this, new Request(w, input), init);
+        }
+      }
+    } catch(e){}
+    return ofetch.apply(this, arguments);
+  };
+  var oopen=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(m, url){
+    var args=arguments;
+    if(typeof url==='string') args[1]=wrap(url);
+    return oopen.apply(this, args);
+  };
+})();
+</script>`;
+}
 function rewriteHtml(html, session, pageUrl) {
-  const baseHref = pageUrl;
+  const baseHref = pageUrl || session.targetUrl;
   const token = session.token;
-  const rewriteAttr = (attr, value) => {
+  const rewriteAttr = (_attr, value) => {
     const trimmed = value.trim();
     if (!trimmed || trimmed.startsWith("data:") || trimmed.startsWith("blob:") || trimmed.startsWith("javascript:")) {
       return value;
@@ -2892,8 +3104,9 @@ function rewriteHtml(html, session, pageUrl) {
   };
   let out = html;
   out = out.replace(/<base\b[^>]*>/gi, "");
+  out = out.replace(/<meta[^>]+http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
   out = out.replace(
-    /\b(href|src|action|data-src|poster)=["']([^"']+)["']/gi,
+    /\b(href|src|action|data-src|poster|data-href)=["']([^"']+)["']/gi,
     (_m, attr, val) => `${attr}="${rewriteAttr(attr, val)}"`
   );
   out = out.replace(/\bsrcset=["']([^"']+)["']/gi, (_m, val) => {
@@ -2910,8 +3123,14 @@ function rewriteHtml(html, session, pageUrl) {
     const rewritten = rewriteAttr("css", val.trim());
     return `url("${rewritten}")`;
   });
-  out = out.replace(/<meta[^>]+http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
-  const banner = `<div style="position:sticky;top:0;z-index:99999;background:#1a0f0f;color:#fecaca;font:12px/1.4 system-ui,sans-serif;padding:8px 12px;border-bottom:1px solid #7f1d1d;">AI Toolz Mart proxy \xB7 ${escapeHtml(session.toolName)} \xB7 session expires in ~15 min</div>`;
+  out = rewriteEmbeddedUrls(out, session, baseHref);
+  const boot = proxyBootstrapScript(session);
+  const banner = `<div style="position:sticky;top:0;z-index:99999;background:#1a0f0f;color:#fecaca;font:12px/1.4 system-ui,sans-serif;padding:8px 12px;border-bottom:1px solid #7f1d1d;">AI Toolz Mart proxy \xB7 ${escapeHtml(session.toolName)} \xB7 session expires in ~20 min</div>`;
+  if (/<head[\s>]/i.test(out)) {
+    out = out.replace(/<head([^>]*)>/i, `<head$1>${boot}`);
+  } else {
+    out = boot + out;
+  }
   if (/<body\b/i.test(out)) {
     out = out.replace(/<body([^>]*)>/i, `<body$1>${banner}`);
   } else {
@@ -2939,7 +3158,8 @@ function buildUpstreamHeaders(session, forUrl, opts) {
     headers["Sec-Fetch-User"] = "?1";
     headers["Sec-Fetch-Site"] = referrer ? "cross-site" : "none";
   }
-  if (session.cookieHeader) headers.Cookie = session.cookieHeader;
+  const cookies = cookieHeaderForTarget(session, forUrl);
+  if (cookies) headers.Cookie = cookies;
   if (referrer) {
     headers.Referer = referrer;
     try {
@@ -2948,8 +3168,13 @@ function buildUpstreamHeaders(session, forUrl, opts) {
     }
   } else {
     try {
-      headers.Referer = new URL(forUrl).origin + "/";
+      headers.Referer = new URL(session.origin).origin + "/";
+      headers.Origin = new URL(session.origin).origin;
     } catch {
+      try {
+        headers.Referer = new URL(forUrl).origin + "/";
+      } catch {
+      }
     }
   }
   return headers;
@@ -2972,7 +3197,7 @@ async function fetchUpstream(session, url3, init) {
       redirect: "manual",
       headers: buildUpstreamHeaders(session, current, {
         referrerOverride: activeReferrer,
-        navigation: true
+        navigation: !/\.(css|js|mjs|png|jpe?g|gif|webp|svg|woff2?|ttf|ico)(\?|$)/i.test(current)
       }),
       body: method === "GET" || method === "HEAD" ? void 0 : body || void 0
     });
@@ -3072,6 +3297,7 @@ router6.post("/launch", async (req, res) => {
       expiresAt: Date.now() + SESSION_TTL_MS
     };
     sessions.set(token, session);
+    await rememberSession(session);
     const viewUrl = `/api/tool-proxy/view?token=${encodeURIComponent(token)}`;
     return res.json({
       mode: "proxy",
@@ -3081,7 +3307,7 @@ router6.post("/launch", async (req, res) => {
       toolId: tool.id,
       expiresInSec: Math.floor(SESSION_TTL_MS / 1e3),
       viaGlobalProxy: proxyStatus.ready,
-      fingerprint: createHash("sha256").update(cookieHeader || dest).digest("hex").slice(0, 12)
+      fingerprint: createHash2("sha256").update(cookieHeader || dest).digest("hex").slice(0, 12)
     });
   } catch (error) {
     const message = String(error?.message || "").trim();
@@ -3095,9 +3321,8 @@ router6.post("/launch", async (req, res) => {
 router6.get("/view", async (req, res) => {
   try {
     const token = String(req.query.token || "").trim();
-    const session = sessions.get(token);
-    if (!session || session.expiresAt <= Date.now()) {
-      sessions.delete(token);
+    const session = await resolveSession(token);
+    if (!session) {
       return res.status(410).type("html").send(
         `<!doctype html><meta charset="utf-8"><title>Session expired</title>
            <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem">
@@ -3106,6 +3331,7 @@ router6.get("/view", async (req, res) => {
       );
     }
     session.expiresAt = Date.now() + SESSION_TTL_MS;
+    void rememberSession(session);
     const upstream = await fetchUpstream(session, session.targetUrl);
     const buf = await readLimited(upstream);
     const contentType = upstream.headers.get("content-type") || "text/html; charset=utf-8";
@@ -3145,9 +3371,8 @@ router6.get("/asset", async (req, res) => {
   try {
     const token = String(req.query.token || "").trim();
     const target = String(req.query.u || "").trim();
-    const session = sessions.get(token);
-    if (!session || session.expiresAt <= Date.now()) {
-      sessions.delete(token);
+    const session = await resolveSession(token);
+    if (!session) {
       return res.status(410).json({ error: "Proxy session expired" });
     }
     if (!target || !shouldProxyUrl(session, target)) {
@@ -3175,6 +3400,22 @@ router6.get("/asset", async (req, res) => {
       res.setHeader("Cache-Control", "no-store");
       return res.send(css);
     }
+    let pathname = "";
+    try {
+      pathname = new URL(target).pathname;
+    } catch {
+    }
+    const isJs = /javascript|ecmascript/i.test(contentType) || /\.m?js$/i.test(pathname) && !/json/i.test(contentType);
+    if (isJs) {
+      const js = rewriteEmbeddedUrls(buf.toString("utf8"), session, upstream.url || target);
+      res.status(upstream.status);
+      res.setHeader(
+        "Content-Type",
+        /javascript|ecmascript/i.test(contentType) ? contentType : "application/javascript; charset=utf-8"
+      );
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(js);
+    }
     res.status(upstream.status);
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "no-store");
@@ -3190,7 +3431,7 @@ var toolProxyRoutes_default = router6;
 // src/lib/settingsRoutes.ts
 init_globalProxySettings();
 import { Router as Router7 } from "express";
-import { createClient as createClient11 } from "@supabase/supabase-js";
+import { createClient as createClient12 } from "@supabase/supabase-js";
 var router7 = Router7();
 function clients4() {
   const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -3202,8 +3443,8 @@ function clients4() {
     );
   }
   return {
-    auth: createClient11(url3, anonKey3, { auth: { persistSession: false } }),
-    admin: createClient11(url3, serviceKey3, { auth: { persistSession: false } })
+    auth: createClient12(url3, anonKey3, { auth: { persistSession: false } }),
+    admin: createClient12(url3, serviceKey3, { auth: { persistSession: false } })
   };
 }
 async function actor4(req) {
