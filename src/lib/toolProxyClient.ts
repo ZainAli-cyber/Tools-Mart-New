@@ -3,7 +3,7 @@
  * Cookies stay on the server (DB); this client never needs raw cookie JSON for proxy opens.
  */
 import { supabase } from './db';
-import { isToolAccessUrl, openToolInNewTab } from './toolCookies';
+import { absolutePortalUrl, isToolAccessUrl, openToolInNewTab } from './toolCookies';
 
 export type ProxyLaunchResult =
   | { mode: 'proxy'; viewUrl: string; url: string; name: string; toolId?: string; expiresInSec?: number }
@@ -98,8 +98,8 @@ export async function applyAndOpenTool(opts: {
   if (opts.forceProxy || shouldUseServerProxy(dest, opts.unlockReferrer)) {
     const result = await launchToolProxy(opts.toolId);
     if (result.mode === 'proxy' && result.viewUrl) {
-      openToolInNewTab(result.viewUrl);
-      return { opened: 'proxy', url: result.viewUrl };
+      openToolInNewTab(absolutePortalUrl(result.viewUrl));
+      return { opened: 'proxy', url: absolutePortalUrl(result.viewUrl) };
     }
   }
 

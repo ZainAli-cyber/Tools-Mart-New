@@ -949,7 +949,8 @@ router.post('/launch', async (req, res) => {
     await rememberSession(session);
     setProxyCookie(res, token);
 
-    const viewUrl = `${publicGoPath(dest)}?token=${encodeURIComponent(token)}`;
+    // Use the API path (not /go/…) so Vercel never serves the SPA homepage.
+    const viewUrl = `/api/tool-proxy/view?token=${encodeURIComponent(token)}`;
     return res.json({
       mode: 'proxy',
       viewUrl,

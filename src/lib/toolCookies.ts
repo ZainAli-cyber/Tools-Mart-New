@@ -69,9 +69,21 @@ export function reserveToolTab(): Window {
   return probe;
 }
 
+/** Same-origin relative paths must be resolved against the portal, not about:blank. */
+export function absolutePortalUrl(url: string): string {
+  const dest = String(url || '').trim();
+  if (!dest) return dest;
+  if (/^https?:\/\//i.test(dest) || dest.startsWith('about:')) return dest;
+  try {
+    return new URL(dest, window.location.origin).href;
+  } catch {
+    return dest;
+  }
+}
+
 /** Navigate a tab reserved at click-time. Never touches the portal window. */
 export function navigateReservedTab(tab: Window | null | undefined, url: string): void {
-  const dest = String(url || '').trim();
+  const dest = absolutePortalUrl(String(url || '').trim());
   if (!dest) throw new Error('No destination URL');
   if (!tab || tab.closed || tab === window) {
     throw new PopupBlockedError(
@@ -912,7 +924,6 @@ export type LaunchToolOptions = {
 
 async function reportProgress(opts: LaunchToolOptions | undefined, step: LaunchProgressStep) {
   opts?.onProgress?.(step);
-  await new Promise(r => window.setTimeout(r, 600));
 }
 
 async function ensureExtension(
@@ -970,16 +981,8 @@ async function openOneClick(
   const referrer = resolvePanelUnlockReferrer(unlockReferrer, dest);
   const needsExt = needsPanelUnlockExtension(dest, unlockReferrer);
 
-  // Global Proxy Engine ON → server applies cookies (+ residential IP) without Chrome extension.
-  let proxyReady = false;
-  try {
-    const { isGlobalProxyReady } = await import('./toolProxyClient');
-    proxyReady = await isGlobalProxyReady();
-  } catch {
-    proxyReady = false;
-  }
-
-  const preferServerProxy = proxyReady || needsExt || list.length > 0;
+  // One-click with cookies / panel unlock → server proxy first (no extra settings round-trip).
+  const preferServerProxy = needsExt || list.length > 0;
 
   if (preferServerProxy) {
     await reportProgress(opts, 'session');
@@ -992,33 +995,18 @@ async function openOneClick(
         finishOpen(result.viewUrl, opts, false);
         return;
       }
-      if (proxyReady) {
-        throw new Error(
-          'Global Proxy Engine is ON but the server could not start a proxy session. Confirm Cookies URL is set and try again.',
-        );
-      }
-      // Direct mode with no cookies → fall through to open URL
       if (list.length === 0 && !needsExt) {
         await reportProgress(opts, 'launching');
         finishOpen(dest, opts, false);
         return;
       }
     } catch (err: any) {
-      // If Global Proxy is ready, do not force extension — surface the proxy error.
-      if (proxyReady) {
-        throw new Error(
-          err?.message ||
-            'Server proxy could not open this tool. Check Global Proxy Engine in Admin → Accounts / Settings, and refresh Cookies.',
-        );
-      }
-      // Otherwise allow extension fallback below for cookie tools.
-      if (!list.length && !needsExt) {
-        throw err;
-      }
+      if (!list.length && !needsExt) throw err;
+      // Cookie / panel tools: fall through to extension if proxy launch failed.
     }
   }
 
-  if (needsExt && !proxyReady) {
+  if (needsExt) {
     await ensureExtension(opts, TOOLACCESS_NEED_EXTENSION_MSG, true);
     await reportProgress(opts, 'session');
     await reportProgress(opts, 'unlocking');
@@ -1044,8 +1032,7 @@ async function openOneClick(
 
   await reportProgress(opts, 'session');
 
-  // One-click WITH admin cookies — prefer extension only when Global Proxy Engine is OFF.
-  if (list.length > 0 && !proxyReady) {
+  if (list.length > 0) {
     await ensureExtension(opts, COOKIES_NEED_EXTENSION_MSG, true);
     try {
       await applyCookiesViaExtension(list, dest, { openTab: false });

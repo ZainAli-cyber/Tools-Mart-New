@@ -320,7 +320,7 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
         },
       });
       setConnecting({ name: tool.name, step: 'done' });
-      await new Promise(r => window.setTimeout(r, 400));
+      await new Promise(r => window.setTimeout(r, 120));
       setConnecting(null);
       pendingRef.current = null;
     } catch (err: any) {
