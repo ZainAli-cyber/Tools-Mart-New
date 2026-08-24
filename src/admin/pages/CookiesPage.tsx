@@ -323,15 +323,15 @@ export const CookiesPage: React.FC = () => {
                 <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
                   <strong className="text-slate-400">By extension</strong> — member must install Access; cookies auto-apply.
                   <br />
-                  <strong className="text-slate-400">On one click</strong> — one click from the dashboard. If Cookies JSON is saved
-                  (ChatGPT etc.), Access extension is still required to write those cookies into the browser. Without it,
-                  the tool opens but shows the normal login page. URL-only one-click = leave Cookies empty.
+                  <strong className="text-slate-400">On one click</strong> — one click from the dashboard. With{' '}
+                  <strong className="text-slate-300">Global Proxy Engine</strong> ON (Admin → Accounts / Settings), the
+                  server applies cookies through your residential proxy — no extension. If the proxy is OFF and Cookies
+                  JSON is saved, Access extension / Session Apply is used. URL-only = leave Cookies empty.
                 </p>
                 {form.accessMethod === 'one_click' && String(form.cookiesJson || '').trim().length > 2 && (
                   <div className="mt-2 bg-amber-900/25 border border-amber-500/35 rounded-xl px-3 py-2 text-[11px] tip-amber leading-relaxed">
-                    Cookies JSON is set. Auto-login still needs the Access extension (Chrome blocks websites from setting
-                    ChatGPT HttpOnly cookies). Prefer <strong>By extension</strong> for cookie tools, or clear Cookies for
-                    true URL-only one-click (no auto-login).
+                    Cookies JSON is set. Enable <strong>Global Proxy Engine</strong> for no-extension one-click, or use
+                    the Access extension / Session Apply. Clear Cookies for true URL-only open (no auto-login).
                   </div>
                 )}
               </div>

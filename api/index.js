@@ -1,3 +1,162 @@
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// src/lib/globalProxySettings.ts
+var globalProxySettings_exports = {};
+__export(globalProxySettings_exports, {
+  GLOBAL_PROXY_SETTING_KEY: () => GLOBAL_PROXY_SETTING_KEY,
+  GLOBAL_PROXY_SQL_HINT: () => GLOBAL_PROXY_SQL_HINT,
+  clearGlobalProxyConfig: () => clearGlobalProxyConfig,
+  getActiveOutboundProxyUrl: () => getActiveOutboundProxyUrl,
+  getGlobalProxyConfig: () => getGlobalProxyConfig,
+  getGlobalProxyPublicStatus: () => getGlobalProxyPublicStatus,
+  invalidateGlobalProxyCache: () => invalidateGlobalProxyCache,
+  maskProxyUrl: () => maskProxyUrl,
+  normalizeProxyUrl: () => normalizeProxyUrl,
+  setGlobalProxyConfig: () => setGlobalProxyConfig
+});
+import { createClient as createClient9 } from "@supabase/supabase-js";
+function serviceClient2() {
+  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url3 || !serviceKey3) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for proxy settings");
+  }
+  return createClient9(url3, serviceKey3, { auth: { persistSession: false } });
+}
+function isAppSettingsMissing2(message) {
+  return /app_settings|does not exist|schema cache|Could not find the table/i.test(
+    String(message || "")
+  );
+}
+function parseConfig(raw) {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const o = raw;
+    return {
+      enabled: Boolean(o.enabled),
+      url: String(o.url || "").trim()
+    };
+  }
+  return { enabled: false, url: "" };
+}
+function normalizeProxyUrl(raw) {
+  let s = String(raw || "").trim();
+  if (!s) return "";
+  if (!/^https?:\/\//i.test(s) && !/^socks/i.test(s)) {
+    s = `http://${s}`;
+  }
+  try {
+    const u = new URL(s);
+    if (!/^https?:$/i.test(u.protocol) && !/^socks/i.test(u.protocol)) {
+      throw new Error("Proxy URL must start with http:// or https://");
+    }
+    return u.href;
+  } catch {
+    throw new Error("Invalid proxy URL. Example: http://user:pass@host:3128/");
+  }
+}
+function maskProxyUrl(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  try {
+    const u = new URL(s);
+    if (u.username || u.password) {
+      u.username = u.username ? "***" : "";
+      u.password = u.password ? "***" : "";
+    }
+    return u.href;
+  } catch {
+    return "***";
+  }
+}
+async function getGlobalProxyConfig(admin) {
+  const now = Date.now();
+  if (cache && now - cache.at < CACHE_MS && !cache.value.setupRequired) {
+    return { ...cache.value };
+  }
+  try {
+    const db = admin || serviceClient2();
+    const { data, error } = await db.from("app_settings").select("value").eq("key", GLOBAL_PROXY_SETTING_KEY).maybeSingle();
+    if (error) {
+      const setupRequired = isAppSettingsMissing2(error.message);
+      const value2 = { enabled: false, url: "", setupRequired: setupRequired || void 0 };
+      cache = { at: now, value: value2 };
+      return { ...value2 };
+    }
+    const value = parseConfig(data?.value);
+    cache = { at: now, value };
+    return { ...value };
+  } catch (err) {
+    const setupRequired = isAppSettingsMissing2(err?.message);
+    const value = { enabled: false, url: "", setupRequired: setupRequired || void 0 };
+    cache = { at: now, value };
+    return { ...value };
+  }
+}
+async function getGlobalProxyPublicStatus(admin) {
+  const cfg = await getGlobalProxyConfig(admin);
+  const ready = Boolean(cfg.enabled && cfg.url);
+  return { enabled: Boolean(cfg.enabled), ready };
+}
+async function getActiveOutboundProxyUrl(admin) {
+  const cfg = await getGlobalProxyConfig(admin);
+  if (!cfg.enabled || !cfg.url) return null;
+  try {
+    return normalizeProxyUrl(cfg.url);
+  } catch {
+    return null;
+  }
+}
+async function setGlobalProxyConfig(input, admin) {
+  const db = admin || serviceClient2();
+  const prev = await getGlobalProxyConfig(db);
+  let url3 = prev.url;
+  if (typeof input.url === "string") {
+    const trimmed = input.url.trim();
+    url3 = trimmed ? normalizeProxyUrl(trimmed) : "";
+  }
+  const enabled = Boolean(input.enabled) && Boolean(url3);
+  const value = { enabled, url: url3 };
+  const { error } = await db.from("app_settings").upsert(
+    {
+      key: GLOBAL_PROXY_SETTING_KEY,
+      value: { enabled: value.enabled, url: value.url },
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    { onConflict: "key" }
+  );
+  if (error) {
+    if (isAppSettingsMissing2(error.message)) {
+      throw new Error(GLOBAL_PROXY_SQL_HINT);
+    }
+    throw new Error(error.message);
+  }
+  cache = { at: Date.now(), value };
+  return { ...value };
+}
+async function clearGlobalProxyConfig(admin) {
+  return setGlobalProxyConfig({ enabled: false, url: "" }, admin);
+}
+function invalidateGlobalProxyCache() {
+  cache = null;
+}
+var GLOBAL_PROXY_SETTING_KEY, GLOBAL_PROXY_SQL_HINT, CACHE_MS, cache;
+var init_globalProxySettings = __esm({
+  "src/lib/globalProxySettings.ts"() {
+    GLOBAL_PROXY_SETTING_KEY = "global_proxy_engine";
+    GLOBAL_PROXY_SQL_HINT = "Run supabase_global_proxy_engine.sql (or supabase_device_limits_toggle.sql) in the Supabase SQL Editor so app_settings exists, then try again.";
+    CACHE_MS = 8e3;
+    cache = null;
+  }
+});
+
 // api/handler.ts
 import express2 from "express";
 
@@ -2295,8 +2454,88 @@ var deviceRoutes_default = router5;
 
 // src/lib/toolProxyRoutes.ts
 import { Router as Router6 } from "express";
-import { createClient as createClient9 } from "@supabase/supabase-js";
+import { createClient as createClient10 } from "@supabase/supabase-js";
 import { createHash, randomBytes } from "crypto";
+init_globalProxySettings();
+
+// src/lib/proxyFetch.ts
+init_globalProxySettings();
+var cachedAgent = null;
+var AGENT_TTL_MS = 6e4;
+async function getProxyAgent(proxyUrl) {
+  const now = Date.now();
+  if (cachedAgent && cachedAgent.proxyUrl === proxyUrl && now - cachedAgent.at < AGENT_TTL_MS) {
+    return cachedAgent.agent;
+  }
+  const undici = await import("undici");
+  const agent = new undici.ProxyAgent(proxyUrl);
+  cachedAgent = { proxyUrl, agent, at: now };
+  return agent;
+}
+function invalidateProxyAgentCache() {
+  cachedAgent = null;
+}
+async function proxyAwareFetch(input, init) {
+  const proxyUrl = await getActiveOutboundProxyUrl();
+  if (!proxyUrl) {
+    return fetch(input, init);
+  }
+  try {
+    const undici = await import("undici");
+    const agent = await getProxyAgent(proxyUrl);
+    const opts = { ...init || {}, dispatcher: agent };
+    return await undici.fetch(input, opts);
+  } catch (err) {
+    const msg = String(err?.message || err || "Proxy request failed");
+    throw new Error(
+      /proxy|ECONNREFUSED|ENOTFOUND|socket|tunnel|407|authentication/i.test(msg) ? `Global Proxy Engine failed (${msg}). Check the proxy URL in Admin \u2192 Accounts.` : msg
+    );
+  }
+}
+async function testProxyUrl(proxyUrlRaw) {
+  let proxyUrl;
+  try {
+    const { normalizeProxyUrl: normalizeProxyUrl2 } = await Promise.resolve().then(() => (init_globalProxySettings(), globalProxySettings_exports));
+    proxyUrl = normalizeProxyUrl2(proxyUrlRaw);
+  } catch (err) {
+    return { ok: false, error: err?.message || "Invalid proxy URL" };
+  }
+  if (!proxyUrl) return { ok: false, error: "Proxy URL is empty" };
+  try {
+    const undici = await import("undici");
+    const agent = new undici.ProxyAgent(proxyUrl);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12e3);
+    try {
+      const res = await undici.fetch("https://api.ipify.org?format=json", {
+        dispatcher: agent,
+        signal: controller.signal,
+        headers: { Accept: "application/json" }
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        return { ok: false, error: `Proxy reachable but IP check failed (${res.status})` };
+      }
+      let ip = "";
+      try {
+        ip = String(JSON.parse(text)?.ip || "").trim();
+      } catch {
+        ip = text.trim().slice(0, 64);
+      }
+      return { ok: true, ip: ip || "unknown" };
+    } finally {
+      clearTimeout(timer);
+      try {
+        agent.close?.();
+      } catch {
+      }
+    }
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Proxy test failed") };
+  }
+}
+
+// src/lib/toolProxyRoutes.ts
 var router6 = Router6();
 var SESSION_TTL_MS = 15 * 60 * 1e3;
 var MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -2319,7 +2558,7 @@ function config2() {
 }
 function client3(token) {
   const { url: url3, anon } = config2();
-  return createClient9(url3, anon, {
+  return createClient10(url3, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
   });
@@ -2329,7 +2568,7 @@ function toolsDb2() {
   const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!url3 || !(serviceKey3 || anon)) throw new Error("Supabase authentication is not configured");
-  return createClient9(url3, serviceKey3 || anon, {
+  return createClient10(url3, serviceKey3 || anon, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
 }
@@ -2401,6 +2640,18 @@ function cookiesToHeader(cookies) {
     parts.push(`${name}=${value}`);
   }
   return parts.join("; ");
+}
+function hostsFromCookies(cookies, origin) {
+  const hosts = /* @__PURE__ */ new Set();
+  try {
+    hosts.add(new URL(origin).hostname.toLowerCase());
+  } catch {
+  }
+  for (const c of cookies || []) {
+    let d = String(c?.domain || "").trim().replace(/^\./, "").toLowerCase();
+    if (d) hosts.add(d);
+  }
+  return [...hosts];
 }
 function isToolAccessUrl(url3) {
   try {
@@ -2613,6 +2864,11 @@ function shouldProxyUrl(session, absoluteUrl) {
     const originHost = new URL(session.origin).hostname.toLowerCase();
     if (host === originHost) return true;
     if (host === "toolaccess.click" || host.endsWith(".toolaccess.click")) return true;
+    for (const d of session.cookieHosts || []) {
+      const domain = String(d || "").toLowerCase();
+      if (!domain) continue;
+      if (host === domain || host.endsWith(`.${domain}`)) return true;
+    }
     return false;
   } catch {
     return false;
@@ -2711,7 +2967,7 @@ async function fetchUpstream(session, url3, init) {
       session.referrer = activeReferrer;
       tried.add(activeReferrer);
     }
-    const response = await fetch(current, {
+    const response = await proxyAwareFetch(current, {
       method,
       redirect: "manual",
       headers: buildUpstreamHeaders(session, current, {
@@ -2777,14 +3033,15 @@ router6.post("/launch", async (req, res) => {
         accessMethod: "extension"
       });
     }
-    const preferProxy = isToolAccessUrl(dest) || Boolean(fields.panelReferrer) || Boolean(req.body?.forceProxy);
-    if (!preferProxy) {
+    const preferProxy = isToolAccessUrl(dest) || Boolean(fields.panelReferrer) || Boolean(req.body?.forceProxy) || cookies.length > 0;
+    const proxyStatus = await getGlobalProxyPublicStatus();
+    const useServerProxy = preferProxy || proxyStatus.ready;
+    if (!useServerProxy) {
       return res.json({
         mode: "direct",
         url: dest,
         name: tool.name,
         toolId: tool.id,
-        // Cookies already available via /api/extension/launch for entitled users
         message: "This destination is opened directly; use Copy cookies + open for HttpOnly sites."
       });
     }
@@ -2809,8 +3066,9 @@ router6.post("/launch", async (req, res) => {
       targetUrl: dest,
       origin,
       cookieHeader,
-      referrer: referrer || DEFAULT_PANEL_REFERRER,
-      referrerCandidates: referrerCandidates.length > 0 ? referrerCandidates : [DEFAULT_PANEL_REFERRER],
+      cookieHosts: hostsFromCookies(cookies, origin),
+      referrer: referrer || (isToolAccessUrl(dest) ? DEFAULT_PANEL_REFERRER : ""),
+      referrerCandidates: referrerCandidates.length > 0 ? referrerCandidates : isToolAccessUrl(dest) ? [DEFAULT_PANEL_REFERRER] : [],
       expiresAt: Date.now() + SESSION_TTL_MS
     };
     sessions.set(token, session);
@@ -2822,6 +3080,7 @@ router6.post("/launch", async (req, res) => {
       name: tool.name,
       toolId: tool.id,
       expiresInSec: Math.floor(SESSION_TTL_MS / 1e3),
+      viaGlobalProxy: proxyStatus.ready,
       fingerprint: createHash("sha256").update(cookieHeader || dest).digest("hex").slice(0, 12)
     });
   } catch (error) {
@@ -2928,6 +3187,136 @@ router6.get("/asset", async (req, res) => {
 });
 var toolProxyRoutes_default = router6;
 
+// src/lib/settingsRoutes.ts
+init_globalProxySettings();
+import { Router as Router7 } from "express";
+import { createClient as createClient11 } from "@supabase/supabase-js";
+var router7 = Router7();
+function clients4() {
+  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const anonKey3 = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url3 || !anonKey3 || !serviceKey3) {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env, then restart the server."
+    );
+  }
+  return {
+    auth: createClient11(url3, anonKey3, { auth: { persistSession: false } }),
+    admin: createClient11(url3, serviceKey3, { auth: { persistSession: false } })
+  };
+}
+async function actor4(req) {
+  const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  const { auth, admin } = clients4();
+  const { data, error } = await auth.auth.getUser(token);
+  if (error || !data.user) return null;
+  const { data: profile } = await admin.from("customers").select("id,role,status").eq("auth_user_id", data.user.id).maybeSingle();
+  if (!profile || profile.status === "blocked") return null;
+  return { id: profile.id, role: String(profile.role || "") };
+}
+router7.get("/global-proxy", async (req, res) => {
+  try {
+    const current = await actor4(req);
+    if (!current) return res.status(401).json({ error: "Not authorized" });
+    const { admin } = clients4();
+    if (current.role === "admin") {
+      const cfg = await getGlobalProxyConfig(admin);
+      return res.json({
+        enabled: cfg.enabled,
+        ready: Boolean(cfg.enabled && cfg.url),
+        url: cfg.url,
+        maskedUrl: maskProxyUrl(cfg.url),
+        ...cfg.setupRequired ? { setupRequired: true, hint: GLOBAL_PROXY_SQL_HINT } : {}
+      });
+    }
+    const status = await getGlobalProxyPublicStatus(admin);
+    return res.json(status);
+  } catch (error) {
+    return res.json({
+      enabled: false,
+      ready: false,
+      setupRequired: true,
+      hint: error?.message || GLOBAL_PROXY_SQL_HINT
+    });
+  }
+});
+router7.patch("/global-proxy", async (req, res) => {
+  try {
+    const current = await actor4(req);
+    if (!current) return res.status(401).json({ error: "Not authorized" });
+    if (current.role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const { admin } = clients4();
+    const enabled = Boolean(req.body?.enabled);
+    const url3 = typeof req.body?.url === "string" ? req.body.url : void 0;
+    if (enabled && (url3 === void 0 ? !(await getGlobalProxyConfig(admin)).url : !String(url3).trim())) {
+      return res.status(400).json({ error: "Proxy URL is required when enabling the Global Proxy Engine." });
+    }
+    const cfg = await setGlobalProxyConfig({ enabled, url: url3 }, admin);
+    invalidateProxyAgentCache();
+    return res.json({
+      enabled: cfg.enabled,
+      ready: Boolean(cfg.enabled && cfg.url),
+      url: cfg.url,
+      maskedUrl: maskProxyUrl(cfg.url)
+    });
+  } catch (error) {
+    const message = error?.message || "Could not save proxy settings";
+    const setup = message === GLOBAL_PROXY_SQL_HINT || /app_settings|does not exist|schema cache/i.test(message);
+    return res.status(setup ? 503 : 500).json({
+      error: setup ? GLOBAL_PROXY_SQL_HINT : message,
+      enabled: false,
+      ready: false,
+      setupRequired: setup || void 0
+    });
+  }
+});
+router7.delete("/global-proxy", async (req, res) => {
+  try {
+    const current = await actor4(req);
+    if (!current) return res.status(401).json({ error: "Not authorized" });
+    if (current.role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const { admin } = clients4();
+    const cfg = await clearGlobalProxyConfig(admin);
+    invalidateProxyAgentCache();
+    return res.json({
+      enabled: cfg.enabled,
+      ready: false,
+      url: "",
+      maskedUrl: ""
+    });
+  } catch (error) {
+    const message = error?.message || "Could not remove proxy settings";
+    const setup = /app_settings|does not exist|schema cache/i.test(message);
+    return res.status(setup ? 503 : 500).json({
+      error: setup ? GLOBAL_PROXY_SQL_HINT : message
+    });
+  }
+});
+router7.post("/global-proxy/test", async (req, res) => {
+  try {
+    const current = await actor4(req);
+    if (!current) return res.status(401).json({ error: "Not authorized" });
+    if (current.role !== "admin") return res.status(403).json({ error: "Admin only" });
+    let url3 = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+    if (!url3) {
+      const { admin } = clients4();
+      const cfg = await getGlobalProxyConfig(admin);
+      url3 = cfg.url;
+    }
+    if (!url3) return res.status(400).json({ error: "Enter a proxy URL to test." });
+    const result = await testProxyUrl(url3);
+    if (result.ok === false) {
+      return res.status(502).json({ ok: false, error: result.error });
+    }
+    return res.json({ ok: true, ip: result.ip, message: `Proxy OK \u2014 outbound IP ${result.ip}` });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error?.message || "Proxy test failed" });
+  }
+});
+var settingsRoutes_default = router7;
+
 // src/lib/createApiApp.ts
 function createApiApp() {
   const app = express();
@@ -2955,6 +3344,7 @@ function createApiApp() {
   app.use("/api/admin", adminRoutes_default);
   app.use("/api/accounts", accountRoutes_default);
   app.use("/api/devices", deviceRoutes_default);
+  app.use("/api/settings", settingsRoutes_default);
   app.use("/api/extension", extensionRoutes_default);
   app.use("/api/tool-proxy", toolProxyRoutes_default);
   app.use("/api/notifications", notificationRoutes_default);

@@ -5,6 +5,7 @@ import extensionRouter from './extensionRoutes';
 import notificationRouter from './notificationRoutes';
 import deviceRouter from './deviceRoutes';
 import toolProxyRouter from './toolProxyRoutes';
+import settingsRouter from './settingsRoutes';
 
 /**
  * Express app with all /api/* routes. Used by local server.ts and Vercel api/index.ts.
@@ -44,6 +45,7 @@ export function createApiApp() {
   app.use('/api/admin', adminRouter);
   app.use('/api/accounts', accountRouter);
   app.use('/api/devices', deviceRouter);
+  app.use('/api/settings', settingsRouter);
   app.use('/api/extension', extensionRouter);
   app.use('/api/tool-proxy', toolProxyRouter);
   app.use('/api/notifications', notificationRouter);

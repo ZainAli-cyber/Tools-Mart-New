@@ -959,6 +959,7 @@ async function openViaExtension(
 }
 
 async function openOneClick(
+  toolId: string,
   dest: string,
   cookies: any[],
   opts?: LaunchToolOptions,
@@ -969,7 +970,55 @@ async function openOneClick(
   const referrer = resolvePanelUnlockReferrer(unlockReferrer, dest);
   const needsExt = needsPanelUnlockExtension(dest, unlockReferrer);
 
-  if (needsExt) {
+  // Global Proxy Engine ON → server applies cookies (+ residential IP) without Chrome extension.
+  let proxyReady = false;
+  try {
+    const { isGlobalProxyReady } = await import('./toolProxyClient');
+    proxyReady = await isGlobalProxyReady();
+  } catch {
+    proxyReady = false;
+  }
+
+  const preferServerProxy = proxyReady || needsExt || list.length > 0;
+
+  if (preferServerProxy) {
+    await reportProgress(opts, 'session');
+    if (panelDest || referrer) await reportProgress(opts, 'unlocking');
+    try {
+      const { launchToolProxy } = await import('./toolProxyClient');
+      const result = await launchToolProxy(toolId);
+      if (result.mode === 'proxy' && result.viewUrl) {
+        await reportProgress(opts, 'launching');
+        finishOpen(result.viewUrl, opts, false);
+        return;
+      }
+      if (proxyReady) {
+        throw new Error(
+          'Global Proxy Engine is ON but the server could not start a proxy session. Confirm Cookies URL is set and try again.',
+        );
+      }
+      // Direct mode with no cookies → fall through to open URL
+      if (list.length === 0 && !needsExt) {
+        await reportProgress(opts, 'launching');
+        finishOpen(dest, opts, false);
+        return;
+      }
+    } catch (err: any) {
+      // If Global Proxy is ready, do not force extension — surface the proxy error.
+      if (proxyReady) {
+        throw new Error(
+          err?.message ||
+            'Server proxy could not open this tool. Check Global Proxy Engine in Admin → Accounts / Settings, and refresh Cookies.',
+        );
+      }
+      // Otherwise allow extension fallback below for cookie tools.
+      if (!list.length && !needsExt) {
+        throw err;
+      }
+    }
+  }
+
+  if (needsExt && !proxyReady) {
     await ensureExtension(opts, TOOLACCESS_NEED_EXTENSION_MSG, true);
     await reportProgress(opts, 'session');
     await reportProgress(opts, 'unlocking');
@@ -995,19 +1044,16 @@ async function openOneClick(
 
   await reportProgress(opts, 'session');
 
-  // One-click WITH admin cookies (ChatGPT etc.) — customer + reseller same:
-  // Portal pages cannot set HttpOnly chatgpt.com cookies. Opening without the
-  // Access extension always lands on the login page. Require extension, apply
-  // cookies, then open the reserved tab logged in.
-  if (list.length > 0) {
-    await ensureExtension(opts, COOKIES_NEED_EXTENSION_MSG, false);
+  // One-click WITH admin cookies — prefer extension only when Global Proxy Engine is OFF.
+  if (list.length > 0 && !proxyReady) {
+    await ensureExtension(opts, COOKIES_NEED_EXTENSION_MSG, true);
     try {
       await applyCookiesViaExtension(list, dest, { openTab: false });
     } catch (err: any) {
       if (err instanceof NeedExtensionError) throw err;
       throw new Error(
         err?.message ||
-          'Could not apply admin cookies. Reload AI Toolz Mart Access v1.3.5+, ask admin to Save Cookies again, then retry.',
+          'Could not apply admin cookies. Enable Global Proxy Engine in Admin, or install AI Toolz Mart Access v1.3.5+.',
       );
     }
     await reportProgress(opts, 'launching');
@@ -1027,7 +1073,8 @@ export function resolveAccessMethod(method?: string | null): ToolAccessMethod {
 
 /**
  * Launch an entitled tool. Same rules for customer + reseller dashboards:
- * - one_click + saved cookies → Access extension applies cookies, then open (else install guide)
+ * - one_click + Global Proxy Engine ON → server proxy (cookies + residential IP), no extension
+ * - one_click + saved cookies (proxy off) → Access extension or Session Apply
  * - one_click + no cookies → open URL only
  * - extension / by_extension → Access extension required
  */
@@ -1058,7 +1105,7 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
     const cookies = Array.isArray(payload.cookies) ? payload.cookies : [];
 
     if (method === 'one_click') {
-      await openOneClick(dest, cookies, opts, unlockReferrer);
+      await openOneClick(key, dest, cookies, opts, unlockReferrer);
     } else {
       await openViaExtension(dest, cookies, opts, unlockReferrer);
     }
@@ -1069,7 +1116,7 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
     if (
       err instanceof NeedExtensionError ||
       (err instanceof Error &&
-        (/not assigned|activate or renew|authentication required|session expired|account suspended|unavailable|No destination URL|Could not unlock toolaccess/i.test(
+        (/not assigned|activate or renew|authentication required|session expired|account suspended|unavailable|No destination URL|Could not unlock toolaccess|Server proxy|Global Proxy/i.test(
           err.message,
         ) ||
           err.message === NEED_EXTENSION_MSG ||
@@ -1101,7 +1148,7 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
         : resolveAccessMethod(local.accessMethod || tool.accessMethod);
     const unlockReferrer = String(local.panelReferrer || tool.panelReferrer || '').trim();
     if (method === 'one_click') {
-      await openOneClick(dest, cookies, opts, unlockReferrer);
+      await openOneClick(key, dest, cookies, opts, unlockReferrer);
     } else {
       await openViaExtension(dest, cookies, opts, unlockReferrer);
     }

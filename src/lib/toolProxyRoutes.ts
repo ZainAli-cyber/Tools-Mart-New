@@ -11,6 +11,8 @@ import {
   readDeviceFromRequest,
   DEVICE_LIMIT_MESSAGE,
 } from './deviceSessions';
+import { getGlobalProxyPublicStatus } from './globalProxySettings';
+import { proxyAwareFetch } from './proxyFetch';
 
 const router = Router();
 
@@ -26,6 +28,8 @@ type ProxySession = {
   targetUrl: string;
   origin: string;
   cookieHeader: string;
+  /** Hosts allowed for asset rewriting / cookie-bearing proxy (from cookie domains + origin). */
+  cookieHosts: string[];
   referrer: string;
   /** Ordered Referer candidates to retry on 403 panel denial. */
   referrerCandidates: string[];
@@ -149,6 +153,23 @@ export function cookiesToHeader(cookies: any[]): string {
     parts.push(`${name}=${value}`);
   }
   return parts.join('; ');
+}
+
+function hostsFromCookies(cookies: any[], origin: string): string[] {
+  const hosts = new Set<string>();
+  try {
+    hosts.add(new URL(origin).hostname.toLowerCase());
+  } catch {
+    /* ignore */
+  }
+  for (const c of cookies || []) {
+    let d = String(c?.domain || '')
+      .trim()
+      .replace(/^\./, '')
+      .toLowerCase();
+    if (d) hosts.add(d);
+  }
+  return [...hosts];
 }
 
 function isToolAccessUrl(url?: string | null): boolean {
@@ -415,6 +436,11 @@ function shouldProxyUrl(session: ProxySession, absoluteUrl: string): boolean {
     const originHost = new URL(session.origin).hostname.toLowerCase();
     if (host === originHost) return true;
     if (host === 'toolaccess.click' || host.endsWith('.toolaccess.click')) return true;
+    for (const d of session.cookieHosts || []) {
+      const domain = String(d || '').toLowerCase();
+      if (!domain) continue;
+      if (host === domain || host.endsWith(`.${domain}`)) return true;
+    }
     return false;
   } catch {
     return false;
@@ -553,7 +579,7 @@ async function fetchUpstream(
       tried.add(activeReferrer);
     }
 
-    const response = await fetch(current, {
+    const response = await proxyAwareFetch(current, {
       method,
       redirect: 'manual',
       headers: buildUpstreamHeaders(session, current, {
@@ -638,15 +664,22 @@ router.post('/launch', async (req, res) => {
     }
 
     const preferProxy =
-      isToolAccessUrl(dest) || Boolean(fields.panelReferrer) || Boolean(req.body?.forceProxy);
+      isToolAccessUrl(dest) ||
+      Boolean(fields.panelReferrer) ||
+      Boolean(req.body?.forceProxy) ||
+      cookies.length > 0;
 
-    if (!preferProxy) {
+    // When Global Proxy Engine is ready, always prefer server proxy for one-click
+    // (even empty cookies) so residential IP routing applies.
+    const proxyStatus = await getGlobalProxyPublicStatus();
+    const useServerProxy = preferProxy || proxyStatus.ready;
+
+    if (!useServerProxy) {
       return res.json({
         mode: 'direct',
         url: dest,
         name: tool.name,
         toolId: tool.id,
-        // Cookies already available via /api/extension/launch for entitled users
         message: 'This destination is opened directly; use Copy cookies + open for HttpOnly sites.',
       });
     }
@@ -674,9 +707,14 @@ router.post('/launch', async (req, res) => {
       targetUrl: dest,
       origin,
       cookieHeader,
-      referrer: referrer || DEFAULT_PANEL_REFERRER,
+      cookieHosts: hostsFromCookies(cookies, origin),
+      referrer: referrer || (isToolAccessUrl(dest) ? DEFAULT_PANEL_REFERRER : ''),
       referrerCandidates:
-        referrerCandidates.length > 0 ? referrerCandidates : [DEFAULT_PANEL_REFERRER],
+        referrerCandidates.length > 0
+          ? referrerCandidates
+          : isToolAccessUrl(dest)
+            ? [DEFAULT_PANEL_REFERRER]
+            : [],
       expiresAt: Date.now() + SESSION_TTL_MS,
     };
     sessions.set(token, session);
@@ -689,6 +727,7 @@ router.post('/launch', async (req, res) => {
       name: tool.name,
       toolId: tool.id,
       expiresInSec: Math.floor(SESSION_TTL_MS / 1000),
+      viaGlobalProxy: proxyStatus.ready,
       fingerprint: createHash('sha256').update(cookieHeader || dest).digest('hex').slice(0, 12),
     });
   } catch (error: any) {

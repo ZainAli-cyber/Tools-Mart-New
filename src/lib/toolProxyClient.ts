@@ -87,13 +87,15 @@ export async function applyAndOpenTool(opts: {
   toolId: string;
   dest: string;
   unlockReferrer?: string;
+  /** Prefer server proxy even for ChatGPT-style URLs (Global Proxy Engine / Session Apply). */
+  forceProxy?: boolean;
   /** @deprecated Unused for proxy path — cookies are loaded server-side from DB. */
   cookiesJson?: string;
 }): Promise<{ opened: 'proxy' | 'direct'; url: string }> {
   const dest = String(opts.dest || '').trim();
   if (!dest) throw new Error('No destination URL');
 
-  if (shouldUseServerProxy(dest, opts.unlockReferrer)) {
+  if (opts.forceProxy || shouldUseServerProxy(dest, opts.unlockReferrer)) {
     const result = await launchToolProxy(opts.toolId);
     if (result.mode === 'proxy' && result.viewUrl) {
       openToolInNewTab(result.viewUrl);
@@ -103,4 +105,22 @@ export async function applyAndOpenTool(opts: {
 
   openToolInNewTab(dest);
   return { opened: 'direct', url: dest };
+}
+
+/** Members: is Global Proxy Engine ready for no-extension one-click? */
+export async function isGlobalProxyReady(): Promise<boolean> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return false;
+    const { deviceHeaders } = await import('./deviceFingerprint');
+    const res = await fetch('/api/settings/global-proxy', {
+      headers: { Authorization: `Bearer ${token}`, ...deviceHeaders() },
+    });
+    if (!res.ok) return false;
+    const body = await res.json().catch(() => ({}));
+    return Boolean(body?.ready);
+  } catch {
+    return false;
+  }
 }
