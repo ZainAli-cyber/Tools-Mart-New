@@ -4,7 +4,7 @@ import accountRouter from './accountRoutes';
 import extensionRouter from './extensionRoutes';
 import notificationRouter from './notificationRoutes';
 import deviceRouter from './deviceRoutes';
-import toolProxyRouter, { handleProxyView, handleFxProxy } from './toolProxyRoutes';
+import toolProxyRouter, { handleProxyView, handleFxProxy, handleOriginToolApi } from './toolProxyRoutes';
 import settingsRouter from './settingsRoutes';
 
 /**
@@ -48,6 +48,10 @@ export function createApiApp() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/extension', extensionRouter);
   app.use('/api/tool-proxy', toolProxyRouter);
+  // ChatGPT (and similar) call these on the portal origin. Proxy them with the session cookie.
+  app.use(['/backend-api', '/public-api', '/backend-anon', '/ces'], (req, res) => {
+    void handleOriginToolApi(req, res);
+  });
   // Reference-style reverse proxy: /fx/<token>/… (same idea as /fx/tools/flow)
   app.use('/fx/:token', (req, res) => {
     void handleFxProxy(req, res);

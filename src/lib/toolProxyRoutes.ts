@@ -721,6 +721,146 @@ function proxyBootstrapScript(session: ProxySession): string {
         .catch(function(){ location.href=FX; });
     } catch(err){}
   }, true);
+
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); });
+    }
+  } catch (e) {}
+
+  function uuid(){
+    try { if (crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+      var r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+  function composerEl(){
+    return document.querySelector('#prompt-textarea')
+      || document.querySelector('[data-testid="prompt-textarea"]')
+      || document.querySelector('textarea')
+      || document.querySelector('[contenteditable="true"]');
+  }
+  function composerText(){
+    var el = composerEl();
+    if (!el) return '';
+    var t = el.value != null && el.tagName !== 'DIV' ? String(el.value) : String(el.innerText || el.textContent || '');
+    return t.replace(/\\u200b/g, '').trim();
+  }
+  function findSend(){
+    return document.querySelector('[data-testid="send-button"]')
+      || document.querySelector('button[aria-label="Send prompt"]')
+      || document.querySelector('button[aria-label="Send message"]')
+      || document.querySelector('button[aria-label*="Send prompt"]')
+      || document.querySelector('button[aria-label*="Send message"]');
+  }
+  function unlockSend(){
+    var b = findSend();
+    if (!b) return null;
+    try {
+      b.disabled = false;
+      b.removeAttribute('disabled');
+      b.setAttribute('aria-disabled', 'false');
+      b.style.pointerEvents = 'auto';
+      b.style.opacity = '1';
+    } catch (e) {}
+    return b;
+  }
+  function parseSse(text){
+    var out = '';
+    String(text || '').split('\\n').forEach(function(line){
+      var s = line.replace(/^data:\\s?/, '').trim();
+      if (!s || s === '[DONE]') return;
+      try {
+        var j = JSON.parse(s);
+        var parts = j && j.message && j.message.content && j.message.content.parts;
+        if (parts && parts.length) {
+          out = parts.filter(function(p){ return typeof p === 'string'; }).join('\\n');
+        } else if (typeof j.v === 'string') {
+          out += j.v;
+        } else if (j.o === 'append' && typeof j.v === 'string') {
+          out += j.v;
+        }
+      } catch (e) {}
+    });
+    return out;
+  }
+  function showReply(userText, assistantText){
+    var host = document.getElementById('atm-proxy-chat');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'atm-proxy-chat';
+      host.style.cssText = 'max-width:48rem;margin:16px auto 96px;padding:0 16px;font-family:system-ui,sans-serif;';
+      (document.querySelector('main') || document.body).appendChild(host);
+    }
+    var esc = function(v){ return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;'); };
+    host.insertAdjacentHTML('beforeend',
+      '<div style="margin:10px 0;padding:12px 14px;background:#f4f4f4;border-radius:16px"><b>You</b><div>'+esc(userText)+'</div></div>' +
+      '<div style="margin:10px 0;padding:12px 14px;border:1px solid #e5e5e5;border-radius:16px"><b>ChatGPT</b><div class="atm-as">'+esc(assistantText)+'</div></div>'
+    );
+  }
+  var sending = false;
+  function sendNow(){
+    var text = composerText();
+    if (!text || sending) return;
+    sending = true;
+    var url = String(FX || '/').replace(/\\/$/, '') + '/backend-api/conversation';
+    showReply(text, 'Sending…');
+    ofetch.call(window, url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        action: 'next',
+        messages: [{ id: uuid(), author: { role: 'user' }, content: { content_type: 'text', parts: [text] }, metadata: {} }],
+        parent_message_id: uuid(),
+        model: 'auto',
+        timezone_offset_min: new Date().getTimezoneOffset()
+      })
+    }).then(function(r){ return r.text().then(function(raw){ return { ok: r.ok, status: r.status, raw: raw }; }); })
+    .then(function(res){
+      sending = false;
+      var reply = parseSse(res.raw) || (res.ok ? 'Sent.' : ('Send failed (' + res.status + '). ' + String(res.raw || '').slice(0, 240)));
+      var host = document.getElementById('atm-proxy-chat');
+      if (host) {
+        var nodes = host.querySelectorAll('.atm-as');
+        if (nodes.length) nodes[nodes.length - 1].textContent = reply;
+      }
+    }).catch(function(err){
+      sending = false;
+      var host = document.getElementById('atm-proxy-chat');
+      if (host) {
+        var nodes = host.querySelectorAll('.atm-as');
+        if (nodes.length) nodes[nodes.length - 1].textContent = 'Send failed: ' + (err && err.message ? err.message : String(err));
+      }
+    });
+  }
+  setInterval(unlockSend, 400);
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    var send = findSend();
+    var stuck = !send || send.disabled || send.getAttribute('disabled') != null || send.getAttribute('aria-disabled') === 'true';
+    if (!stuck) return;
+    if (!composerText()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    sendNow();
+  }, true);
+  document.addEventListener('pointerdown', function(e){
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var b = t.closest('button');
+    if (!b) return;
+    var label = (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('data-testid') || '');
+    if (!/send/i.test(label) && b.getAttribute('data-testid') !== 'send-button') return;
+    unlockSend();
+    var stuck = b.disabled || b.getAttribute('disabled') != null || b.getAttribute('aria-disabled') === 'true';
+    if (!stuck) return;
+    if (!composerText()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    sendNow();
+  }, true);
 })();
 </script>`;
 }
@@ -1298,6 +1438,29 @@ export async function handleFxProxy(req: any, res: any) {
     return handleProxyAsset(req, res);
   } catch (error: any) {
     return res.status(502).json({ error: error?.message || 'FX proxy failed' });
+  }
+}
+
+/** ChatGPT calls /backend-api/* on the page origin — must not hit the SPA homepage. */
+export async function handleOriginToolApi(req: any, res: any) {
+  try {
+    const token = tokenFromRequest(req);
+    const session = await resolveSession(token);
+    if (!session) {
+      return res.status(401).json({
+        error: 'No tool proxy session. Open the tool from the dashboard again.',
+      });
+    }
+    const original = String(req.originalUrl || req.url || '/');
+    const target = new URL(
+      original,
+      session.origin.endsWith('/') ? session.origin : `${session.origin}/`,
+    ).href;
+    req.query = { ...(req.query || {}), token: session.token, u: target };
+    req.params = { ...(req.params || {}), token: session.token };
+    return handleProxyAsset(req, res);
+  } catch (error: any) {
+    return res.status(502).json({ error: error?.message || 'Origin tool API proxy failed' });
   }
 }
 
