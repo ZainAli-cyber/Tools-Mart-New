@@ -148,8 +148,10 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
             className="w-full rounded-xl border border-[#2a1e1c] bg-[#0d0908] px-3 py-2.5 text-xs text-white outline-none ring-red-600/40 placeholder:text-slate-600 focus:ring-2"
           />
           <p className="mt-1 text-[10px] text-slate-500">
-            Example format: <code className="text-slate-400">http://user:pass@ip:port/</code>. Stored
-            in Supabase (service role only writes). Do not commit this URL to git.
+            Example format: <code className="text-slate-400">http://user:pass@ip:port/</code>. Use a{' '}
+            <strong className="text-slate-400">residential</strong> proxy — AWS/datacenter IPs often
+            load ChatGPT HTML but leave the Send button gray. Stored in Supabase only; do not commit
+            this URL to git.
           </p>
         </div>
 

@@ -774,7 +774,33 @@ export async function handleOriginToolApi(req: any, res: any) {
 }
 
 /** Never proxied — these belong to the portal itself. */
-const RESERVED_PATHS = [/^\/api(\/|$)/, /^\/fx(\/|$)/, /^\/go(\/|$)/, /^\/health$/];
+const RESERVED_PATHS = [
+  /^\/api\/tool-proxy(\/|$)/,
+  /^\/api\/admin(\/|$)/,
+  /^\/api\/accounts(\/|$)/,
+  /^\/api\/devices(\/|$)/,
+  /^\/api\/settings(\/|$)/,
+  /^\/api\/extension(\/|$)/,
+  /^\/api\/notifications(\/|$)/,
+  /^\/api\/ai(\/|$)/,
+  /^\/api\/seo(\/|$)/,
+  /^\/api\/health$/,
+  /^\/api\/health$/,
+  /^\/fx(\/|$)/,
+  /^\/go(\/|$)/,
+  /^\/health$/,
+];
+
+/** Paths ChatGPT asks for on the portal origin — always claim when a tool session exists. */
+const TOOL_ORIGIN_API = [
+  /^\/backend-api(\/|$)/,
+  /^\/public-api(\/|$)/,
+  /^\/backend-anon(\/|$)/,
+  /^\/ces(\/|$)/,
+  /^\/api\/auth(\/|$)/,
+  /^\/api\/subscriptions(\/|$)/,
+  /^\/api\/communications(\/|$)/,
+];
 
 /** Portal assets: only protected when the request did not come from a tool page. */
 const PORTAL_ASSET_PATHS = [
@@ -805,11 +831,14 @@ export async function handlePortalToolFallback(req: any, res: any, next: any) {
     if (!token) return next();
 
     const fromProxiedPage = Boolean(refererToken);
-    if (!fromProxiedPage && PORTAL_ASSET_PATHS.some(rx => rx.test(path))) return next();
+    const isToolApi = TOOL_ORIGIN_API.some(rx => rx.test(path));
+    if (!fromProxiedPage && !isToolApi && PORTAL_ASSET_PATHS.some(rx => rx.test(path))) return next();
 
     const dest = String(req.headers?.['sec-fetch-dest'] || '').toLowerCase();
     const isSubresource = Boolean(dest) && dest !== 'document' && dest !== 'empty';
-    if (!fromProxiedPage && !isSubresource) return next();
+    // Tool API paths (auth/session, backend-api) must be claimed whenever we have
+    // a session cookie — ChatGPT calls them with same-origin absolute paths.
+    if (!fromProxiedPage && !isToolApi && !isSubresource) return next();
 
     const session = await resolveSession(token, req);
     if (!session) return next();

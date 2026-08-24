@@ -434,17 +434,17 @@ function runtimeScript(target: ProxyTarget): string {
     return oopenwin.apply(window, args);
   };
 
-  // Never let a form navigate the whole tab — that is what made ChatGPT
-  // "reload with no reply" when Enter was pressed before fetch took over.
+  // Block native form navigations away from /fx/… (caused reload-with-no-reply).
+  // Do NOT stopPropagation on keydown — ChatGPT's React handlers need Enter.
   document.addEventListener('submit', function(e){
     try {
       var form=e.target;
       if(!form || form.tagName!=='FORM') return;
       var action=form.getAttribute('action') || location.href;
+      if (String(action).indexOf(BASE)===0) return;
       var method=(form.getAttribute('method')||'GET').toUpperCase();
       var abs=new URL(action, virtualHref()).href;
       e.preventDefault();
-      e.stopPropagation();
       if (method==='GET') {
         var dest=new URL(abs);
         var fd=new FormData(form);
@@ -452,9 +452,8 @@ function runtimeScript(target: ProxyTarget): string {
         location.href=map(dest.href);
         return;
       }
-      var body=new FormData(form);
       if (ofetch) {
-        ofetch(map(abs), { method: method, body: body, credentials: 'same-origin' })
+        ofetch(map(abs), { method: method, body: new FormData(form), credentials: 'same-origin' })
           .then(function(r){ return r.text(); })
           .then(function(html){
             if (html && /<html/i.test(html)) { document.open(); document.write(html); document.close(); }
@@ -464,21 +463,21 @@ function runtimeScript(target: ProxyTarget): string {
     } catch(err){}
   }, true);
 
-  // Keyboard Enter in composers should not fall through to a native form post.
-  document.addEventListener('keydown', function(e){
+  // Re-enable Send when ChatGPT left it disabled after a failed conversation/init
+  // (happens when /api/auth bootstrap was not proxied).
+  function unlockComposer(){
     try {
-      if (e.key!=='Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
-      var el=e.target;
-      if (!el) return;
-      var tag=String(el.tagName||'').toLowerCase();
-      var role=String(el.getAttribute && el.getAttribute('role') || '').toLowerCase();
-      if (tag==='textarea' || role==='textbox' || el.isContentEditable) {
-        // Let the app handle it; just stop the browser's default form submit.
-        var form=el.form || (el.closest && el.closest('form'));
-        if (form) { e.stopPropagation(); }
-      }
-    } catch(err){}
-  }, true);
+      var btns=document.querySelectorAll('button[data-testid="send-button"], button[aria-label="Send prompt"], form[data-type="unified-composer"] button[type="submit"]');
+      btns.forEach(function(btn){
+        if (!btn) return;
+        if (btn.disabled) btn.disabled=false;
+        btn.removeAttribute('disabled');
+        btn.setAttribute('aria-disabled','false');
+      });
+    } catch(e){}
+  }
+  setInterval(unlockComposer, 1500);
+  document.addEventListener('input', unlockComposer, true);
 })();
 </script>`;
 }
@@ -766,15 +765,15 @@ export async function forwardRequest(opts: {
 <body style="font-family:system-ui;background:#0d0908;color:#fecaca;padding:2.5rem;max-width:36rem;margin:auto">
 <h1 style="font-size:1.2rem">Panel session rejected</h1>
 <p style="color:#94a3b8;font-size:.9rem;line-height:1.5">
-The tool panel returned <em>Session expired / Access denied</em>. This is the same check
-Pak SEO / aitoolzmart-style panels use: they need a <strong>fresh unlocked cookie</strong>
-(proxy_token / PHPSESSID) <em>and</em> Referer from the dashboard.
+We tried every dashboard Referer (including <code>app.pakseotools.com</code>).
+The panel still said <em>Session expired</em> — so this is <strong>not a proxy/Referer bug</strong>.
+The <code>proxy_token</code> cookie is expired or was copied before the panel was unlocked.
 </p>
 <ol style="color:#cbd5e1;font-size:.85rem;line-height:1.6">
-<li>Open the panel once from the original seller dashboard until it unlocks.</li>
-<li>Copy cookies again and paste them in Admin → Cookies for this tool.</li>
-<li>Set Panel unlock referrer to <code>https://app.pakseotools.com/</code> (not /login).</li>
-<li>Save, then open the tool again from your dashboard.</li>
+<li>Log into the <strong>original seller dashboard</strong> (Pak SEO / aitoolzmart) and open this tool until it loads.</li>
+<li>While that unlocked tab is open, Copy Cookies and paste them in Admin → Cookies.</li>
+<li>Panel unlock referrer = <code>https://app.pakseotools.com/</code> (not /login).</li>
+<li>Save, close this tab, open again from your dashboard.</li>
 </ol>
 <p style="color:#64748b;font-size:.75rem">Tried referrer: ${String(chosenReferrer || '—')}</p>
 </body>`;

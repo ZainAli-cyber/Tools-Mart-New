@@ -37,7 +37,18 @@ export function createApiApp() {
   // Tool proxy traffic must stay byte-for-byte: mount it before the JSON/urlencoded
   // parsers so uploads, form posts and streaming request bodies pass through intact.
   const rawBody = express.raw({ type: () => true, limit: '50mb' });
-  const proxyPrefixes = ['/backend-api', '/public-api', '/backend-anon', '/ces'];
+  // ChatGPT (and similar) call these on the portal origin when the SPA path
+  // is rewritten. /api/auth MUST be included — conversation/init stays 401 and
+  // the Send button stays gray when the session bootstrap never reaches OpenAI.
+  const proxyPrefixes = [
+    '/backend-api',
+    '/public-api',
+    '/backend-anon',
+    '/ces',
+    '/api/auth',
+    '/api/subscriptions',
+    '/api/communications',
+  ];
 
   app.use('/fx/:token', rawBody, (req, res) => {
     void handleFxProxy(req, res);
