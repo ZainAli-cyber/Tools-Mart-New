@@ -3067,12 +3067,18 @@ function proxyBootstrapScript(session) {
   const allow = JSON.stringify(
     [.../* @__PURE__ */ new Set([...session.cookieHosts || [], ...relatedHostsForOrigin(session.origin)])]
   );
+  const goPath = JSON.stringify(publicGoPath(session.targetUrl || session.origin));
   return `<script data-atm-proxy="1">
 (function(){
-  try { if (location.search) history.replaceState(null, '', location.pathname); } catch (e) {}
   var TOKEN=${token};
   var ROOT=${root};
   var ALLOW=${allow};
+  var GOPATH=${goPath};
+  try {
+    sessionStorage.setItem('atm_px', TOKEN);
+    sessionStorage.setItem('atm_px_go', GOPATH);
+    if (location.search) history.replaceState(null, '', location.pathname);
+  } catch (e) {}
   function hostOk(h){
     h=String(h||'').toLowerCase();
     for (var i=0;i<ALLOW.length;i++){
@@ -3081,11 +3087,19 @@ function proxyBootstrapScript(session) {
     }
     return false;
   }
-  function abs(u){
-    try { return new URL(u, ROOT).href; } catch(e){ return null; }
+  function toToolUrl(u){
+    try {
+      var a=new URL(u, location.href);
+      if (a.hostname===location.hostname || /vercel\\.app$/i.test(a.hostname)) {
+        if (/^\\/api\\/tool-proxy\\//i.test(a.pathname)) return null;
+        if (/^\\/go(\\/|$)/i.test(a.pathname)) return new URL('/' + (a.search||'') + (a.hash||''), ROOT).href;
+        return new URL(a.pathname + a.search + a.hash, ROOT).href;
+      }
+      return a.href;
+    } catch(e){ return null; }
   }
   function wrap(u){
-    var a=abs(u);
+    var a=toToolUrl(u);
     if(!a) return u;
     try {
       var h=new URL(a).hostname;
@@ -3109,10 +3123,37 @@ function proxyBootstrapScript(session) {
   };
   var oopen=XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open=function(m, url){
-    var args=arguments;
+    var args=Array.prototype.slice.call(arguments);
     if(typeof url==='string') args[1]=wrap(url);
     return oopen.apply(this, args);
   };
+  document.addEventListener('submit', function(e){
+    try {
+      var form=e.target;
+      if(!form || form.tagName!=='FORM') return;
+      var action=form.getAttribute('action') || location.href;
+      var tool=toToolUrl(action);
+      if(!tool) { e.preventDefault(); e.stopPropagation(); return; }
+      var resolved=new URL(action, location.href);
+      if(resolved.hostname!==location.hostname && !/vercel\\.app$/i.test(resolved.hostname)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var method=(form.getAttribute('method')||'GET').toUpperCase();
+      var fd=new FormData(form);
+      if(method==='GET'){
+        var dest=new URL(tool);
+        fd.forEach(function(v,k){ dest.searchParams.set(k, String(v)); });
+        location.href=wrap(dest.href);
+        return;
+      }
+      ofetch.call(window, wrap(tool), { method: method, body: fd, credentials: 'same-origin' })
+        .then(function(r){ return r.text(); })
+        .then(function(html){
+          if(html) document.open(); document.write(html); document.close();
+        })
+        .catch(function(){ location.href=GOPATH+'?token='+encodeURIComponent(TOKEN); });
+    } catch(err){}
+  }, true);
 })();
 </script>`;
 }
@@ -3346,10 +3387,25 @@ async function handleProxyView(req, res) {
     const session = await resolveSession(token);
     if (!session) {
       return res.status(410).type("html").send(
-        `<!doctype html><meta charset="utf-8"><title>Session expired</title>
+        `<!doctype html><meta charset="utf-8"><title>Reconnecting\u2026</title>
            <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem">
-           <h1>Session expired</h1>
-           <p>Return to the dashboard and click Open again.</p></body>`
+           <h1>Reconnecting\u2026</h1>
+           <p>Restoring your tool session\u2026</p>
+           <script>
+           (function(){
+             try {
+               var t = sessionStorage.getItem('atm_px');
+               var go = sessionStorage.getItem('atm_px_go') || '/go/';
+               if (t) {
+                 var url = go + (go.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t);
+                 location.replace(url);
+                 return;
+               }
+             } catch (e) {}
+             document.body.innerHTML = '<h1>Session expired</h1><p>Return to the dashboard and click Open again.</p>';
+           })();
+           </script>
+           </body>`
       );
     }
     session.expiresAt = Date.now() + SESSION_TTL_MS;
@@ -3390,12 +3446,9 @@ async function handleProxyView(req, res) {
     );
   }
 }
-router6.get("/view", (req, res) => {
-  void handleProxyView(req, res);
-});
-router6.get("/asset", async (req, res) => {
+async function handleProxyAsset(req, res) {
   try {
-    const token = String(req.query.token || "").trim();
+    const token = tokenFromRequest(req);
     const target = String(req.query.u || "").trim();
     const session = await resolveSession(token);
     if (!session) {
@@ -3405,11 +3458,75 @@ router6.get("/asset", async (req, res) => {
       return res.status(400).json({ error: "URL not allowed for this proxy session" });
     }
     session.expiresAt = Date.now() + SESSION_TTL_MS;
-    const upstream = await fetchUpstream(session, target);
-    const buf = await readLimited(upstream);
+    void rememberSession(session);
+    const method = String(req.method || "GET").toUpperCase();
+    let body = null;
+    if (method !== "GET" && method !== "HEAD") {
+      if (Buffer.isBuffer(req.body)) body = req.body;
+      else if (typeof req.body === "string") body = req.body;
+      else if (req.body && typeof req.body === "object") body = JSON.stringify(req.body);
+    }
+    const forwardHeaders = {
+      ...buildUpstreamHeaders(session, target, {
+        referrerOverride: session.origin + "/",
+        navigation: method === "GET" && !/\/(backend-api|api|public-api)\//i.test(target)
+      })
+    };
+    const ct = req.headers["content-type"];
+    if (ct && method !== "GET" && method !== "HEAD") forwardHeaders["Content-Type"] = String(ct);
+    const accept = req.headers.accept;
+    if (accept) forwardHeaders.Accept = String(accept);
+    for (const [key, value] of Object.entries(req.headers || {})) {
+      if (typeof value !== "string") continue;
+      if (/^(oai-|openai-|chatgpt-|x-openai)/i.test(key)) {
+        forwardHeaders[key] = value;
+      }
+    }
+    try {
+      forwardHeaders.Origin = new URL(session.origin).origin;
+      forwardHeaders.Referer = new URL(session.origin).origin + "/";
+    } catch {
+    }
+    let current = target;
+    let upstream = await proxyAwareFetch(current, {
+      method,
+      redirect: "manual",
+      headers: forwardHeaders,
+      body: method === "GET" || method === "HEAD" ? void 0 : body || void 0
+    });
+    session.cookieHeader = mergeSetCookies(session.cookieHeader, upstream);
+    for (let i = 0; i < 5; i++) {
+      if (upstream.status < 300 || upstream.status >= 400) break;
+      const loc = upstream.headers.get("location");
+      if (!loc) break;
+      const next = resolveAgainst(current, loc);
+      if (!next || !shouldProxyUrl(session, next)) break;
+      current = next;
+      upstream = await proxyAwareFetch(current, {
+        method: "GET",
+        redirect: "manual",
+        headers: buildUpstreamHeaders(session, current, {
+          referrerOverride: session.origin + "/",
+          navigation: true
+        })
+      });
+      session.cookieHeader = mergeSetCookies(session.cookieHeader, upstream);
+    }
     const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+    const streamLike = /event-stream|ndjson|octet-stream/i.test(contentType) || /text\/event-stream/i.test(String(accept || ""));
+    if (streamLike && upstream.body) {
+      res.status(upstream.status);
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "no-store");
+      const cacheControl = upstream.headers.get("cache-control");
+      if (cacheControl) res.setHeader("Cache-Control", cacheControl);
+      const { Readable } = await import("stream");
+      Readable.fromWeb(upstream.body).pipe(res);
+      return;
+    }
+    const buf = await readLimited(upstream);
     if (/text\/html|application\/xhtml/i.test(contentType)) {
-      const html = rewriteHtml(buf.toString("utf8"), session, upstream.url || target);
+      const html = rewriteHtml(buf.toString("utf8"), session, upstream.url || current);
       res.status(upstream.status);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
@@ -3417,9 +3534,9 @@ router6.get("/asset", async (req, res) => {
     }
     if (/text\/css/i.test(contentType)) {
       const css = buf.toString("utf8").replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, (_m, _q, val) => {
-        const abs = resolveAgainst(target, val.trim());
+        const abs = resolveAgainst(current, val.trim());
         if (!abs || !shouldProxyUrl(session, abs)) return `url("${val.trim()}")`;
-        return `url("${proxyAssetUrl(token, abs)}")`;
+        return `url("${proxyAssetUrl(session.token, abs)}")`;
       });
       res.status(upstream.status);
       res.setHeader("Content-Type", "text/css; charset=utf-8");
@@ -3428,12 +3545,12 @@ router6.get("/asset", async (req, res) => {
     }
     let pathname = "";
     try {
-      pathname = new URL(target).pathname;
+      pathname = new URL(current).pathname;
     } catch {
     }
     const isJs = /javascript|ecmascript/i.test(contentType) || /\.m?js$/i.test(pathname) && !/json/i.test(contentType);
     if (isJs) {
-      const js = rewriteEmbeddedUrls(buf.toString("utf8"), session, upstream.url || target);
+      const js = rewriteEmbeddedUrls(buf.toString("utf8"), session, upstream.url || current);
       res.status(upstream.status);
       res.setHeader(
         "Content-Type",
@@ -3445,12 +3562,16 @@ router6.get("/asset", async (req, res) => {
     res.status(upstream.status);
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "no-store");
-    const cacheControl = upstream.headers.get("cache-control");
-    if (cacheControl) res.setHeader("Cache-Control", cacheControl);
     return res.send(buf);
   } catch (error) {
     return res.status(502).json({ error: error.message || "Asset proxy failed" });
   }
+}
+router6.get("/view", (req, res) => {
+  void handleProxyView(req, res);
+});
+router6.all("/asset", (req, res) => {
+  void handleProxyAsset(req, res);
 });
 var toolProxyRoutes_default = router6;
 
