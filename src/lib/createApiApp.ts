@@ -4,7 +4,13 @@ import accountRouter from './accountRoutes';
 import extensionRouter from './extensionRoutes';
 import notificationRouter from './notificationRoutes';
 import deviceRouter from './deviceRoutes';
-import toolProxyRouter, { handleProxyView, handleFxProxy, handleOriginToolApi } from './toolProxyRoutes';
+import toolProxyRouter, {
+  handlePortalToolFallback,
+  handleProxyAsset,
+  handleProxyView,
+  handleFxProxy,
+  handleOriginToolApi,
+} from './toolProxyRoutes';
 import settingsRouter from './settingsRoutes';
 
 /**
@@ -28,6 +34,24 @@ export function createApiApp() {
     next();
   });
 
+  // Tool proxy traffic must stay byte-for-byte: mount it before the JSON/urlencoded
+  // parsers so uploads, form posts and streaming request bodies pass through intact.
+  const rawBody = express.raw({ type: () => true, limit: '50mb' });
+  const proxyPrefixes = ['/backend-api', '/public-api', '/backend-anon', '/ces'];
+
+  app.use('/fx/:token', rawBody, (req, res) => {
+    void handleFxProxy(req, res);
+  });
+  app.use(proxyPrefixes, rawBody, (req, res) => {
+    void handleOriginToolApi(req, res);
+  });
+  app.all('/api/tool-proxy/asset', rawBody, (req, res) => {
+    void handleProxyAsset(req, res);
+  });
+  app.get(['/go', '/go/*'], (req, res) => {
+    void handleProxyView(req, res);
+  });
+
   app.use(express.json({ limit: '20mb' }));
   app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
@@ -48,17 +72,6 @@ export function createApiApp() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/extension', extensionRouter);
   app.use('/api/tool-proxy', toolProxyRouter);
-  // ChatGPT (and similar) call these on the portal origin. Proxy them with the session cookie.
-  app.use(['/backend-api', '/public-api', '/backend-anon', '/ces'], (req, res) => {
-    void handleOriginToolApi(req, res);
-  });
-  // Reference-style reverse proxy: /fx/<token>/… (same idea as /fx/tools/flow)
-  app.use('/fx/:token', (req, res) => {
-    void handleFxProxy(req, res);
-  });
-  app.get(['/go', '/go/*'], (req, res) => {
-    void handleProxyView(req, res);
-  });
   app.use('/api/notifications', notificationRouter);
 
   const getAI = async () => {
@@ -189,6 +202,12 @@ export function createApiApp() {
     } catch (e: any) {
       return res.json({ success: false, error: `Cannot connect: ${e.message}`, statusCode: 0 });
     }
+  });
+
+  // Runs after every portal route: only claims requests that came from a proxied
+  // tool page, so the dashboard and SPA routes are untouched.
+  app.use((req, res, next) => {
+    void handlePortalToolFallback(req, res, next);
   });
 
   return app;

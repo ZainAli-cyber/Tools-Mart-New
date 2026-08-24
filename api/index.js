@@ -2458,6 +2458,9 @@ import { createClient as createClient11 } from "@supabase/supabase-js";
 import { createHash as createHash2, randomBytes as randomBytes2 } from "crypto";
 init_globalProxySettings();
 
+// src/lib/proxyEngine.ts
+import { Readable } from "stream";
+
 // src/lib/proxyFetch.ts
 init_globalProxySettings();
 var cachedAgent = null;
@@ -2533,6 +2536,540 @@ async function testProxyUrl(proxyUrlRaw) {
   } catch (err) {
     return { ok: false, error: String(err?.message || err || "Proxy test failed") };
   }
+}
+
+// src/lib/proxyEngine.ts
+var PROXY_BASE = "/fx";
+var CROSS_HOST_MARKER = "~";
+var STREAM_TYPES = /event-stream|ndjson|octet-stream|audio|video|zip|pdf|wasm/i;
+var REWRITE_HTML = /text\/html|application\/xhtml/i;
+var REWRITE_CSS = /text\/css/i;
+var HOP_BY_HOP = /* @__PURE__ */ new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host",
+  "content-length",
+  "accept-encoding",
+  "cookie",
+  "origin",
+  "referer",
+  "if-none-match",
+  "if-modified-since"
+]);
+var STRIP_RESPONSE_HEADERS = /* @__PURE__ */ new Set([
+  "content-security-policy",
+  "content-security-policy-report-only",
+  "x-frame-options",
+  "cross-origin-opener-policy",
+  "cross-origin-embedder-policy",
+  "cross-origin-resource-policy",
+  "strict-transport-security",
+  "content-encoding",
+  "content-length",
+  "transfer-encoding",
+  "connection",
+  "keep-alive",
+  "report-to",
+  "nel",
+  "set-cookie",
+  "alt-svc",
+  "link"
+]);
+function normalizeCookies(raw) {
+  const out = [];
+  for (const c of Array.isArray(raw) ? raw : []) {
+    const name = String(c?.name || "").trim();
+    if (!name) continue;
+    out.push({
+      name,
+      value: c?.value == null ? "" : String(c.value),
+      domain: String(c?.domain || "").trim().toLowerCase().replace(/^\./, ""),
+      path: String(c?.path || "/") || "/",
+      secure: Boolean(c?.secure)
+    });
+  }
+  return out;
+}
+function domainMatches(host, domain) {
+  const h = String(host || "").toLowerCase();
+  const d = String(domain || "").toLowerCase().replace(/^\./, "");
+  if (!d) return true;
+  return h === d || h.endsWith(`.${d}`);
+}
+function cookieHeaderFor(cookies, url3) {
+  let host = "";
+  let path = "/";
+  try {
+    const u = new URL(url3);
+    host = u.hostname.toLowerCase();
+    path = u.pathname || "/";
+  } catch {
+    return "";
+  }
+  const seen = /* @__PURE__ */ new Map();
+  for (const c of cookies || []) {
+    if (!domainMatches(host, c.domain)) continue;
+    const cookiePath = c.path || "/";
+    if (cookiePath !== "/" && !path.startsWith(cookiePath)) continue;
+    seen.set(c.name, c.value);
+  }
+  return [...seen.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+}
+function mergeSetCookies(cookies, response, url3) {
+  let host = "";
+  try {
+    host = new URL(url3).hostname.toLowerCase();
+  } catch {
+  }
+  const raw = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+  if (!raw.length) {
+    const single = response.headers.get("set-cookie");
+    if (single) raw.push(single);
+  }
+  if (!raw.length) return cookies;
+  const next = [...cookies];
+  for (const line of raw) {
+    const parts = String(line || "").split(";");
+    const first = parts.shift() || "";
+    const eq = first.indexOf("=");
+    if (eq <= 0) continue;
+    const name = first.slice(0, eq).trim();
+    const value = first.slice(eq + 1).trim();
+    if (!name) continue;
+    let domain = host;
+    let path = "/";
+    for (const attr of parts) {
+      const [k, v] = attr.split("=");
+      const key = String(k || "").trim().toLowerCase();
+      if (key === "domain" && v) domain = String(v).trim().toLowerCase().replace(/^\./, "");
+      if (key === "path" && v) path = String(v).trim() || "/";
+    }
+    const idx = next.findIndex(
+      (c) => c.name === name && (c.domain || "") === domain && (c.path || "/") === path
+    );
+    const entry = { name, value, domain, path };
+    if (idx >= 0) next[idx] = entry;
+    else next.push(entry);
+  }
+  return next;
+}
+function isBlockedHost(host) {
+  const h = String(host || "").toLowerCase();
+  if (!h) return true;
+  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".internal")) return true;
+  if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (h === "::1" || h.startsWith("fd") || h.startsWith("fe80")) return true;
+  return false;
+}
+function toProxyPath(target, absoluteUrl) {
+  try {
+    const u = new URL(absoluteUrl);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return absoluteUrl;
+    const originHost = new URL(target.origin).hostname.toLowerCase();
+    const base = `${PROXY_BASE}/${encodeURIComponent(target.token)}`;
+    const tail = `${u.pathname}${u.search}${u.hash}`;
+    if (u.hostname.toLowerCase() === originHost) return `${base}${tail}`;
+    return `${base}/${CROSS_HOST_MARKER}${u.host}${tail}`;
+  } catch {
+    return absoluteUrl;
+  }
+}
+function fromProxyPath(target, remainder) {
+  const raw = String(remainder || "/");
+  const withSlash = raw.startsWith("/") ? raw : `/${raw}`;
+  try {
+    if (withSlash.startsWith(`/${CROSS_HOST_MARKER}`)) {
+      const rest = withSlash.slice(2);
+      const slash = rest.indexOf("/");
+      const host = slash === -1 ? rest : rest.slice(0, slash);
+      const tail = slash === -1 ? "/" : rest.slice(slash);
+      if (!host || isBlockedHost(host.split(":")[0])) return null;
+      return new URL(tail, `https://${host}`).href;
+    }
+    const originBase = target.origin.endsWith("/") ? target.origin : `${target.origin}/`;
+    const url3 = new URL(withSlash, originBase);
+    if (isBlockedHost(url3.hostname)) return null;
+    return url3.href;
+  } catch {
+    return null;
+  }
+}
+function resolveAgainst(base, href) {
+  try {
+    return new URL(href, base).href;
+  } catch {
+    return null;
+  }
+}
+function mapAttrValue(target, pageUrl, value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("data:") || trimmed.startsWith("blob:") || trimmed.startsWith("javascript:") || trimmed.startsWith("mailto:") || trimmed.startsWith("tel:") || trimmed.startsWith(`${PROXY_BASE}/`)) {
+    return value;
+  }
+  const abs = resolveAgainst(pageUrl, trimmed);
+  if (!abs || !/^https?:/i.test(abs)) return value;
+  return toProxyPath(target, abs);
+}
+function rewriteCss(target, css, pageUrl) {
+  return String(css || "").replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, (_m, _q, val) => {
+    return `url("${mapAttrValue(target, pageUrl, val)}")`;
+  }).replace(/@import\s+(['"])([^'"]+)\1/gi, (_m, q, val) => {
+    return `@import ${q}${mapAttrValue(target, pageUrl, val)}${q}`;
+  });
+}
+function runtimeScript(target) {
+  const base = JSON.stringify(`${PROXY_BASE}/${encodeURIComponent(target.token)}`);
+  const origin = JSON.stringify(new URL(target.origin).origin);
+  const marker = JSON.stringify(CROSS_HOST_MARKER);
+  return `<script data-atm-proxy="1">
+(function(){
+  if (window.__ATM_PROXY__) return;
+  var BASE=${base}, ORIGIN=${origin}, MARK=${marker};
+  window.__ATM_PROXY__={base:BASE,origin:ORIGIN};
+
+  function portalHost(){ return location.host; }
+
+  /** Current page mapped back to the tool URL space. */
+  function virtualHref(){
+    var p=location.pathname;
+    if (p.indexOf(BASE)===0) {
+      var rest=p.slice(BASE.length) || '/';
+      if (rest.charAt(1)===MARK && rest.charAt(0)==='/') {
+        var body=rest.slice(2), i=body.indexOf('/');
+        var host=i===-1?body:body.slice(0,i);
+        var tail=i===-1?'/':body.slice(i);
+        return 'https://'+host+tail+location.search+location.hash;
+      }
+      return ORIGIN+rest+location.search+location.hash;
+    }
+    return ORIGIN+p+location.search+location.hash;
+  }
+
+  function toProxy(abs){
+    try {
+      var u=new URL(abs);
+      if (u.protocol!=='http:' && u.protocol!=='https:') return abs;
+      if (u.host===portalHost()) return abs;
+      var o=new URL(ORIGIN);
+      var tail=u.pathname+u.search+u.hash;
+      if (u.host===o.host) return BASE+tail;
+      return BASE+'/'+MARK+u.host+tail;
+    } catch(e){ return abs; }
+  }
+
+  function map(input){
+    if (input==null) return input;
+    var raw=String(input);
+    if (!raw || raw.charAt(0)==='#') return input;
+    if (/^(data|blob|javascript|mailto|tel|about):/i.test(raw)) return input;
+    if (raw.indexOf(BASE+'/')===0 || raw===BASE) return input;
+    try {
+      var abs=new URL(raw, virtualHref()).href;
+      if (raw.charAt(0)==='/' || /^https?:/i.test(raw)) return toProxy(abs);
+      // Relative paths already resolve inside the proxy path space.
+      return input;
+    } catch(e){ return input; }
+  }
+
+  var ofetch=window.fetch && window.fetch.bind(window);
+  if (ofetch) {
+    window.fetch=function(input, init){
+      try {
+        if (typeof input==='string' || input instanceof URL) {
+          return ofetch(map(String(input)), init);
+        }
+        if (input && input.url) {
+          var mapped=map(input.url);
+          if (mapped===input.url) return ofetch(input, init);
+          return ofetch(new Request(mapped, input), init);
+        }
+      } catch(e){}
+      return ofetch(input, init);
+    };
+  }
+
+  var oopen=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(){
+    var args=Array.prototype.slice.call(arguments);
+    if (typeof args[1]==='string') args[1]=map(args[1]);
+    return oopen.apply(this, args);
+  };
+
+  if (window.EventSource) {
+    var OES=window.EventSource;
+    function PatchedES(url, conf){ return new OES(map(String(url)), conf); }
+    PatchedES.prototype=OES.prototype;
+    try { PatchedES.CONNECTING=OES.CONNECTING; PatchedES.OPEN=OES.OPEN; PatchedES.CLOSED=OES.CLOSED; } catch(e){}
+    window.EventSource=PatchedES;
+  }
+
+  if (window.WebSocket) {
+    var OWS=window.WebSocket;
+    function PatchedWS(url, protocols){
+      var u=String(url);
+      try {
+        var abs=new URL(u, virtualHref());
+        var mapped=toProxy(abs.href.replace(/^ws/,'http'));
+        if (mapped.indexOf(BASE)===0) {
+          u=(location.protocol==='https:'?'wss://':'ws://')+location.host+mapped;
+        }
+      } catch(e){}
+      return protocols===undefined ? new OWS(u) : new OWS(u, protocols);
+    }
+    PatchedWS.prototype=OWS.prototype;
+    try { PatchedWS.CONNECTING=OWS.CONNECTING; PatchedWS.OPEN=OWS.OPEN; PatchedWS.CLOSING=OWS.CLOSING; PatchedWS.CLOSED=OWS.CLOSED; } catch(e){}
+    window.WebSocket=PatchedWS;
+  }
+
+  // Service workers cannot see our patches \u2014 keep the page on the network path.
+  try {
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.register=function(){ return Promise.reject(new Error('disabled by proxy')); };
+      if (navigator.serviceWorker.getRegistrations) {
+        navigator.serviceWorker.getRegistrations().then(function(rs){
+          rs.forEach(function(r){ try { r.unregister(); } catch(e){} });
+        }).catch(function(){});
+      }
+    }
+  } catch(e){}
+
+  function patchProp(proto, prop){
+    try {
+      var d=Object.getOwnPropertyDescriptor(proto, prop);
+      if (!d || !d.set) return;
+      Object.defineProperty(proto, prop, {
+        configurable:true, enumerable:d.enumerable,
+        get: function(){ return d.get ? d.get.call(this) : undefined; },
+        set: function(v){ return d.set.call(this, map(v)); }
+      });
+    } catch(e){}
+  }
+  if (window.HTMLScriptElement) patchProp(HTMLScriptElement.prototype, 'src');
+  if (window.HTMLImageElement) patchProp(HTMLImageElement.prototype, 'src');
+  if (window.HTMLLinkElement) patchProp(HTMLLinkElement.prototype, 'href');
+  if (window.HTMLIFrameElement) patchProp(HTMLIFrameElement.prototype, 'src');
+  if (window.HTMLMediaElement) patchProp(HTMLMediaElement.prototype, 'src');
+  if (window.HTMLFormElement) patchProp(HTMLFormElement.prototype, 'action');
+
+  var oset=Element.prototype.setAttribute;
+  Element.prototype.setAttribute=function(name, value){
+    try {
+      var n=String(name||'').toLowerCase();
+      if (n==='src' || n==='href' || n==='action' || n==='poster' || n==='formaction') {
+        return oset.call(this, name, map(value));
+      }
+    } catch(e){}
+    return oset.call(this, name, value);
+  };
+
+  // Keep SPA history inside the proxy path space.
+  ['pushState','replaceState'].forEach(function(fn){
+    var orig=history[fn];
+    if (!orig) return;
+    history[fn]=function(state, title, url){
+      if (url==null) return orig.call(history, state, title, url);
+      var mapped=url;
+      try {
+        var abs=new URL(String(url), virtualHref());
+        var proxied=toProxy(abs.href);
+        mapped = proxied.indexOf(BASE)===0 ? proxied : url;
+      } catch(e){}
+      return orig.call(history, state, title, mapped);
+    };
+  });
+
+  var oopenwin=window.open;
+  window.open=function(url){
+    var args=Array.prototype.slice.call(arguments);
+    if (typeof url==='string') args[0]=map(url);
+    return oopenwin.apply(window, args);
+  };
+})();
+</script>`;
+}
+function rewriteHtml(target, html, pageUrl) {
+  let out = String(html || "");
+  out = out.replace(/<base\b[^>]*>/gi, "");
+  out = out.replace(
+    /<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi,
+    ""
+  );
+  out = out.replace(/\sintegrity=("[^"]*"|'[^']*')/gi, "");
+  out = out.replace(
+    /\b(href|src|action|poster|formaction|data-src|data-href)=("([^"]*)"|'([^']*)')/gi,
+    (_m, attr, _q, dq, sq) => {
+      const value = dq !== void 0 ? dq : sq || "";
+      return `${attr}="${mapAttrValue(target, pageUrl, value)}"`;
+    }
+  );
+  out = out.replace(/\bsrcset=("([^"]*)"|'([^']*)')/gi, (_m, _q, dq, sq) => {
+    const value = dq !== void 0 ? dq : sq || "";
+    const mapped = value.split(",").map((chunk) => {
+      const bit = chunk.trim();
+      if (!bit) return bit;
+      const [urlPart, ...rest] = bit.split(/\s+/);
+      return [mapAttrValue(target, pageUrl, urlPart), ...rest].join(" ");
+    }).join(", ");
+    return `srcset="${mapped}"`;
+  });
+  out = out.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (m, css) => {
+    return m.replace(css, rewriteCss(target, css, pageUrl));
+  });
+  const runtime = runtimeScript(target);
+  if (/<head[^>]*>/i.test(out)) {
+    out = out.replace(/<head([^>]*)>/i, `<head$1>${runtime}`);
+  } else if (/<html[^>]*>/i.test(out)) {
+    out = out.replace(/<html([^>]*)>/i, `<html$1>${runtime}`);
+  } else {
+    out = runtime + out;
+  }
+  return out;
+}
+function buildRequestHeaders(target, clientHeaders, url3, method) {
+  const headers = {};
+  for (const [rawKey, rawValue] of Object.entries(clientHeaders || {})) {
+    const key = rawKey.toLowerCase();
+    if (HOP_BY_HOP.has(key)) continue;
+    if (key.startsWith("x-vercel") || key.startsWith("x-forwarded") || key === "x-real-ip") continue;
+    if (key === "sec-fetch-site" || key === "sec-fetch-mode" || key === "sec-fetch-dest") continue;
+    const value = Array.isArray(rawValue) ? rawValue.join(", ") : rawValue;
+    if (value == null) continue;
+    headers[rawKey] = String(value);
+  }
+  if (!headers["user-agent"] && !headers["User-Agent"]) {
+    headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+  }
+  headers["Accept-Encoding"] = "identity";
+  const cookie = cookieHeaderFor(target.cookies, url3);
+  if (cookie) headers.Cookie = cookie;
+  let sameOrigin = target.origin;
+  try {
+    sameOrigin = new URL(url3).origin;
+  } catch {
+  }
+  let mappedReferer = "";
+  const rawReferer = String(clientHeaders?.referer || clientHeaders?.Referer || "");
+  if (rawReferer) {
+    try {
+      const refPath = new URL(rawReferer).pathname;
+      const prefix = `${PROXY_BASE}/${encodeURIComponent(target.token)}`;
+      if (refPath === prefix || refPath.startsWith(`${prefix}/`)) {
+        const remainder = `${refPath.slice(prefix.length) || "/"}${new URL(rawReferer).search}`;
+        mappedReferer = fromProxyPath(target, remainder) || "";
+      }
+    } catch {
+    }
+  }
+  const referer = String(target.referrer || "").trim() || mappedReferer || `${sameOrigin}/`;
+  headers.Referer = referer;
+  if (method !== "GET" && method !== "HEAD") {
+    try {
+      headers.Origin = new URL(referer).origin;
+    } catch {
+      headers.Origin = sameOrigin;
+    }
+  }
+  return headers;
+}
+async function forwardRequest(opts) {
+  const { target, req, res } = opts;
+  const method = String(req.method || "GET").toUpperCase();
+  let body;
+  if (method !== "GET" && method !== "HEAD") {
+    const contentType2 = String(req.headers?.["content-type"] || "");
+    if (Buffer.isBuffer(req.body)) body = req.body;
+    else if (typeof req.body === "string") body = Buffer.from(req.body);
+    else if (req.body && typeof req.body === "object" && Object.keys(req.body).length) {
+      body = /application\/x-www-form-urlencoded/i.test(contentType2) ? Buffer.from(new URLSearchParams(req.body).toString()) : Buffer.from(JSON.stringify(req.body));
+    }
+  }
+  let current = opts.url;
+  let cookies = target.cookies;
+  let upstream = null;
+  for (let hop = 0; hop < 8; hop++) {
+    const activeTarget2 = { ...target, cookies };
+    const headers = buildRequestHeaders(
+      activeTarget2,
+      req.headers || {},
+      current,
+      hop === 0 ? method : "GET"
+    );
+    if (body && hop === 0) headers["Content-Length"] = String(body.byteLength);
+    upstream = await proxyAwareFetch(current, {
+      method: hop === 0 ? method : "GET",
+      redirect: "manual",
+      headers,
+      body: hop === 0 && method !== "GET" && method !== "HEAD" ? body : void 0
+    });
+    cookies = mergeSetCookies(cookies, upstream, current);
+    if (upstream.status < 300 || upstream.status >= 400) break;
+    const location2 = upstream.headers.get("location");
+    if (!location2) break;
+    const next = resolveAgainst(current, location2);
+    if (!next) break;
+    if (opts.document) {
+      res.status(upstream.status);
+      res.setHeader("Location", toProxyPath({ ...target, cookies }, next));
+      res.end();
+      return { cookies };
+    }
+    current = next;
+  }
+  if (!upstream) {
+    res.status(502).json({ error: "No upstream response" });
+    return { cookies };
+  }
+  const activeTarget = { ...target, cookies };
+  const contentType = upstream.headers.get("content-type") || "";
+  for (const [key, value] of upstream.headers.entries()) {
+    if (STRIP_RESPONSE_HEADERS.has(key.toLowerCase())) continue;
+    res.setHeader(key, value);
+  }
+  const location = upstream.headers.get("location");
+  if (location) {
+    const abs = resolveAgainst(current, location);
+    if (abs) res.setHeader("Location", toProxyPath(activeTarget, abs));
+  }
+  res.setHeader("Cache-Control", "no-store");
+  const shouldRewriteHtml = REWRITE_HTML.test(contentType);
+  const shouldRewriteCss = REWRITE_CSS.test(contentType);
+  const shouldStream = !shouldRewriteHtml && !shouldRewriteCss && (STREAM_TYPES.test(contentType) || !contentType);
+  res.status(upstream.status);
+  if (!upstream.body) {
+    res.end();
+    return { cookies };
+  }
+  if (shouldStream) {
+    if (/event-stream/i.test(contentType)) {
+      res.setHeader("X-Accel-Buffering", "no");
+    }
+    if (typeof res.flushHeaders === "function") res.flushHeaders();
+    Readable.fromWeb(upstream.body).pipe(res);
+    return { cookies };
+  }
+  const buf = Buffer.from(await upstream.arrayBuffer());
+  if (shouldRewriteHtml) {
+    const html = rewriteHtml(activeTarget, buf.toString("utf8"), upstream.url || current);
+    res.setHeader("Content-Type", contentType || "text/html; charset=utf-8");
+    res.send(html);
+    return { cookies };
+  }
+  if (shouldRewriteCss) {
+    const css = rewriteCss(activeTarget, buf.toString("utf8"), upstream.url || current);
+    res.setHeader("Content-Type", contentType || "text/css; charset=utf-8");
+    res.send(css);
+    return { cookies };
+  }
+  if (contentType) res.setHeader("Content-Type", contentType);
+  res.send(buf);
+  return { cookies };
 }
 
 // src/lib/proxySessionStore.ts
@@ -2615,9 +3152,7 @@ async function loadStoredSession(token) {
 
 // src/lib/toolProxyRoutes.ts
 var router6 = Router6();
-var SESSION_TTL_MS = 20 * 60 * 1e3;
-var MAX_BODY_BYTES = 8 * 1024 * 1024;
-var MAX_REDIRECTS = 12;
+var SESSION_TTL_MS = 6 * 60 * 60 * 1e3;
 var sessions = /* @__PURE__ */ new Map();
 function pruneSessions() {
   const now = Date.now();
@@ -2726,42 +3261,10 @@ function hostsFromCookies(cookies, origin) {
   } catch {
   }
   for (const c of cookies || []) {
-    let d = String(c?.domain || "").trim().replace(/^\./, "").toLowerCase();
+    const d = String(c?.domain || "").trim().replace(/^\./, "").toLowerCase();
     if (d) hosts.add(d);
   }
   return [...hosts];
-}
-function relatedHostsForOrigin(origin) {
-  try {
-    const host = new URL(origin).hostname.toLowerCase();
-    if (/(chatgpt|openai|oaistatic)/i.test(host)) {
-      return [
-        "chatgpt.com",
-        "chat.openai.com",
-        "openai.com",
-        "oaistatic.com",
-        "oaiusercontent.com",
-        "auth.openai.com",
-        "ab.chatgpt.com"
-      ];
-    }
-    if (host === "toolaccess.click" || host.endsWith(".toolaccess.click")) {
-      return ["toolaccess.click"];
-    }
-  } catch {
-  }
-  return [];
-}
-function hostAllowed(host, domains) {
-  const h = host.toLowerCase();
-  return domains.some((d) => {
-    const domain = String(d || "").replace(/^\./, "").toLowerCase();
-    return Boolean(domain) && (h === domain || h.endsWith(`.${domain}`));
-  });
-}
-function isStaticCdnHost(host) {
-  const h = host.toLowerCase();
-  return h === "oaistatic.com" || h.endsWith(".oaistatic.com") || h.endsWith(".oaiusercontent.com");
 }
 function isToolAccessUrl(url3) {
   try {
@@ -2818,35 +3321,6 @@ function resolvePanelUnlockReferrer(raw, dest) {
   if (normalized) return normalized;
   if (isToolAccessUrl(dest)) return DEFAULT_PANEL_REFERRER;
   return "";
-}
-function isPanelAccessDenied(status, contentType, bodyPreview) {
-  if (status !== 403) return false;
-  const text = String(bodyPreview || "");
-  return /access denied|pak seo|tool dashboard/i.test(text) || /text\/html/i.test(String(contentType || ""));
-}
-function mergeSetCookies(existingHeader, response) {
-  const jar = /* @__PURE__ */ new Map();
-  for (const part of String(existingHeader || "").split(";")) {
-    const eq = part.indexOf("=");
-    if (eq <= 0) continue;
-    const name = part.slice(0, eq).trim();
-    const value = part.slice(eq + 1).trim();
-    if (name) jar.set(name, value);
-  }
-  const rawList = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
-  if (!rawList.length) {
-    const single = response.headers.get("set-cookie");
-    if (single) rawList.push(single);
-  }
-  for (const raw of rawList) {
-    const first = String(raw || "").split(";")[0] || "";
-    const eq = first.indexOf("=");
-    if (eq <= 0) continue;
-    const name = first.slice(0, eq).trim();
-    const value = first.slice(eq + 1).trim();
-    if (name) jar.set(name, value);
-  }
-  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
 }
 async function selectToolsRows2(sb, idEq) {
   const attempts = [
@@ -2963,60 +3437,38 @@ function publicFxPath(token) {
   return `/fx/${encodeURIComponent(String(token || "").trim())}/`;
 }
 function tokenFromRequest(req) {
-  const fromQuery = String(req.query?.token || "").trim();
-  if (fromQuery) return fromQuery;
   const fromParam = String(req.params?.token || "").trim();
   if (fromParam) return fromParam;
+  const fromQuery = String(req.query?.token || "").trim();
+  if (fromQuery) return fromQuery;
   const cookie = String(req.headers?.cookie || "");
   const match = cookie.match(/(?:^|;\s*)atm_px=([^;]+)/);
   return match ? decodeURIComponent(match[1].trim()) : "";
 }
+function tokenFromReferer(req) {
+  try {
+    const path = new URL(String(req.headers?.referer || "")).pathname;
+    return decodeURIComponent(path.match(/^\/fx\/([^/]+)/)?.[1] || "");
+  } catch {
+    return "";
+  }
+}
 function setProxyCookie(res, token) {
   const maxAge = Math.floor(SESSION_TTL_MS / 1e3);
   const secure = process.env.VERCEL || process.env.NODE_ENV === "production" ? "; Secure" : "";
-  res.setHeader(
-    "Set-Cookie",
-    `atm_px=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; SameSite=Lax; HttpOnly${secure}`
+  const value = `atm_px=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; SameSite=Lax; HttpOnly${secure}`;
+  if (typeof res.append === "function") res.append("Set-Cookie", value);
+  else res.setHeader("Set-Cookie", value);
+}
+function hydrateSession(stored) {
+  const cookies = Array.isArray(stored.cookies) && stored.cookies.length ? normalizeCookies(stored.cookies) : normalizeCookies(
+    String(stored.cookieHeader || "").split(";").map((part) => {
+      const eq = part.indexOf("=");
+      if (eq <= 0) return null;
+      return { name: part.slice(0, eq).trim(), value: part.slice(eq + 1).trim() };
+    }).filter(Boolean)
   );
-}
-function resolveAgainst(base, href) {
-  try {
-    return new URL(href, base).href;
-  } catch {
-    return null;
-  }
-}
-function shouldProxyUrl(session, absoluteUrl) {
-  try {
-    const u = new URL(absoluteUrl);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    const host = u.hostname.toLowerCase();
-    const originHost = new URL(session.origin).hostname.toLowerCase();
-    if (host === originHost || host.endsWith(`.${originHost}`)) return true;
-    if (host === "toolaccess.click" || host.endsWith(".toolaccess.click")) return true;
-    if (hostAllowed(host, session.cookieHosts || [])) return true;
-    if (hostAllowed(host, relatedHostsForOrigin(session.origin))) return true;
-    return false;
-  } catch {
-    return false;
-  }
-}
-function cookieHeaderForTarget(session, url3) {
-  try {
-    const host = new URL(url3).hostname.toLowerCase();
-    if (isStaticCdnHost(host)) return "";
-    const originHost = new URL(session.origin).hostname.toLowerCase();
-    if (host === originHost || host.endsWith(`.${originHost}`) || originHost.endsWith(`.${host}`)) {
-      return session.cookieHeader;
-    }
-    if (hostAllowed(host, session.cookieHosts || [])) return session.cookieHeader;
-    if (hostAllowed(host, relatedHostsForOrigin(session.origin)) && !isStaticCdnHost(host)) {
-      return session.cookieHeader;
-    }
-    return "";
-  } catch {
-    return session.cookieHeader;
-  }
+  return { ...stored, cookies };
 }
 async function resolveSession(token) {
   pruneSessions();
@@ -3029,9 +3481,10 @@ async function resolveSession(token) {
   }
   const stored = await loadStoredSession(id);
   if (!stored || stored.expiresAt <= Date.now()) return null;
-  stored.expiresAt = Date.now() + SESSION_TTL_MS;
-  sessions.set(id, stored);
-  return stored;
+  const session = hydrateSession(stored);
+  session.expiresAt = Date.now() + SESSION_TTL_MS;
+  sessions.set(id, session);
+  return session;
 }
 async function rememberSession(session) {
   sessions.set(session.token, session);
@@ -3041,448 +3494,51 @@ async function rememberSession(session) {
     console.error("[tool-proxy] persist session failed", err?.message || err);
   }
 }
-function proxyAssetUrl(token, absoluteUrl) {
-  return `/api/tool-proxy/asset?token=${encodeURIComponent(token)}&u=${encodeURIComponent(absoluteUrl)}`;
-}
-function proxyPathOrAssetUrl(session, absoluteUrl) {
-  try {
-    const u = new URL(absoluteUrl);
-    const originHost = new URL(session.origin).hostname.toLowerCase();
-    const host = u.hostname.toLowerCase();
-    if (host === originHost || host.endsWith(`.${originHost}`)) {
-      return `${publicFxPath(session.token).replace(/\/$/, "")}${u.pathname}${u.search}${u.hash}`;
-    }
-  } catch {
-  }
-  return proxyAssetUrl(session.token, absoluteUrl);
-}
-function rewriteEmbeddedUrls(text, session, pageUrl) {
-  return String(text || "").replace(
-    /https?:\/\/[^\s"'<>\\)]+/gi,
-    (raw) => {
-      const cleaned = raw.replace(/[.,;]+$/, "");
-      const abs = resolveAgainst(pageUrl, cleaned);
-      if (!abs || !shouldProxyUrl(session, abs)) return raw;
-      return proxyPathOrAssetUrl(session, abs);
-    }
-  );
-}
-function proxyBootstrapScript(session) {
-  const token = JSON.stringify(session.token);
-  const root = JSON.stringify(session.origin.endsWith("/") ? session.origin : `${session.origin}/`);
-  const allow = JSON.stringify(
-    [.../* @__PURE__ */ new Set([...session.cookieHosts || [], ...relatedHostsForOrigin(session.origin)])]
-  );
-  const fxBase = JSON.stringify(publicFxPath(session.token));
-  return `<script data-atm-proxy="1">
-(function(){
-  var TOKEN=${token};
-  var ROOT=${root};
-  var ALLOW=${allow};
-  var FX=${fxBase};
-  try {
-    sessionStorage.setItem('atm_px', TOKEN);
-    sessionStorage.setItem('atm_px_go', FX);
-    if (location.search) history.replaceState(null, '', location.pathname + location.hash);
-  } catch (e) {}
-  function hostOk(h){
-    h=String(h||'').toLowerCase();
-    for (var i=0;i<ALLOW.length;i++){
-      var d=String(ALLOW[i]||'').replace(/^\\./,'').toLowerCase();
-      if(d && (h===d || h.slice(-(d.length+1))==='.'+d)) return true;
-    }
-    return false;
-  }
-  function rootHost(){
-    try { return new URL(ROOT).hostname.toLowerCase(); } catch(e){ return ''; }
-  }
-  function toToolUrl(u){
-    try {
-      var a=new URL(u, location.href);
-      var rh=rootHost();
-      if (a.hostname===location.hostname || /vercel\\.app$/i.test(a.hostname)) {
-        if (/^\\/api\\/tool-proxy\\//i.test(a.pathname)) return null;
-        var fxPrefix='/fx/'+TOKEN;
-        if (a.pathname===fxPrefix || a.pathname.indexOf(fxPrefix+'/')===0) {
-          var rest=a.pathname.slice(fxPrefix.length) || '/';
-          return new URL(rest + a.search + a.hash, ROOT).href;
-        }
-        if (/^\\/go(\\/|$)/i.test(a.pathname)) return new URL('/' + (a.search||'') + (a.hash||''), ROOT).href;
-        return new URL(a.pathname + a.search + a.hash, ROOT).href;
-      }
-      if (rh && (a.hostname===rh || a.hostname.slice(-(rh.length+1))==='.'+rh)) return a.href;
-      return a.href;
-    } catch(e){ return null; }
-  }
-  function wrap(u){
-    var a=toToolUrl(u);
-    if(!a) return u;
-    try {
-      var parsed=new URL(a);
-      var h=parsed.hostname.toLowerCase();
-      if(!hostOk(h)) return u;
-      var rh=rootHost();
-      // Same-site tool API paths \u2192 /fx/<token>/\u2026 (reference-style reverse proxy)
-      if (rh && (h===rh || h.slice(-(rh.length+1))==='.'+rh)) {
-        return FX.replace(/\\/$/,'') + parsed.pathname + parsed.search + parsed.hash;
-      }
-      // CDN / other allowed hosts still use asset query proxy
-      return '/api/tool-proxy/asset?token='+encodeURIComponent(TOKEN)+'&u='+encodeURIComponent(a);
-    } catch(e){ return u; }
-  }
-  function forwardFetch(input, init){
-    var raw=typeof input==='string'?input:(input&&input.url);
-    if(!raw) return ofetch.apply(window, arguments);
-    var w=wrap(raw);
-    if(w===raw) return ofetch.apply(window, arguments);
-    if(typeof input==='string') return ofetch.call(window, w, init);
-    var next=Object.assign({}, init||{});
-    try {
-      if(!next.method && input.method) next.method=input.method;
-      if(!next.headers && input.headers) next.headers=input.headers;
-      if(next.body==null && input.method && input.method!=='GET' && input.method!=='HEAD') {
-        next.body=input.body;
-        if(next.duplex==null) next.duplex='half';
-      }
-      if(!next.credentials) next.credentials=input.credentials||'same-origin';
-    } catch(e){}
-    return ofetch.call(window, w, next);
-  }
-  var ofetch=window.fetch;
-  window.fetch=function(input, init){
-    try { return forwardFetch(input, init); } catch(e){ return ofetch.apply(this, arguments); }
-  };
-  var oopen=XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open=function(m, url){
-    var args=Array.prototype.slice.call(arguments);
-    if(typeof url==='string') args[1]=wrap(url);
-    return oopen.apply(this, args);
-  };
-  if (window.EventSource) {
-    var OES=window.EventSource;
-    window.EventSource=function(url, conf){
-      return new OES(wrap(String(url)), conf);
-    };
-    window.EventSource.prototype=OES.prototype;
-  }
-  document.addEventListener('submit', function(e){
-    try {
-      var form=e.target;
-      if(!form || form.tagName!=='FORM') return;
-      var action=form.getAttribute('action') || location.href;
-      var tool=toToolUrl(action);
-      if(!tool) { e.preventDefault(); e.stopPropagation(); return; }
-      var resolved=new URL(action, location.href);
-      if(resolved.hostname!==location.hostname && !/vercel\\.app$/i.test(resolved.hostname)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      var method=(form.getAttribute('method')||'GET').toUpperCase();
-      var fd=new FormData(form);
-      if(method==='GET'){
-        var dest=new URL(tool);
-        fd.forEach(function(v,k){ dest.searchParams.set(k, String(v)); });
-        location.href=wrap(dest.href);
-        return;
-      }
-      forwardFetch(wrap(tool), { method: method, body: fd, credentials: 'same-origin' })
-        .then(function(r){ return r.text(); })
-        .then(function(html){
-          if(html){ document.open(); document.write(html); document.close(); }
-        })
-        .catch(function(){ location.href=FX; });
-    } catch(err){}
-  }, true);
-
-  try {
-    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-      navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); });
-    }
-  } catch (e) {}
-
-  function uuid(){
-    try { if (crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
-      var r = Math.random() * 16 | 0;
-      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-    });
-  }
-  function composerEl(){
-    return document.querySelector('#prompt-textarea')
-      || document.querySelector('[data-testid="prompt-textarea"]')
-      || document.querySelector('textarea')
-      || document.querySelector('[contenteditable="true"]');
-  }
-  function composerText(){
-    var el = composerEl();
-    if (!el) return '';
-    var t = el.value != null && el.tagName !== 'DIV' ? String(el.value) : String(el.innerText || el.textContent || '');
-    return t.replace(/\\u200b/g, '').trim();
-  }
-  function findSend(){
-    return document.querySelector('[data-testid="send-button"]')
-      || document.querySelector('button[aria-label="Send prompt"]')
-      || document.querySelector('button[aria-label="Send message"]')
-      || document.querySelector('button[aria-label*="Send prompt"]')
-      || document.querySelector('button[aria-label*="Send message"]');
-  }
-  function unlockSend(){
-    var b = findSend();
-    if (!b) return null;
-    try {
-      b.disabled = false;
-      b.removeAttribute('disabled');
-      b.setAttribute('aria-disabled', 'false');
-      b.style.pointerEvents = 'auto';
-      b.style.opacity = '1';
-    } catch (e) {}
-    return b;
-  }
-  function parseSse(text){
-    var out = '';
-    String(text || '').split('\\n').forEach(function(line){
-      var s = line.replace(/^data:\\s?/, '').trim();
-      if (!s || s === '[DONE]') return;
-      try {
-        var j = JSON.parse(s);
-        var parts = j && j.message && j.message.content && j.message.content.parts;
-        if (parts && parts.length) {
-          out = parts.filter(function(p){ return typeof p === 'string'; }).join('\\n');
-        } else if (typeof j.v === 'string') {
-          out += j.v;
-        } else if (j.o === 'append' && typeof j.v === 'string') {
-          out += j.v;
-        }
-      } catch (e) {}
-    });
-    return out;
-  }
-  function showReply(userText, assistantText){
-    var host = document.getElementById('atm-proxy-chat');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'atm-proxy-chat';
-      host.style.cssText = 'max-width:48rem;margin:16px auto 96px;padding:0 16px;font-family:system-ui,sans-serif;';
-      (document.querySelector('main') || document.body).appendChild(host);
-    }
-    var esc = function(v){ return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;'); };
-    host.insertAdjacentHTML('beforeend',
-      '<div style="margin:10px 0;padding:12px 14px;background:#f4f4f4;border-radius:16px"><b>You</b><div>'+esc(userText)+'</div></div>' +
-      '<div style="margin:10px 0;padding:12px 14px;border:1px solid #e5e5e5;border-radius:16px"><b>ChatGPT</b><div class="atm-as">'+esc(assistantText)+'</div></div>'
-    );
-  }
-  var sending = false;
-  function sendNow(){
-    var text = composerText();
-    if (!text || sending) return;
-    sending = true;
-    var url = String(FX || '/').replace(/\\/$/, '') + '/backend-api/conversation';
-    showReply(text, 'Sending\u2026');
-    ofetch.call(window, url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-      credentials: 'same-origin',
-      body: JSON.stringify({
-        action: 'next',
-        messages: [{ id: uuid(), author: { role: 'user' }, content: { content_type: 'text', parts: [text] }, metadata: {} }],
-        parent_message_id: uuid(),
-        model: 'auto',
-        timezone_offset_min: new Date().getTimezoneOffset()
-      })
-    }).then(function(r){ return r.text().then(function(raw){ return { ok: r.ok, status: r.status, raw: raw }; }); })
-    .then(function(res){
-      sending = false;
-      var reply = parseSse(res.raw) || (res.ok ? 'Sent.' : ('Send failed (' + res.status + '). ' + String(res.raw || '').slice(0, 240)));
-      var host = document.getElementById('atm-proxy-chat');
-      if (host) {
-        var nodes = host.querySelectorAll('.atm-as');
-        if (nodes.length) nodes[nodes.length - 1].textContent = reply;
-      }
-    }).catch(function(err){
-      sending = false;
-      var host = document.getElementById('atm-proxy-chat');
-      if (host) {
-        var nodes = host.querySelectorAll('.atm-as');
-        if (nodes.length) nodes[nodes.length - 1].textContent = 'Send failed: ' + (err && err.message ? err.message : String(err));
-      }
-    });
-  }
-  setInterval(unlockSend, 400);
-  document.addEventListener('keydown', function(e){
-    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
-    var send = findSend();
-    var stuck = !send || send.disabled || send.getAttribute('disabled') != null || send.getAttribute('aria-disabled') === 'true';
-    if (!stuck) return;
-    if (!composerText()) return;
-    e.preventDefault();
-    e.stopPropagation();
-    sendNow();
-  }, true);
-  document.addEventListener('pointerdown', function(e){
-    var t = e.target;
-    if (!t || !t.closest) return;
-    var b = t.closest('button');
-    if (!b) return;
-    var label = (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('data-testid') || '');
-    if (!/send/i.test(label) && b.getAttribute('data-testid') !== 'send-button') return;
-    unlockSend();
-    var stuck = b.disabled || b.getAttribute('disabled') != null || b.getAttribute('aria-disabled') === 'true';
-    if (!stuck) return;
-    if (!composerText()) return;
-    e.preventDefault();
-    e.stopPropagation();
-    sendNow();
-  }, true);
-})();
-</script>`;
-}
-function rewriteHtml(html, session, pageUrl) {
-  const baseHref = pageUrl || session.targetUrl;
-  const token = session.token;
-  const rewriteAttr = (_attr, value) => {
-    const trimmed = value.trim();
-    if (!trimmed || trimmed.startsWith("data:") || trimmed.startsWith("blob:") || trimmed.startsWith("javascript:")) {
-      return value;
-    }
-    if (trimmed.startsWith("#")) return value;
-    const abs = resolveAgainst(baseHref, trimmed);
-    if (!abs || !shouldProxyUrl(session, abs)) return value;
-    return proxyPathOrAssetUrl(session, abs);
-  };
-  let out = html;
-  out = out.replace(/<base\b[^>]*>/gi, "");
-  out = out.replace(/<meta[^>]+http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
-  out = out.replace(
-    /\b(href|src|action|data-src|poster|data-href)=["']([^"']+)["']/gi,
-    (_m, attr, val) => `${attr}="${rewriteAttr(attr, val)}"`
-  );
-  out = out.replace(/\bsrcset=["']([^"']+)["']/gi, (_m, val) => {
-    const parts = val.split(",").map((chunk) => {
-      const bit = chunk.trim();
-      if (!bit) return bit;
-      const [urlPart, ...rest] = bit.split(/\s+/);
-      const rewritten = rewriteAttr("srcset", urlPart);
-      return [rewritten, ...rest].join(" ");
-    });
-    return `srcset="${parts.join(", ")}"`;
-  });
-  out = out.replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, (_m, _q, val) => {
-    const rewritten = rewriteAttr("css", val.trim());
-    return `url("${rewritten}")`;
-  });
-  out = rewriteEmbeddedUrls(out, session, baseHref);
-  const boot = proxyBootstrapScript(session);
-  if (/<head[\s>]/i.test(out)) {
-    out = out.replace(/<head([^>]*)>/i, `<head$1>${boot}`);
-  } else {
-    out = boot + out;
-  }
-  return out;
-}
 function escapeHtml(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return String(s || "").replace(/[&<>"']/g, (ch) => {
+    const map = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    };
+    return map[ch] || ch;
+  });
 }
-function buildUpstreamHeaders(session, forUrl, opts) {
-  const referrer = String(opts?.referrerOverride || session.referrer || "").trim();
-  const navigation = opts?.navigation !== false;
-  const headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    Accept: navigation ? "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8" : "*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Cache-Control": "no-cache",
-    Pragma: "no-cache",
-    "Upgrade-Insecure-Requests": "1"
+function sessionLostPage(res, status = 410) {
+  return res.status(status).type("html").send(
+    `<!doctype html><meta charset="utf-8"><title>Session ended</title>
+       <body style="font-family:system-ui;background:#0d0908;color:#fecaca;padding:2.5rem;max-width:34rem;margin:auto">
+       <h1 style="font-size:1.25rem">Tool session ended</h1>
+       <p style="color:#94a3b8;font-size:.9rem">Go back to your dashboard and click <strong>Open</strong> on the tool again.</p>
+       </body>`
+  );
+}
+function isDocumentRequest(req) {
+  const method = String(req.method || "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD" && method !== "POST") return false;
+  const dest = String(req.headers?.["sec-fetch-dest"] || "").toLowerCase();
+  if (dest) return dest === "document" || dest === "iframe";
+  const accept = String(req.headers?.accept || "");
+  return /text\/html/i.test(accept);
+}
+async function proxyThrough(session, req, res, url3) {
+  const document = isDocumentRequest(req);
+  const target = {
+    token: session.token,
+    origin: session.origin,
+    cookies: session.cookies,
+    referrer: document ? session.referrer : ""
   };
-  if (navigation) {
-    headers["Sec-Fetch-Dest"] = "document";
-    headers["Sec-Fetch-Mode"] = "navigate";
-    headers["Sec-Fetch-User"] = "?1";
-    headers["Sec-Fetch-Site"] = referrer ? "cross-site" : "none";
-  }
-  const cookies = cookieHeaderForTarget(session, forUrl);
-  if (cookies) headers.Cookie = cookies;
-  if (referrer) {
-    headers.Referer = referrer;
-    try {
-      headers.Origin = new URL(referrer).origin;
-    } catch {
-    }
-  } else {
-    try {
-      headers.Referer = new URL(session.origin).origin + "/";
-      headers.Origin = new URL(session.origin).origin;
-    } catch {
-      try {
-        headers.Referer = new URL(forUrl).origin + "/";
-      } catch {
-      }
-    }
-  }
-  return headers;
-}
-async function fetchUpstream(session, url3, init) {
-  let current = url3;
-  let method = init?.method || "GET";
-  let body = init?.body ?? null;
-  const candidates = (session.referrerCandidates?.length ? session.referrerCandidates : [session.referrer]).filter(Boolean);
-  let candidateIdx = 0;
-  const tried = /* @__PURE__ */ new Set();
-  for (let i = 0; i < MAX_REDIRECTS; i++) {
-    const activeReferrer = candidates[candidateIdx] || session.referrer || "";
-    if (activeReferrer) {
-      session.referrer = activeReferrer;
-      tried.add(activeReferrer);
-    }
-    const response = await proxyAwareFetch(current, {
-      method,
-      redirect: "manual",
-      headers: buildUpstreamHeaders(session, current, {
-        referrerOverride: activeReferrer,
-        navigation: !/\.(css|js|mjs|png|jpe?g|gif|webp|svg|woff2?|ttf|ico)(\?|$)/i.test(current)
-      }),
-      body: method === "GET" || method === "HEAD" ? void 0 : body || void 0
-    });
-    session.cookieHeader = mergeSetCookies(session.cookieHeader, response);
-    if (response.status >= 300 && response.status < 400) {
-      const loc = response.headers.get("location");
-      if (!loc) return response;
-      const next = resolveAgainst(current, loc);
-      if (!next) return response;
-      current = next;
-      method = "GET";
-      body = null;
-      continue;
-    }
-    if (response.status === 403 && isToolAccessUrl(current)) {
-      const contentType = response.headers.get("content-type") || "";
-      const previewBuf = await response.clone().arrayBuffer();
-      const preview = Buffer.from(previewBuf).toString("utf8").slice(0, 400);
-      if (isPanelAccessDenied(403, contentType, preview)) {
-        let advanced = false;
-        while (candidateIdx + 1 < candidates.length) {
-          candidateIdx += 1;
-          const nextRef = candidates[candidateIdx];
-          if (nextRef && !tried.has(nextRef)) {
-            advanced = true;
-            break;
-          }
-        }
-        if (advanced) {
-          method = "GET";
-          body = null;
-          continue;
-        }
-      }
-    }
-    return response;
-  }
-  throw new Error("Too many redirects from upstream tool panel");
-}
-async function readLimited(response) {
-  const ab = await response.arrayBuffer();
-  if (ab.byteLength > MAX_BODY_BYTES) {
-    throw new Error("Upstream response too large to proxy");
-  }
-  return Buffer.from(ab);
+  const before = session.cookies.length;
+  const result = await forwardRequest({ target, req, res, url: url3, document });
+  const changed = result.cookies !== session.cookies && (result.cookies.length !== before || JSON.stringify(result.cookies) !== JSON.stringify(session.cookies));
+  session.cookies = result.cookies;
+  session.cookieHeader = cookiesToHeader(result.cookies);
+  session.expiresAt = Date.now() + SESSION_TTL_MS;
+  if (changed) void rememberSession(session);
+  else sessions.set(session.token, session);
 }
 router6.post("/launch", async (req, res) => {
   try {
@@ -3498,29 +3554,15 @@ router6.post("/launch", async (req, res) => {
         accessMethod: "extension"
       });
     }
-    const preferProxy = isToolAccessUrl(dest) || Boolean(fields.panelReferrer) || Boolean(req.body?.forceProxy) || cookies.length > 0;
-    const proxyStatus = await getGlobalProxyPublicStatus();
-    const useServerProxy = preferProxy || proxyStatus.ready;
-    if (!useServerProxy) {
-      return res.json({
-        mode: "direct",
-        url: dest,
-        name: tool.name,
-        toolId: tool.id,
-        message: "This destination is opened directly; use Copy cookies + open for HttpOnly sites."
-      });
-    }
-    const cookieHeader = cookiesToHeader(cookies);
     let origin;
     try {
       origin = new URL(dest).origin;
     } catch {
       return res.status(400).json({ error: "Invalid tool destination URL" });
     }
+    const proxyStatus = await getGlobalProxyPublicStatus();
     const referrer = resolvePanelUnlockReferrer(fields.panelReferrer, dest);
-    const referrerCandidates = panelUnlockReferrerCandidates(
-      fields.panelReferrer || referrer || DEFAULT_PANEL_REFERRER
-    );
+    const jar = normalizeCookies(cookies);
     pruneSessions();
     const token = newToken();
     const session = {
@@ -3530,274 +3572,134 @@ router6.post("/launch", async (req, res) => {
       toolName: String(tool.name || "Tool"),
       targetUrl: dest,
       origin,
-      cookieHeader,
+      cookies: jar,
+      cookieHeader: cookiesToHeader(cookies),
       cookieHosts: hostsFromCookies(cookies, origin),
       referrer: referrer || (isToolAccessUrl(dest) ? DEFAULT_PANEL_REFERRER : ""),
-      referrerCandidates: referrerCandidates.length > 0 ? referrerCandidates : isToolAccessUrl(dest) ? [DEFAULT_PANEL_REFERRER] : [],
+      referrerCandidates: panelUnlockReferrerCandidates(fields.panelReferrer || referrer || ""),
       expiresAt: Date.now() + SESSION_TTL_MS
     };
-    sessions.set(token, session);
     await rememberSession(session);
     setProxyCookie(res, token);
-    const viewUrl = publicFxPath(token);
     return res.json({
       mode: "proxy",
-      viewUrl,
+      viewUrl: publicFxPath(token),
       url: dest,
       name: tool.name,
       toolId: tool.id,
       expiresInSec: Math.floor(SESSION_TTL_MS / 1e3),
       viaGlobalProxy: proxyStatus.ready,
-      fingerprint: createHash2("sha256").update(cookieHeader || dest).digest("hex").slice(0, 12)
+      fingerprint: createHash2("sha256").update(session.cookieHeader || dest).digest("hex").slice(0, 12)
     });
   } catch (error) {
     const message = String(error?.message || "").trim();
     console.error("[tool-proxy/launch]", message || error);
-    return res.status(500).json({
-      error: message || "Could not start tool proxy",
-      detail: process.env.NODE_ENV === "production" ? void 0 : message || void 0
-    });
+    return res.status(500).json({ error: message || "Could not start tool proxy" });
   }
 });
-async function handleProxyView(req, res) {
-  try {
-    const token = tokenFromRequest(req);
-    const session = await resolveSession(token);
-    if (!session) {
-      return res.status(410).type("html").send(
-        `<!doctype html><meta charset="utf-8"><title>Reconnecting\u2026</title>
-           <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem">
-           <h1>Reconnecting\u2026</h1>
-           <p>Restoring your tool session\u2026</p>
-           <script>
-           (function(){
-             try {
-               var t = sessionStorage.getItem('atm_px');
-               var go = sessionStorage.getItem('atm_px_go') || '/fx/';
-               if (t) {
-                 var url = go.indexOf('/fx/') === 0
-                   ? go
-                   : (go + (go.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t));
-                 location.replace(url);
-                 return;
-               }
-             } catch (e) {}
-             document.body.innerHTML = '<h1>Session expired</h1><p>Return to the dashboard and click Open again.</p>';
-           })();
-           </script>
-           </body>`
-      );
-    }
-    session.expiresAt = Date.now() + SESSION_TTL_MS;
-    void rememberSession(session);
-    setProxyCookie(res, session.token);
-    const upstream = await fetchUpstream(session, session.targetUrl);
-    const buf = await readLimited(upstream);
-    const contentType = upstream.headers.get("content-type") || "text/html; charset=utf-8";
-    if (!/text\/html|application\/xhtml/i.test(contentType)) {
-      res.status(upstream.status);
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Cache-Control", "no-store");
-      return res.send(buf);
-    }
-    const html = rewriteHtml(buf.toString("utf8"), session, upstream.url || session.targetUrl);
-    if (upstream.status === 403 && isPanelAccessDenied(403, contentType, html)) {
-      return res.status(403).type("html").send(
-        `<!doctype html><meta charset="utf-8"><title>Panel locked</title>
-           <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem;max-width:40rem">
-           <h1>Tool panel still locked (403)</h1>
-           <p>The vendor returned <em>Access from Pak seo tool dashboard</em>. Referer alone is not enough \u2014 admin must paste cookies from an <strong>already unlocked</strong> toolaccess session, and set Panel unlock referrer to <code>https://app.pakseotools.com/</code> (not /login).</p>
-           <p style="color:#94a3b8;font-size:0.85rem">Tried referrer: ${escapeHtml(session.referrer || "\u2014")}</p>
-           </body>`
-      );
-    }
-    res.status(upstream.status);
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    return res.send(html);
-  } catch (error) {
-    return res.status(502).type("html").send(
-      `<!doctype html><meta charset="utf-8"><title>Error</title>
-         <body style="font-family:system-ui;background:#130d0d;color:#fecaca;padding:2rem">
-         <h1>Could not open tool</h1>
-         <p>${escapeHtml(error?.message || "Upstream fetch failed")}</p>
-         <p>Ask admin to refresh cookies, or try again from the dashboard.</p></body>`
-    );
-  }
-}
-async function handleProxyAsset(req, res) {
-  try {
-    const token = tokenFromRequest(req);
-    const target = String(req.query.u || "").trim();
-    const session = await resolveSession(token);
-    if (!session) {
-      return res.status(410).json({ error: "Proxy session expired" });
-    }
-    if (!target || !shouldProxyUrl(session, target)) {
-      return res.status(400).json({ error: "URL not allowed for this proxy session" });
-    }
-    session.expiresAt = Date.now() + SESSION_TTL_MS;
-    void rememberSession(session);
-    const method = String(req.method || "GET").toUpperCase();
-    let body = null;
-    if (method !== "GET" && method !== "HEAD") {
-      if (Buffer.isBuffer(req.body)) body = req.body;
-      else if (typeof req.body === "string") body = req.body;
-      else if (req.body && typeof req.body === "object") body = JSON.stringify(req.body);
-    }
-    const forwardHeaders = {
-      ...buildUpstreamHeaders(session, target, {
-        referrerOverride: session.origin + "/",
-        navigation: method === "GET" && !/\/(backend-api|api|public-api)\//i.test(target)
-      })
-    };
-    const ct = req.headers["content-type"];
-    if (ct && method !== "GET" && method !== "HEAD") forwardHeaders["Content-Type"] = String(ct);
-    const accept = req.headers.accept;
-    if (accept) forwardHeaders.Accept = String(accept);
-    for (const [key, value] of Object.entries(req.headers || {})) {
-      if (typeof value !== "string") continue;
-      if (/^(oai-|openai-|chatgpt-|x-openai)/i.test(key)) {
-        forwardHeaders[key] = value;
-      }
-    }
-    try {
-      forwardHeaders.Origin = new URL(session.origin).origin;
-      forwardHeaders.Referer = new URL(session.origin).origin + "/";
-    } catch {
-    }
-    let current = target;
-    let upstream = await proxyAwareFetch(current, {
-      method,
-      redirect: "manual",
-      headers: forwardHeaders,
-      body: method === "GET" || method === "HEAD" ? void 0 : body || void 0
-    });
-    session.cookieHeader = mergeSetCookies(session.cookieHeader, upstream);
-    for (let i = 0; i < 5; i++) {
-      if (upstream.status < 300 || upstream.status >= 400) break;
-      const loc = upstream.headers.get("location");
-      if (!loc) break;
-      const next = resolveAgainst(current, loc);
-      if (!next || !shouldProxyUrl(session, next)) break;
-      current = next;
-      upstream = await proxyAwareFetch(current, {
-        method: "GET",
-        redirect: "manual",
-        headers: buildUpstreamHeaders(session, current, {
-          referrerOverride: session.origin + "/",
-          navigation: true
-        })
-      });
-      session.cookieHeader = mergeSetCookies(session.cookieHeader, upstream);
-    }
-    const contentType = upstream.headers.get("content-type") || "application/octet-stream";
-    const streamLike = /event-stream|ndjson|octet-stream/i.test(contentType) || /text\/event-stream/i.test(String(accept || "")) || method !== "GET" && method !== "HEAD" && !/text\/html|text\/css|javascript|ecmascript/i.test(contentType);
-    if (streamLike && upstream.body) {
-      res.status(upstream.status);
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Cache-Control", "no-store");
-      const cacheControl = upstream.headers.get("cache-control");
-      if (cacheControl) res.setHeader("Cache-Control", cacheControl);
-      const { Readable } = await import("stream");
-      Readable.fromWeb(upstream.body).pipe(res);
-      return;
-    }
-    const buf = await readLimited(upstream);
-    if (/text\/html|application\/xhtml/i.test(contentType)) {
-      const html = rewriteHtml(buf.toString("utf8"), session, upstream.url || current);
-      res.status(upstream.status);
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.setHeader("Cache-Control", "no-store");
-      return res.send(html);
-    }
-    if (/text\/css/i.test(contentType)) {
-      const css = buf.toString("utf8").replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, (_m, _q, val) => {
-        const abs = resolveAgainst(current, val.trim());
-        if (!abs || !shouldProxyUrl(session, abs)) return `url("${val.trim()}")`;
-        return `url("${proxyPathOrAssetUrl(session, abs)}")`;
-      });
-      res.status(upstream.status);
-      res.setHeader("Content-Type", "text/css; charset=utf-8");
-      res.setHeader("Cache-Control", "no-store");
-      return res.send(css);
-    }
-    let pathname = "";
-    try {
-      pathname = new URL(current).pathname;
-    } catch {
-    }
-    const isJs = /javascript|ecmascript/i.test(contentType) || /\.m?js$/i.test(pathname) && !/json/i.test(contentType);
-    if (isJs) {
-      const js = rewriteEmbeddedUrls(buf.toString("utf8"), session, upstream.url || current);
-      res.status(upstream.status);
-      res.setHeader(
-        "Content-Type",
-        /javascript|ecmascript/i.test(contentType) ? contentType : "application/javascript; charset=utf-8"
-      );
-      res.setHeader("Cache-Control", "no-store");
-      return res.send(js);
-    }
-    res.status(upstream.status);
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "no-store");
-    return res.send(buf);
-  } catch (error) {
-    return res.status(502).json({ error: error.message || "Asset proxy failed" });
-  }
-}
 async function handleFxProxy(req, res) {
+  let session = null;
   try {
-    const token = String(req.params?.token || tokenFromRequest(req) || "").trim();
-    if (!token) {
-      return res.status(400).type("html").send("<h1>Missing session</h1><p>Open the tool from the dashboard.</p>");
-    }
-    const rawUrl = String(req.url || "/");
-    const pathOnly = rawUrl.split("?")[0] || "/";
+    const token = tokenFromRequest(req);
+    if (!token) return sessionLostPage(res, 400);
+    session = await resolveSession(token);
+    if (!session) return sessionLostPage(res);
+    const remainder = String(req.url || "/");
+    const pathOnly = remainder.split("?")[0] || "/";
     const isRoot = pathOnly === "/" || pathOnly === "";
-    if (isRoot && String(req.method || "GET").toUpperCase() === "GET") {
-      req.query = { ...req.query || {}, token };
-      req.params = { ...req.params || {}, token };
-      return handleProxyView(req, res);
-    }
-    const session = await resolveSession(token);
-    if (!session) {
-      req.query = { ...req.query || {}, token };
-      return handleProxyView(req, res);
-    }
-    let target;
-    try {
-      target = new URL(rawUrl, session.origin.endsWith("/") ? session.origin : `${session.origin}/`).href;
-    } catch {
-      return res.status(400).json({ error: "Invalid proxy path" });
-    }
-    req.query = { ...req.query || {}, token, u: target };
-    req.params = { ...req.params || {}, token };
-    return handleProxyAsset(req, res);
+    const target = {
+      token: session.token,
+      origin: session.origin,
+      cookies: session.cookies,
+      referrer: session.referrer
+    };
+    const url3 = isRoot ? session.targetUrl : fromProxyPath(target, remainder);
+    if (!url3) return res.status(400).json({ error: "Invalid proxy path" });
+    setProxyCookie(res, session.token);
+    await proxyThrough(session, req, res, url3);
   } catch (error) {
-    return res.status(502).json({ error: error?.message || "FX proxy failed" });
+    const message = String(error?.message || "Proxy request failed");
+    console.error("[tool-proxy/fx]", message);
+    if (res.headersSent) return;
+    if (isDocumentRequest(req)) {
+      return res.status(502).type("html").send(
+        `<!doctype html><meta charset="utf-8"><title>Could not open tool</title>
+           <body style="font-family:system-ui;background:#0d0908;color:#fecaca;padding:2.5rem;max-width:34rem;margin:auto">
+           <h1 style="font-size:1.25rem">Could not open this tool</h1>
+           <p style="color:#94a3b8;font-size:.9rem">${escapeHtml(message)}</p>
+           </body>`
+      );
+    }
+    return res.status(502).json({ error: message });
   }
 }
 async function handleOriginToolApi(req, res) {
   try {
-    const token = tokenFromRequest(req);
-    const session = await resolveSession(token);
+    const session = await resolveSession(tokenFromReferer(req) || tokenFromRequest(req));
     if (!session) {
-      return res.status(401).json({
-        error: "No tool proxy session. Open the tool from the dashboard again."
-      });
+      return res.status(401).json({ error: "No tool session. Open the tool from the dashboard again." });
     }
     const original = String(req.originalUrl || req.url || "/");
-    const target = new URL(
-      original,
-      session.origin.endsWith("/") ? session.origin : `${session.origin}/`
-    ).href;
-    req.query = { ...req.query || {}, token: session.token, u: target };
-    req.params = { ...req.params || {}, token: session.token };
-    return handleProxyAsset(req, res);
+    const base = session.origin.endsWith("/") ? session.origin : `${session.origin}/`;
+    const url3 = new URL(original, base).href;
+    await proxyThrough(session, req, res, url3);
   } catch (error) {
-    return res.status(502).json({ error: error?.message || "Origin tool API proxy failed" });
+    if (res.headersSent) return;
+    return res.status(502).json({ error: error?.message || "Tool API proxy failed" });
+  }
+}
+var RESERVED_PATHS = [/^\/api(\/|$)/, /^\/fx(\/|$)/, /^\/go(\/|$)/, /^\/health$/];
+var PORTAL_ASSET_PATHS = [
+  /^\/assets\//,
+  /^\/src\//,
+  /^\/@/,
+  /^\/node_modules\//,
+  /^\/favicon/,
+  /^\/manifest/,
+  /^\/robots\.txt$/,
+  /^\/sitemap/,
+  /^\/vite\.svg$/
+];
+async function handlePortalToolFallback(req, res, next) {
+  try {
+    const path = String(req.path || req.url || "/").split("?")[0];
+    if (RESERVED_PATHS.some((rx) => rx.test(path))) return next();
+    const refererToken = tokenFromReferer(req);
+    const token = refererToken || tokenFromRequest(req);
+    if (!token) return next();
+    const fromProxiedPage = Boolean(refererToken);
+    if (!fromProxiedPage && PORTAL_ASSET_PATHS.some((rx) => rx.test(path))) return next();
+    const dest = String(req.headers?.["sec-fetch-dest"] || "").toLowerCase();
+    const isSubresource = Boolean(dest) && dest !== "document" && dest !== "empty";
+    if (!fromProxiedPage && !isSubresource) return next();
+    const session = await resolveSession(token);
+    if (!session) return next();
+    const base = session.origin.endsWith("/") ? session.origin : `${session.origin}/`;
+    const url3 = new URL(String(req.originalUrl || req.url || "/"), base).href;
+    await proxyThrough(session, req, res, url3);
+  } catch (error) {
+    if (res.headersSent) return;
+    return next();
+  }
+}
+async function handleProxyView(req, res) {
+  const token = tokenFromRequest(req);
+  if (!token) return sessionLostPage(res, 400);
+  const session = await resolveSession(token);
+  if (!session) return sessionLostPage(res);
+  setProxyCookie(res, session.token);
+  return res.redirect(302, publicFxPath(session.token));
+}
+async function handleProxyAsset(req, res) {
+  try {
+    const session = await resolveSession(tokenFromRequest(req));
+    if (!session) return res.status(410).json({ error: "Tool session ended" });
+    const url3 = String(req.query?.u || "").trim();
+    if (!/^https?:\/\//i.test(url3)) return res.status(400).json({ error: "Invalid asset URL" });
+    await proxyThrough(session, req, res, url3);
+  } catch (error) {
+    if (res.headersSent) return;
+    return res.status(502).json({ error: error?.message || "Asset proxy failed" });
   }
 }
 router6.get("/view", (req, res) => {
@@ -3951,6 +3853,20 @@ function createApiApp() {
     if (req.method === "OPTIONS") return res.status(200).end();
     next();
   });
+  const rawBody = express.raw({ type: () => true, limit: "50mb" });
+  const proxyPrefixes = ["/backend-api", "/public-api", "/backend-anon", "/ces"];
+  app.use("/fx/:token", rawBody, (req, res) => {
+    void handleFxProxy(req, res);
+  });
+  app.use(proxyPrefixes, rawBody, (req, res) => {
+    void handleOriginToolApi(req, res);
+  });
+  app.all("/api/tool-proxy/asset", rawBody, (req, res) => {
+    void handleProxyAsset(req, res);
+  });
+  app.get(["/go", "/go/*"], (req, res) => {
+    void handleProxyView(req, res);
+  });
   app.use(express.json({ limit: "20mb" }));
   app.use(express.urlencoded({ extended: true, limit: "20mb" }));
   app.use((err, _req, res, next) => {
@@ -3968,15 +3884,6 @@ function createApiApp() {
   app.use("/api/settings", settingsRoutes_default);
   app.use("/api/extension", extensionRoutes_default);
   app.use("/api/tool-proxy", toolProxyRoutes_default);
-  app.use(["/backend-api", "/public-api", "/backend-anon", "/ces"], (req, res) => {
-    void handleOriginToolApi(req, res);
-  });
-  app.use("/fx/:token", (req, res) => {
-    void handleFxProxy(req, res);
-  });
-  app.get(["/go", "/go/*"], (req, res) => {
-    void handleProxyView(req, res);
-  });
   app.use("/api/notifications", notificationRoutes_default);
   const getAI = async () => {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -4101,6 +4008,9 @@ ${text.slice(0, 5e3)}`
     } catch (e) {
       return res.json({ success: false, error: `Cannot connect: ${e.message}`, statusCode: 0 });
     }
+  });
+  app.use((req, res, next) => {
+    void handlePortalToolFallback(req, res, next);
   });
   return app;
 }

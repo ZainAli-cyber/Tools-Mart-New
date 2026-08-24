@@ -912,7 +912,7 @@ function finishOpen(dest: string, opts?: LaunchToolOptions, openedByExtension = 
     navigateReservedTab(opts.reservedTab, dest);
     return;
   }
-  openToolInNewTab(dest);
+  openToolInNewTab(absolutePortalUrl(dest));
 }
 
 export type LaunchToolOptions = {

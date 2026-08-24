@@ -13,6 +13,8 @@ export type StoredProxySession = {
   targetUrl: string;
   origin: string;
   cookieHeader: string;
+  /** Domain/path aware jar used by the proxy engine (newer sessions). */
+  cookies?: Array<{ name: string; value: string; domain?: string; path?: string; secure?: boolean }>;
   cookieHosts: string[];
   referrer: string;
   referrerCandidates: string[];

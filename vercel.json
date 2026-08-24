@@ -3,14 +3,19 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/backend-api/(.*)", "destination": "/api" },
-    { "source": "/public-api/(.*)", "destination": "/api" },
-    { "source": "/backend-anon/(.*)", "destination": "/api" },
-    { "source": "/ces/(.*)", "destination": "/api" },
     { "source": "/fx", "destination": "/api" },
     { "source": "/fx/(.*)", "destination": "/api" },
     { "source": "/go", "destination": "/api" },
     { "source": "/go/(.*)", "destination": "/api" },
+    { "source": "/backend-api/(.*)", "destination": "/api" },
+    { "source": "/public-api/(.*)", "destination": "/api" },
+    { "source": "/backend-anon/(.*)", "destination": "/api" },
+    { "source": "/ces/(.*)", "destination": "/api" },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "header", "key": "referer", "value": ".*/fx/.*" }],
+      "destination": "/api"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "functions": {
