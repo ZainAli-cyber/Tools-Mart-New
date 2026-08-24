@@ -4,7 +4,7 @@ import accountRouter from './accountRoutes';
 import extensionRouter from './extensionRoutes';
 import notificationRouter from './notificationRoutes';
 import deviceRouter from './deviceRoutes';
-import toolProxyRouter, { handleProxyView } from './toolProxyRoutes';
+import toolProxyRouter, { handleProxyView, handleFxProxy } from './toolProxyRoutes';
 import settingsRouter from './settingsRoutes';
 
 /**
@@ -48,6 +48,10 @@ export function createApiApp() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/extension', extensionRouter);
   app.use('/api/tool-proxy', toolProxyRouter);
+  // Reference-style reverse proxy: /fx/<token>/… (same idea as /fx/tools/flow)
+  app.use('/fx/:token', (req, res) => {
+    void handleFxProxy(req, res);
+  });
   app.get(['/go', '/go/*'], (req, res) => {
     void handleProxyView(req, res);
   });

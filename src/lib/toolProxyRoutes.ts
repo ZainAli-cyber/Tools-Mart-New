@@ -474,6 +474,11 @@ function publicGoPath(dest: string): string {
   }
 }
 
+/** Reference-style open URL: /fx/<token>/ (like tools-portal-proxy /fx/tools/…) */
+function publicFxPath(token: string): string {
+  return `/fx/${encodeURIComponent(String(token || '').trim())}/`;
+}
+
 function tokenFromRequest(req: { query?: any; headers?: any; params?: any }): string {
   const fromQuery = String(req.query?.token || '').trim();
   if (fromQuery) return fromQuery;
@@ -564,6 +569,21 @@ function proxyAssetUrl(token: string, absoluteUrl: string): string {
   return `/api/tool-proxy/asset?token=${encodeURIComponent(token)}&u=${encodeURIComponent(absoluteUrl)}`;
 }
 
+/** Prefer /fx/<token>/path for same-origin tool URLs (reference-style). CDNs keep asset query. */
+function proxyPathOrAssetUrl(session: ProxySession, absoluteUrl: string): string {
+  try {
+    const u = new URL(absoluteUrl);
+    const originHost = new URL(session.origin).hostname.toLowerCase();
+    const host = u.hostname.toLowerCase();
+    if (host === originHost || host.endsWith(`.${originHost}`)) {
+      return `${publicFxPath(session.token).replace(/\/$/, '')}${u.pathname}${u.search}${u.hash}`;
+    }
+  } catch {
+    /* ignore */
+  }
+  return proxyAssetUrl(session.token, absoluteUrl);
+}
+
 function rewriteEmbeddedUrls(text: string, session: ProxySession, pageUrl: string): string {
   return String(text || '').replace(
     /https?:\/\/[^\s"'<>\\)]+/gi,
@@ -571,7 +591,7 @@ function rewriteEmbeddedUrls(text: string, session: ProxySession, pageUrl: strin
       const cleaned = raw.replace(/[.,;]+$/, '');
       const abs = resolveAgainst(pageUrl, cleaned);
       if (!abs || !shouldProxyUrl(session, abs)) return raw;
-      return proxyAssetUrl(session.token, abs);
+      return proxyPathOrAssetUrl(session, abs);
     },
   );
 }
@@ -582,17 +602,17 @@ function proxyBootstrapScript(session: ProxySession): string {
   const allow = JSON.stringify(
     [...new Set([...(session.cookieHosts || []), ...relatedHostsForOrigin(session.origin)])],
   );
-  const goPath = JSON.stringify(publicGoPath(session.targetUrl || session.origin));
+  const fxBase = JSON.stringify(publicFxPath(session.token));
   return `<script data-atm-proxy="1">
 (function(){
   var TOKEN=${token};
   var ROOT=${root};
   var ALLOW=${allow};
-  var GOPATH=${goPath};
+  var FX=${fxBase};
   try {
     sessionStorage.setItem('atm_px', TOKEN);
-    sessionStorage.setItem('atm_px_go', GOPATH);
-    if (location.search) history.replaceState(null, '', location.pathname);
+    sessionStorage.setItem('atm_px_go', FX);
+    if (location.search) history.replaceState(null, '', location.pathname + location.hash);
   } catch (e) {}
   function hostOk(h){
     h=String(h||'').toLowerCase();
@@ -602,14 +622,24 @@ function proxyBootstrapScript(session: ProxySession): string {
     }
     return false;
   }
+  function rootHost(){
+    try { return new URL(ROOT).hostname.toLowerCase(); } catch(e){ return ''; }
+  }
   function toToolUrl(u){
     try {
       var a=new URL(u, location.href);
+      var rh=rootHost();
       if (a.hostname===location.hostname || /vercel\\.app$/i.test(a.hostname)) {
         if (/^\\/api\\/tool-proxy\\//i.test(a.pathname)) return null;
+        var fxPrefix='/fx/'+TOKEN;
+        if (a.pathname===fxPrefix || a.pathname.indexOf(fxPrefix+'/')===0) {
+          var rest=a.pathname.slice(fxPrefix.length) || '/';
+          return new URL(rest + a.search + a.hash, ROOT).href;
+        }
         if (/^\\/go(\\/|$)/i.test(a.pathname)) return new URL('/' + (a.search||'') + (a.hash||''), ROOT).href;
         return new URL(a.pathname + a.search + a.hash, ROOT).href;
       }
+      if (rh && (a.hostname===rh || a.hostname.slice(-(rh.length+1))==='.'+rh)) return a.href;
       return a.href;
     } catch(e){ return null; }
   }
@@ -617,24 +647,39 @@ function proxyBootstrapScript(session: ProxySession): string {
     var a=toToolUrl(u);
     if(!a) return u;
     try {
-      var h=new URL(a).hostname;
+      var parsed=new URL(a);
+      var h=parsed.hostname.toLowerCase();
       if(!hostOk(h)) return u;
+      var rh=rootHost();
+      // Same-site tool API paths → /fx/<token>/… (reference-style reverse proxy)
+      if (rh && (h===rh || h.slice(-(rh.length+1))==='.'+rh)) {
+        return FX.replace(/\\/$/,'') + parsed.pathname + parsed.search + parsed.hash;
+      }
+      // CDN / other allowed hosts still use asset query proxy
+      return '/api/tool-proxy/asset?token='+encodeURIComponent(TOKEN)+'&u='+encodeURIComponent(a);
     } catch(e){ return u; }
-    return '/api/tool-proxy/asset?token='+encodeURIComponent(TOKEN)+'&u='+encodeURIComponent(a);
+  }
+  function forwardFetch(input, init){
+    var raw=typeof input==='string'?input:(input&&input.url);
+    if(!raw) return ofetch.apply(window, arguments);
+    var w=wrap(raw);
+    if(w===raw) return ofetch.apply(window, arguments);
+    if(typeof input==='string') return ofetch.call(window, w, init);
+    var next=Object.assign({}, init||{});
+    try {
+      if(!next.method && input.method) next.method=input.method;
+      if(!next.headers && input.headers) next.headers=input.headers;
+      if(next.body==null && input.method && input.method!=='GET' && input.method!=='HEAD') {
+        next.body=input.body;
+        if(next.duplex==null) next.duplex='half';
+      }
+      if(!next.credentials) next.credentials=input.credentials||'same-origin';
+    } catch(e){}
+    return ofetch.call(window, w, next);
   }
   var ofetch=window.fetch;
   window.fetch=function(input, init){
-    try {
-      var raw=typeof input==='string'?input:(input&&input.url);
-      if(raw){
-        var w=wrap(raw);
-        if(w!==raw){
-          if(typeof input==='string') return ofetch.call(this, w, init);
-          return ofetch.call(this, new Request(w, input), init);
-        }
-      }
-    } catch(e){}
-    return ofetch.apply(this, arguments);
+    try { return forwardFetch(input, init); } catch(e){ return ofetch.apply(this, arguments); }
   };
   var oopen=XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open=function(m, url){
@@ -642,6 +687,13 @@ function proxyBootstrapScript(session: ProxySession): string {
     if(typeof url==='string') args[1]=wrap(url);
     return oopen.apply(this, args);
   };
+  if (window.EventSource) {
+    var OES=window.EventSource;
+    window.EventSource=function(url, conf){
+      return new OES(wrap(String(url)), conf);
+    };
+    window.EventSource.prototype=OES.prototype;
+  }
   document.addEventListener('submit', function(e){
     try {
       var form=e.target;
@@ -661,12 +713,12 @@ function proxyBootstrapScript(session: ProxySession): string {
         location.href=wrap(dest.href);
         return;
       }
-      ofetch.call(window, wrap(tool), { method: method, body: fd, credentials: 'same-origin' })
+      forwardFetch(wrap(tool), { method: method, body: fd, credentials: 'same-origin' })
         .then(function(r){ return r.text(); })
         .then(function(html){
-          if(html) document.open(); document.write(html); document.close();
+          if(html){ document.open(); document.write(html); document.close(); }
         })
-        .catch(function(){ location.href=GOPATH+'?token='+encodeURIComponent(TOKEN); });
+        .catch(function(){ location.href=FX; });
     } catch(err){}
   }, true);
 })();
@@ -685,7 +737,7 @@ function rewriteHtml(html: string, session: ProxySession, pageUrl: string): stri
     if (trimmed.startsWith('#')) return value;
     const abs = resolveAgainst(baseHref, trimmed);
     if (!abs || !shouldProxyUrl(session, abs)) return value;
-    return proxyAssetUrl(token, abs);
+    return proxyPathOrAssetUrl(session, abs);
   };
 
   let out = html;
@@ -949,8 +1001,8 @@ router.post('/launch', async (req, res) => {
     await rememberSession(session);
     setProxyCookie(res, token);
 
-    // Use the API path (not /go/…) so Vercel never serves the SPA homepage.
-    const viewUrl = `/api/tool-proxy/view?token=${encodeURIComponent(token)}`;
+    // Reference-style path: /fx/<token>/ (like tools-portal-proxy.onrender.com/fx/tools/…)
+    const viewUrl = publicFxPath(token);
     return res.json({
       mode: 'proxy',
       viewUrl,
@@ -992,9 +1044,11 @@ async function handleProxyView(req: any, res: any) {
            (function(){
              try {
                var t = sessionStorage.getItem('atm_px');
-               var go = sessionStorage.getItem('atm_px_go') || '/go/';
+               var go = sessionStorage.getItem('atm_px_go') || '/fx/';
                if (t) {
-                 var url = go + (go.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t);
+                 var url = go.indexOf('/fx/') === 0
+                   ? go
+                   : (go + (go.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t));
                  location.replace(url);
                  return;
                }
@@ -1054,8 +1108,6 @@ async function handleProxyView(req: any, res: any) {
       );
   }
 }
-
-export { handleProxyView };
 
 /**
  * GET|POST|… /api/tool-proxy/asset?token=&u=
@@ -1138,7 +1190,10 @@ async function handleProxyAsset(req: any, res: any) {
     const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
     const streamLike =
       /event-stream|ndjson|octet-stream/i.test(contentType) ||
-      /text\/event-stream/i.test(String(accept || ''));
+      /text\/event-stream/i.test(String(accept || '')) ||
+      (method !== 'GET' &&
+        method !== 'HEAD' &&
+        !/text\/html|text\/css|javascript|ecmascript/i.test(contentType));
 
     if (streamLike && upstream.body) {
       res.status(upstream.status);
@@ -1166,7 +1221,7 @@ async function handleProxyAsset(req: any, res: any) {
       const css = buf.toString('utf8').replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, (_m, _q, val: string) => {
         const abs = resolveAgainst(current, val.trim());
         if (!abs || !shouldProxyUrl(session, abs)) return `url("${val.trim()}")`;
-        return `url("${proxyAssetUrl(session.token, abs)}")`;
+        return `url("${proxyPathOrAssetUrl(session, abs)}")`;
       });
       res.status(upstream.status);
       res.setHeader('Content-Type', 'text/css; charset=utf-8');
@@ -1202,6 +1257,51 @@ async function handleProxyAsset(req: any, res: any) {
     return res.status(502).json({ error: error.message || 'Asset proxy failed' });
   }
 }
+
+/**
+ * Path reverse-proxy like reference /fx/tools/… → /fx/<token>/…
+ * GET /fx/<token>/ renders the tool; /fx/<token>/backend-api/… forwards to upstream.
+ */
+export async function handleFxProxy(req: any, res: any) {
+  try {
+    const token = String(req.params?.token || tokenFromRequest(req) || '').trim();
+    if (!token) {
+      return res.status(400).type('html').send('<h1>Missing session</h1><p>Open the tool from the dashboard.</p>');
+    }
+
+    // When mounted at /fx/:token, req.url is the remainder (e.g. / or /backend-api/…).
+    const rawUrl = String(req.url || '/');
+    const pathOnly = rawUrl.split('?')[0] || '/';
+    const isRoot = pathOnly === '/' || pathOnly === '';
+
+    if (isRoot && String(req.method || 'GET').toUpperCase() === 'GET') {
+      req.query = { ...(req.query || {}), token };
+      req.params = { ...(req.params || {}), token };
+      return handleProxyView(req, res);
+    }
+
+    const session = await resolveSession(token);
+    if (!session) {
+      req.query = { ...(req.query || {}), token };
+      return handleProxyView(req, res);
+    }
+
+    let target: string;
+    try {
+      target = new URL(rawUrl, session.origin.endsWith('/') ? session.origin : `${session.origin}/`).href;
+    } catch {
+      return res.status(400).json({ error: 'Invalid proxy path' });
+    }
+
+    req.query = { ...(req.query || {}), token, u: target };
+    req.params = { ...(req.params || {}), token };
+    return handleProxyAsset(req, res);
+  } catch (error: any) {
+    return res.status(502).json({ error: error?.message || 'FX proxy failed' });
+  }
+}
+
+export { handleProxyView };
 
 /**
  * GET /api/tool-proxy/view?token=

@@ -3,8 +3,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/go", "destination": "/api/tool-proxy/view" },
-    { "source": "/go/(.*)", "destination": "/api/tool-proxy/view" },
+    { "source": "/fx", "destination": "/api" },
+    { "source": "/fx/(.*)", "destination": "/api" },
+    { "source": "/go", "destination": "/api" },
+    { "source": "/go/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "functions": {
