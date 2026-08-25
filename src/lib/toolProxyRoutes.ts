@@ -24,6 +24,7 @@ import {
   type JarCookie,
   type ProxyTarget,
 } from './proxyEngine';
+import { runWithProxySticky } from './proxyFetch';
 import {
   loadStoredSession,
   persistStoredSession,
@@ -597,36 +598,38 @@ function isDocumentRequest(req: any): boolean {
 
 /** Run one proxied request for a session and keep the cookie jar fresh. */
 async function proxyThrough(session: ProxySession, req: any, res: any, url: string) {
-  const document = isDocumentRequest(req);
-  // Pak SEO algorithm: panel tools spoof the dashboard Referer on every request
-  // (not only the first HTML document). Real sites keep an empty referrer so the
-  // browser's mapped /fx/… Referer becomes chatgpt.com / etc.
-  const panelMode = Boolean(session.referrer);
-  const target: ProxyTarget = {
-    token: session.token,
-    origin: session.origin,
-    cookies: session.cookies,
-    referrer: panelMode ? session.referrer : '',
-    referrerCandidates: panelMode ? session.referrerCandidates : [],
-  };
+  return runWithProxySticky(session.token, async () => {
+    const document = isDocumentRequest(req);
+    // Pak SEO algorithm: panel tools spoof the dashboard Referer on every request
+    // (not only the first HTML document). Real sites keep an empty referrer so the
+    // browser's mapped /fx/… Referer becomes chatgpt.com / etc.
+    const panelMode = Boolean(session.referrer);
+    const target: ProxyTarget = {
+      token: session.token,
+      origin: session.origin,
+      cookies: session.cookies,
+      referrer: panelMode ? session.referrer : '',
+      referrerCandidates: panelMode ? session.referrerCandidates : [],
+    };
 
-  const before = session.cookies.length;
-  const result = await forwardRequest({ target, req, res, url, document });
+    const before = session.cookies.length;
+    const result = await forwardRequest({ target, req, res, url, document });
 
-  const changed =
-    result.cookies !== session.cookies &&
-    (result.cookies.length !== before ||
-      JSON.stringify(result.cookies) !== JSON.stringify(session.cookies));
-  session.cookies = result.cookies;
-  session.cookieHeader = cookiesToHeader(result.cookies);
-  if (result.referrerUsed && panelMode) session.referrer = result.referrerUsed;
-  session.expiresAt = Date.now() + SESSION_TTL_MS;
-  if (changed || result.referrerUsed) {
-    const sealed = await rememberSession(session);
-    setProxyCookie(res, session.token, sealed);
-  } else {
-    sessions.set(session.token, session);
-  }
+    const changed =
+      result.cookies !== session.cookies &&
+      (result.cookies.length !== before ||
+        JSON.stringify(result.cookies) !== JSON.stringify(session.cookies));
+    session.cookies = result.cookies;
+    session.cookieHeader = cookiesToHeader(result.cookies);
+    if (result.referrerUsed && panelMode) session.referrer = result.referrerUsed;
+    session.expiresAt = Date.now() + SESSION_TTL_MS;
+    if (changed || result.referrerUsed) {
+      const sealed = await rememberSession(session);
+      setProxyCookie(res, session.token, sealed);
+    } else {
+      sessions.set(session.token, session);
+    }
+  });
 }
 
 router.post('/launch', async (req, res) => {

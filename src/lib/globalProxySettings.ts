@@ -61,12 +61,41 @@ export function normalizeProxyUrl(raw: string): string {
   }
   try {
     const u = new URL(s);
-    if (!/^https?:$/i.test(u.protocol) && !/^socks/i.test(u.protocol)) {
+    if (/^socks/i.test(u.protocol)) {
+      throw new Error(
+        'Use the provider HTTP endpoint (http://user:pass@host:port/), not socks://. Residential HTTP is required for one-click.',
+      );
+    }
+    if (!/^https?:$/i.test(u.protocol)) {
       throw new Error('Proxy URL must start with http:// or https://');
     }
     return u.href;
+  } catch (err: any) {
+    if (err?.message && /HTTP endpoint|must start with http/i.test(err.message)) throw err;
+    throw new Error('Invalid proxy URL. Example: http://user-session-abc123:pass@host:80/');
+  }
+}
+
+/**
+ * Pin a residential sticky session so one tool tab keeps the same exit IP.
+ * Works with common username patterns (Webshare / IPRoyal / Bright Data style).
+ * If the URL already contains "session", it is left unchanged.
+ */
+export function applyStickySession(proxyUrl: string, stickyId: string): string {
+  const id = String(stickyId || '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 12);
+  if (!id) return proxyUrl;
+  try {
+    const u = new URL(proxyUrl);
+    const user = decodeURIComponent(u.username || '');
+    if (!user) return proxyUrl;
+    if (/session/i.test(user)) return proxyUrl;
+    // user → user-session-ID (most residential HTTP gateways)
+    u.username = `${user}-session-${id}`;
+    return u.href;
   } catch {
-    throw new Error('Invalid proxy URL. Example: http://user:pass@host:3128/');
+    return proxyUrl;
   }
 }
 

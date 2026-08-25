@@ -1,33 +1,69 @@
 /**
- * Outbound fetch that optionally routes through the Global Proxy Engine (undici ProxyAgent).
+ * Outbound fetch via Global Proxy Engine.
+ *
+ * One-click needs a *residential sticky* HTTP proxy:
+ * - Datacenter/AWS IPs often load ChatGPT HTML but fail Send / hit Cloudflare
+ * - Sticky session keeps the same exit IP for one tool tab
  */
-import { getActiveOutboundProxyUrl } from './globalProxySettings';
+import { AsyncLocalStorage } from 'async_hooks';
+import {
+  applyStickySession,
+  getActiveOutboundProxyUrl,
+  normalizeProxyUrl,
+} from './globalProxySettings';
 
 type FetchInit = RequestInit & { dispatcher?: unknown };
 
-let cachedAgent: { proxyUrl: string; agent: unknown; at: number } | null = null;
-const AGENT_TTL_MS = 60_000;
+const stickyStore = new AsyncLocalStorage<string>();
+let cachedAgent: { key: string; agent: unknown; at: number } | null = null;
+const AGENT_TTL_MS = 5 * 60_000;
 
-async function getProxyAgent(proxyUrl: string): Promise<unknown> {
-  const now = Date.now();
-  if (cachedAgent && cachedAgent.proxyUrl === proxyUrl && now - cachedAgent.at < AGENT_TTL_MS) {
-    return cachedAgent.agent;
-  }
-  const undici = await import('undici');
-  const agent = new undici.ProxyAgent(proxyUrl);
-  cachedAgent = { proxyUrl, agent, at: now };
-  return agent;
+/** Run tool-proxy work so every upstream fetch shares one sticky residential IP. */
+export function runWithProxySticky<T>(stickyId: string, fn: () => Promise<T>): Promise<T> {
+  const id = String(stickyId || '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 16);
+  if (!id) return fn();
+  return stickyStore.run(id, fn);
 }
 
 export function invalidateProxyAgentCache() {
   cachedAgent = null;
 }
 
+async function getProxyAgent(proxyUrl: string): Promise<unknown> {
+  const now = Date.now();
+  if (cachedAgent && cachedAgent.key === proxyUrl && now - cachedAgent.at < AGENT_TTL_MS) {
+    return cachedAgent.agent;
+  }
+  if (/^socks/i.test(proxyUrl)) {
+    throw new Error(
+      'SOCKS proxies are not supported on this host. Use the provider’s HTTP residential endpoint (http://user:pass@host:port/).',
+    );
+  }
+  const undici = await import('undici');
+  const agent = new undici.ProxyAgent({
+    uri: proxyUrl,
+    connections: 16,
+    pipelining: 1,
+  } as any);
+  cachedAgent = { key: proxyUrl, agent, at: now };
+  return agent;
+}
+
+async function resolveProxyUrl(): Promise<string | null> {
+  let proxyUrl = await getActiveOutboundProxyUrl();
+  if (!proxyUrl) return null;
+  const sticky = stickyStore.getStore();
+  if (sticky) proxyUrl = applyStickySession(proxyUrl, sticky);
+  return proxyUrl;
+}
+
 /**
  * Same as fetch(), but when Global Proxy Engine is enabled, traffic goes via the configured proxy.
  */
 export async function proxyAwareFetch(input: string | URL, init?: RequestInit): Promise<Response> {
-  const proxyUrl = await getActiveOutboundProxyUrl();
+  const proxyUrl = await resolveProxyUrl();
   if (!proxyUrl) {
     return fetch(input, init);
   }
@@ -36,59 +72,191 @@ export async function proxyAwareFetch(input: string | URL, init?: RequestInit): 
     const undici = await import('undici');
     const agent = await getProxyAgent(proxyUrl);
     const opts: FetchInit = { ...(init || {}), dispatcher: agent };
-    // undici fetch returns a WHATWG Response compatible with Node 18+ fetch Response.
     return (await undici.fetch(input, opts as any)) as unknown as Response;
   } catch (err: any) {
     const msg = String(err?.message || err || 'Proxy request failed');
     throw new Error(
-      /proxy|ECONNREFUSED|ENOTFOUND|socket|tunnel|407|authentication/i.test(msg)
-        ? `Global Proxy Engine failed (${msg}). Check the proxy URL in Admin → Accounts.`
+      /proxy|ECONNREFUSED|ENOTFOUND|socket|tunnel|407|authentication|SOCKS|residential/i.test(msg)
+        ? `Global Proxy Engine failed (${msg}). Check Admin → Global Proxy Engine (residential HTTP URL).`
         : msg,
     );
   }
 }
 
-/** Quick connectivity check — fetches a public IP endpoint through the given proxy URL. */
-export async function testProxyUrl(proxyUrlRaw: string): Promise<{ ok: true; ip: string } | { ok: false; error: string }> {
+export type ProxyTestResult =
+  | {
+      ok: true;
+      ip: string;
+      isp?: string;
+      hosting?: boolean;
+      residentialLikely: boolean;
+      chatgptHtml: number;
+      chatgptBlocked: boolean;
+      udemyHtml?: number;
+      udemyBlocked?: boolean;
+      oneClickReady: boolean;
+      message: string;
+      warnings: string[];
+    }
+  | { ok: false; error: string };
+
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+function looksLikeCloudflare(status: number, body: string): boolean {
+  return (
+    status === 403 ||
+    status === 503 ||
+    /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|ray id:/i.test(
+      body,
+    )
+  );
+}
+
+async function fetchViaProxy(
+  proxyUrl: string,
+  url: string,
+  headers: Record<string, string>,
+): Promise<{ status: number; text: string }> {
+  const undici = await import('undici');
+  const agent = new undici.ProxyAgent(proxyUrl);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 18_000);
+  try {
+    const res = await undici.fetch(url, {
+      dispatcher: agent,
+      signal: controller.signal,
+      headers,
+      redirect: 'follow',
+    } as any);
+    const text = await res.text();
+    return { status: res.status, text };
+  } finally {
+    clearTimeout(timer);
+    try {
+      (agent as any).close?.();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Strong one-click readiness check — IP type + ChatGPT/Udemy reachability through the proxy.
+ */
+export async function testProxyUrl(proxyUrlRaw: string): Promise<ProxyTestResult> {
   let proxyUrl: string;
   try {
-    const { normalizeProxyUrl } = await import('./globalProxySettings');
     proxyUrl = normalizeProxyUrl(proxyUrlRaw);
   } catch (err: any) {
     return { ok: false, error: err?.message || 'Invalid proxy URL' };
   }
   if (!proxyUrl) return { ok: false, error: 'Proxy URL is empty' };
+  if (/^socks/i.test(proxyUrl)) {
+    return {
+      ok: false,
+      error:
+        'Use an HTTP residential proxy URL (http://user:pass@host:port/), not socks://. Most providers give both.',
+    };
+  }
+
+  // Pin a sticky session for the whole test (same as a real tool tab).
+  proxyUrl = applyStickySession(proxyUrl, `test${Date.now().toString(36)}`);
 
   try {
-    const undici = await import('undici');
-    const agent = new undici.ProxyAgent(proxyUrl);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12_000);
-    try {
-      const res = await undici.fetch('https://api.ipify.org?format=json', {
-        dispatcher: agent,
-        signal: controller.signal,
-        headers: { Accept: 'application/json' },
-      } as any);
-      const text = await res.text();
-      if (!res.ok) {
-        return { ok: false, error: `Proxy reachable but IP check failed (${res.status})` };
-      }
-      let ip = '';
-      try {
-        ip = String(JSON.parse(text)?.ip || '').trim();
-      } catch {
-        ip = text.trim().slice(0, 64);
-      }
-      return { ok: true, ip: ip || 'unknown' };
-    } finally {
-      clearTimeout(timer);
-      try {
-        (agent as any).close?.();
-      } catch {
-        /* ignore */
-      }
+    const ipRes = await fetchViaProxy(proxyUrl, 'https://api.ipify.org?format=json', {
+      Accept: 'application/json',
+      'User-Agent': BROWSER_UA,
+    });
+    if (ipRes.status < 200 || ipRes.status >= 300) {
+      return { ok: false, error: `Proxy reachable but IP check failed (${ipRes.status})` };
     }
+    let ip = '';
+    try {
+      ip = String(JSON.parse(ipRes.text)?.ip || '').trim();
+    } catch {
+      ip = ipRes.text.trim().slice(0, 64);
+    }
+    if (!ip) return { ok: false, error: 'Proxy returned empty IP' };
+
+    let isp = '';
+    let hosting = false;
+    try {
+      const meta = await fetchViaProxy(
+        proxyUrl,
+        `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,proxy,hosting,isp,org,query`,
+        { Accept: 'application/json', 'User-Agent': BROWSER_UA },
+      );
+      const j = JSON.parse(meta.text);
+      if (j?.status === 'success') {
+        isp = String(j.isp || j.org || '').trim();
+        hosting = Boolean(j.hosting || j.proxy);
+      }
+    } catch {
+      /* optional */
+    }
+
+    if (!isp && /^(3\.|13\.|18\.|34\.|35\.|52\.|54\.|16\.|44\.|63\.|64\.|100\.|107\.|174\.|184\.)/.test(ip)) {
+      hosting = true;
+      isp = 'Likely cloud/datacenter (heuristic)';
+    }
+
+    const chatgpt = await fetchViaProxy(proxyUrl, 'https://chatgpt.com/', {
+      Accept: 'text/html,application/xhtml+xml',
+      'User-Agent': BROWSER_UA,
+      'Accept-Language': 'en-US,en;q=0.9',
+    });
+    const chatgptBlocked = looksLikeCloudflare(chatgpt.status, chatgpt.text.slice(0, 4000));
+
+    let udemyHtml = 0;
+    let udemyBlocked = false;
+    try {
+      const udemy = await fetchViaProxy(proxyUrl, 'https://www.udemy.com/', {
+        Accept: 'text/html,application/xhtml+xml',
+        'User-Agent': BROWSER_UA,
+        'Accept-Language': 'en-US,en;q=0.9',
+      });
+      udemyHtml = udemy.status;
+      udemyBlocked = looksLikeCloudflare(udemy.status, udemy.text.slice(0, 4000));
+    } catch {
+      udemyBlocked = true;
+    }
+
+    const residentialLikely = !hosting;
+    const warnings: string[] = [];
+    if (hosting) {
+      warnings.push(
+        'Exit IP looks like datacenter/VPN. ChatGPT Send and Udemy often fail — buy residential sticky (Webshare/IPRoyal/Bright Data).',
+      );
+    }
+    if (chatgptBlocked) warnings.push('ChatGPT returned a bot/Cloudflare wall through this proxy.');
+    if (udemyBlocked) {
+      warnings.push(
+        'Udemy returned a Cloudflare wall — keep Udemy on By extension unless this residential IP is trusted.',
+      );
+    }
+
+    const oneClickReady =
+      residentialLikely && !chatgptBlocked && chatgpt.status >= 200 && chatgpt.status < 400;
+
+    const message = oneClickReady
+      ? `One-click ready — residential IP ${ip}${isp ? ` (${isp})` : ''}. ChatGPT HTML ${chatgpt.status}.`
+      : `Proxy reachable (IP ${ip}) but NOT ready for one-click.${warnings[0] ? ` ${warnings[0]}` : ''}`;
+
+    return {
+      ok: true,
+      ip,
+      isp: isp || undefined,
+      hosting,
+      residentialLikely,
+      chatgptHtml: chatgpt.status,
+      chatgptBlocked,
+      udemyHtml,
+      udemyBlocked,
+      oneClickReady,
+      message,
+      warnings,
+    };
   } catch (err: any) {
     return { ok: false, error: String(err?.message || err || 'Proxy test failed') };
   }

@@ -149,7 +149,20 @@ router.post('/global-proxy/test', async (req, res) => {
     if (result.ok === false) {
       return res.status(502).json({ ok: false, error: result.error });
     }
-    return res.json({ ok: true, ip: result.ip, message: `Proxy OK — outbound IP ${result.ip}` });
+    return res.json({
+      ok: true,
+      ip: result.ip,
+      isp: result.isp,
+      hosting: result.hosting,
+      residentialLikely: result.residentialLikely,
+      chatgptHtml: result.chatgptHtml,
+      chatgptBlocked: result.chatgptBlocked,
+      udemyHtml: result.udemyHtml,
+      udemyBlocked: result.udemyBlocked,
+      oneClickReady: result.oneClickReady,
+      warnings: result.warnings,
+      message: result.message,
+    });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error?.message || 'Proxy test failed' });
   }

@@ -1,162 +1,3 @@
-var __defProp = Object.defineProperty;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-};
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-
-// src/lib/globalProxySettings.ts
-var globalProxySettings_exports = {};
-__export(globalProxySettings_exports, {
-  GLOBAL_PROXY_SETTING_KEY: () => GLOBAL_PROXY_SETTING_KEY,
-  GLOBAL_PROXY_SQL_HINT: () => GLOBAL_PROXY_SQL_HINT,
-  clearGlobalProxyConfig: () => clearGlobalProxyConfig,
-  getActiveOutboundProxyUrl: () => getActiveOutboundProxyUrl,
-  getGlobalProxyConfig: () => getGlobalProxyConfig,
-  getGlobalProxyPublicStatus: () => getGlobalProxyPublicStatus,
-  invalidateGlobalProxyCache: () => invalidateGlobalProxyCache,
-  maskProxyUrl: () => maskProxyUrl,
-  normalizeProxyUrl: () => normalizeProxyUrl,
-  setGlobalProxyConfig: () => setGlobalProxyConfig
-});
-import { createClient as createClient9 } from "@supabase/supabase-js";
-function serviceClient2() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url3 || !serviceKey3) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for proxy settings");
-  }
-  return createClient9(url3, serviceKey3, { auth: { persistSession: false } });
-}
-function isAppSettingsMissing2(message) {
-  return /app_settings|does not exist|schema cache|Could not find the table/i.test(
-    String(message || "")
-  );
-}
-function parseConfig(raw) {
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    const o = raw;
-    return {
-      enabled: Boolean(o.enabled),
-      url: String(o.url || "").trim()
-    };
-  }
-  return { enabled: false, url: "" };
-}
-function normalizeProxyUrl(raw) {
-  let s = String(raw || "").trim();
-  if (!s) return "";
-  if (!/^https?:\/\//i.test(s) && !/^socks/i.test(s)) {
-    s = `http://${s}`;
-  }
-  try {
-    const u = new URL(s);
-    if (!/^https?:$/i.test(u.protocol) && !/^socks/i.test(u.protocol)) {
-      throw new Error("Proxy URL must start with http:// or https://");
-    }
-    return u.href;
-  } catch {
-    throw new Error("Invalid proxy URL. Example: http://user:pass@host:3128/");
-  }
-}
-function maskProxyUrl(raw) {
-  const s = String(raw || "").trim();
-  if (!s) return "";
-  try {
-    const u = new URL(s);
-    if (u.username || u.password) {
-      u.username = u.username ? "***" : "";
-      u.password = u.password ? "***" : "";
-    }
-    return u.href;
-  } catch {
-    return "***";
-  }
-}
-async function getGlobalProxyConfig(admin) {
-  const now = Date.now();
-  if (cache && now - cache.at < CACHE_MS && !cache.value.setupRequired) {
-    return { ...cache.value };
-  }
-  try {
-    const db2 = admin || serviceClient2();
-    const { data, error } = await db2.from("app_settings").select("value").eq("key", GLOBAL_PROXY_SETTING_KEY).maybeSingle();
-    if (error) {
-      const setupRequired = isAppSettingsMissing2(error.message);
-      const value2 = { enabled: false, url: "", setupRequired: setupRequired || void 0 };
-      cache = { at: now, value: value2 };
-      return { ...value2 };
-    }
-    const value = parseConfig(data?.value);
-    cache = { at: now, value };
-    return { ...value };
-  } catch (err) {
-    const setupRequired = isAppSettingsMissing2(err?.message);
-    const value = { enabled: false, url: "", setupRequired: setupRequired || void 0 };
-    cache = { at: now, value };
-    return { ...value };
-  }
-}
-async function getGlobalProxyPublicStatus(admin) {
-  const cfg = await getGlobalProxyConfig(admin);
-  const ready = Boolean(cfg.enabled && cfg.url);
-  return { enabled: Boolean(cfg.enabled), ready };
-}
-async function getActiveOutboundProxyUrl(admin) {
-  const cfg = await getGlobalProxyConfig(admin);
-  if (!cfg.enabled || !cfg.url) return null;
-  try {
-    return normalizeProxyUrl(cfg.url);
-  } catch {
-    return null;
-  }
-}
-async function setGlobalProxyConfig(input, admin) {
-  const db2 = admin || serviceClient2();
-  const prev = await getGlobalProxyConfig(db2);
-  let url3 = prev.url;
-  if (typeof input.url === "string") {
-    const trimmed = input.url.trim();
-    url3 = trimmed ? normalizeProxyUrl(trimmed) : "";
-  }
-  const enabled = Boolean(input.enabled) && Boolean(url3);
-  const value = { enabled, url: url3 };
-  const { error } = await db2.from("app_settings").upsert(
-    {
-      key: GLOBAL_PROXY_SETTING_KEY,
-      value: { enabled: value.enabled, url: value.url },
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
-    },
-    { onConflict: "key" }
-  );
-  if (error) {
-    if (isAppSettingsMissing2(error.message)) {
-      throw new Error(GLOBAL_PROXY_SQL_HINT);
-    }
-    throw new Error(error.message);
-  }
-  cache = { at: Date.now(), value };
-  return { ...value };
-}
-async function clearGlobalProxyConfig(admin) {
-  return setGlobalProxyConfig({ enabled: false, url: "" }, admin);
-}
-function invalidateGlobalProxyCache() {
-  cache = null;
-}
-var GLOBAL_PROXY_SETTING_KEY, GLOBAL_PROXY_SQL_HINT, CACHE_MS, cache;
-var init_globalProxySettings = __esm({
-  "src/lib/globalProxySettings.ts"() {
-    GLOBAL_PROXY_SETTING_KEY = "global_proxy_engine";
-    GLOBAL_PROXY_SQL_HINT = "Run supabase_global_proxy_engine.sql (or supabase_device_limits_toggle.sql) in the Supabase SQL Editor so app_settings exists, then try again.";
-    CACHE_MS = 8e3;
-    cache = null;
-  }
-});
-
 // api/handler.ts
 import express2 from "express";
 
@@ -2456,30 +2297,199 @@ var deviceRoutes_default = router5;
 import { Router as Router6 } from "express";
 import { createClient as createClient11 } from "@supabase/supabase-js";
 import { createHash as createHash2, randomBytes as randomBytes2 } from "crypto";
-init_globalProxySettings();
+
+// src/lib/globalProxySettings.ts
+import { createClient as createClient9 } from "@supabase/supabase-js";
+var GLOBAL_PROXY_SETTING_KEY = "global_proxy_engine";
+var GLOBAL_PROXY_SQL_HINT = "Run supabase_global_proxy_engine.sql (or supabase_device_limits_toggle.sql) in the Supabase SQL Editor so app_settings exists, then try again.";
+var CACHE_MS = 8e3;
+var cache = null;
+function serviceClient2() {
+  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url3 || !serviceKey3) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for proxy settings");
+  }
+  return createClient9(url3, serviceKey3, { auth: { persistSession: false } });
+}
+function isAppSettingsMissing2(message) {
+  return /app_settings|does not exist|schema cache|Could not find the table/i.test(
+    String(message || "")
+  );
+}
+function parseConfig(raw) {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const o = raw;
+    return {
+      enabled: Boolean(o.enabled),
+      url: String(o.url || "").trim()
+    };
+  }
+  return { enabled: false, url: "" };
+}
+function normalizeProxyUrl(raw) {
+  let s = String(raw || "").trim();
+  if (!s) return "";
+  if (!/^https?:\/\//i.test(s) && !/^socks/i.test(s)) {
+    s = `http://${s}`;
+  }
+  try {
+    const u = new URL(s);
+    if (/^socks/i.test(u.protocol)) {
+      throw new Error(
+        "Use the provider HTTP endpoint (http://user:pass@host:port/), not socks://. Residential HTTP is required for one-click."
+      );
+    }
+    if (!/^https?:$/i.test(u.protocol)) {
+      throw new Error("Proxy URL must start with http:// or https://");
+    }
+    return u.href;
+  } catch (err) {
+    if (err?.message && /HTTP endpoint|must start with http/i.test(err.message)) throw err;
+    throw new Error("Invalid proxy URL. Example: http://user-session-abc123:pass@host:80/");
+  }
+}
+function applyStickySession(proxyUrl, stickyId) {
+  const id = String(stickyId || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
+  if (!id) return proxyUrl;
+  try {
+    const u = new URL(proxyUrl);
+    const user = decodeURIComponent(u.username || "");
+    if (!user) return proxyUrl;
+    if (/session/i.test(user)) return proxyUrl;
+    u.username = `${user}-session-${id}`;
+    return u.href;
+  } catch {
+    return proxyUrl;
+  }
+}
+function maskProxyUrl(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  try {
+    const u = new URL(s);
+    if (u.username || u.password) {
+      u.username = u.username ? "***" : "";
+      u.password = u.password ? "***" : "";
+    }
+    return u.href;
+  } catch {
+    return "***";
+  }
+}
+async function getGlobalProxyConfig(admin) {
+  const now = Date.now();
+  if (cache && now - cache.at < CACHE_MS && !cache.value.setupRequired) {
+    return { ...cache.value };
+  }
+  try {
+    const db2 = admin || serviceClient2();
+    const { data, error } = await db2.from("app_settings").select("value").eq("key", GLOBAL_PROXY_SETTING_KEY).maybeSingle();
+    if (error) {
+      const setupRequired = isAppSettingsMissing2(error.message);
+      const value2 = { enabled: false, url: "", setupRequired: setupRequired || void 0 };
+      cache = { at: now, value: value2 };
+      return { ...value2 };
+    }
+    const value = parseConfig(data?.value);
+    cache = { at: now, value };
+    return { ...value };
+  } catch (err) {
+    const setupRequired = isAppSettingsMissing2(err?.message);
+    const value = { enabled: false, url: "", setupRequired: setupRequired || void 0 };
+    cache = { at: now, value };
+    return { ...value };
+  }
+}
+async function getGlobalProxyPublicStatus(admin) {
+  const cfg = await getGlobalProxyConfig(admin);
+  const ready = Boolean(cfg.enabled && cfg.url);
+  return { enabled: Boolean(cfg.enabled), ready };
+}
+async function getActiveOutboundProxyUrl(admin) {
+  const cfg = await getGlobalProxyConfig(admin);
+  if (!cfg.enabled || !cfg.url) return null;
+  try {
+    return normalizeProxyUrl(cfg.url);
+  } catch {
+    return null;
+  }
+}
+async function setGlobalProxyConfig(input, admin) {
+  const db2 = admin || serviceClient2();
+  const prev = await getGlobalProxyConfig(db2);
+  let url3 = prev.url;
+  if (typeof input.url === "string") {
+    const trimmed = input.url.trim();
+    url3 = trimmed ? normalizeProxyUrl(trimmed) : "";
+  }
+  const enabled = Boolean(input.enabled) && Boolean(url3);
+  const value = { enabled, url: url3 };
+  const { error } = await db2.from("app_settings").upsert(
+    {
+      key: GLOBAL_PROXY_SETTING_KEY,
+      value: { enabled: value.enabled, url: value.url },
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    { onConflict: "key" }
+  );
+  if (error) {
+    if (isAppSettingsMissing2(error.message)) {
+      throw new Error(GLOBAL_PROXY_SQL_HINT);
+    }
+    throw new Error(error.message);
+  }
+  cache = { at: Date.now(), value };
+  return { ...value };
+}
+async function clearGlobalProxyConfig(admin) {
+  return setGlobalProxyConfig({ enabled: false, url: "" }, admin);
+}
 
 // src/lib/proxyEngine.ts
 import { Readable } from "stream";
 
 // src/lib/proxyFetch.ts
-init_globalProxySettings();
+import { AsyncLocalStorage } from "async_hooks";
+var stickyStore = new AsyncLocalStorage();
 var cachedAgent = null;
-var AGENT_TTL_MS = 6e4;
-async function getProxyAgent(proxyUrl) {
-  const now = Date.now();
-  if (cachedAgent && cachedAgent.proxyUrl === proxyUrl && now - cachedAgent.at < AGENT_TTL_MS) {
-    return cachedAgent.agent;
-  }
-  const undici = await import("undici");
-  const agent = new undici.ProxyAgent(proxyUrl);
-  cachedAgent = { proxyUrl, agent, at: now };
-  return agent;
+var AGENT_TTL_MS = 5 * 6e4;
+function runWithProxySticky(stickyId, fn) {
+  const id = String(stickyId || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 16);
+  if (!id) return fn();
+  return stickyStore.run(id, fn);
 }
 function invalidateProxyAgentCache() {
   cachedAgent = null;
 }
+async function getProxyAgent(proxyUrl) {
+  const now = Date.now();
+  if (cachedAgent && cachedAgent.key === proxyUrl && now - cachedAgent.at < AGENT_TTL_MS) {
+    return cachedAgent.agent;
+  }
+  if (/^socks/i.test(proxyUrl)) {
+    throw new Error(
+      "SOCKS proxies are not supported on this host. Use the provider\u2019s HTTP residential endpoint (http://user:pass@host:port/)."
+    );
+  }
+  const undici = await import("undici");
+  const agent = new undici.ProxyAgent({
+    uri: proxyUrl,
+    connections: 16,
+    pipelining: 1
+  });
+  cachedAgent = { key: proxyUrl, agent, at: now };
+  return agent;
+}
+async function resolveProxyUrl() {
+  let proxyUrl = await getActiveOutboundProxyUrl();
+  if (!proxyUrl) return null;
+  const sticky = stickyStore.getStore();
+  if (sticky) proxyUrl = applyStickySession(proxyUrl, sticky);
+  return proxyUrl;
+}
 async function proxyAwareFetch(input, init) {
-  const proxyUrl = await getActiveOutboundProxyUrl();
+  const proxyUrl = await resolveProxyUrl();
   if (!proxyUrl) {
     return fetch(input, init);
   }
@@ -2491,48 +2501,135 @@ async function proxyAwareFetch(input, init) {
   } catch (err) {
     const msg = String(err?.message || err || "Proxy request failed");
     throw new Error(
-      /proxy|ECONNREFUSED|ENOTFOUND|socket|tunnel|407|authentication/i.test(msg) ? `Global Proxy Engine failed (${msg}). Check the proxy URL in Admin \u2192 Accounts.` : msg
+      /proxy|ECONNREFUSED|ENOTFOUND|socket|tunnel|407|authentication|SOCKS|residential/i.test(msg) ? `Global Proxy Engine failed (${msg}). Check Admin \u2192 Global Proxy Engine (residential HTTP URL).` : msg
     );
+  }
+}
+var BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+function looksLikeCloudflare(status, body) {
+  return status === 403 || status === 503 || /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|ray id:/i.test(
+    body
+  );
+}
+async function fetchViaProxy(proxyUrl, url3, headers) {
+  const undici = await import("undici");
+  const agent = new undici.ProxyAgent(proxyUrl);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 18e3);
+  try {
+    const res = await undici.fetch(url3, {
+      dispatcher: agent,
+      signal: controller.signal,
+      headers,
+      redirect: "follow"
+    });
+    const text = await res.text();
+    return { status: res.status, text };
+  } finally {
+    clearTimeout(timer);
+    try {
+      agent.close?.();
+    } catch {
+    }
   }
 }
 async function testProxyUrl(proxyUrlRaw) {
   let proxyUrl;
   try {
-    const { normalizeProxyUrl: normalizeProxyUrl2 } = await Promise.resolve().then(() => (init_globalProxySettings(), globalProxySettings_exports));
-    proxyUrl = normalizeProxyUrl2(proxyUrlRaw);
+    proxyUrl = normalizeProxyUrl(proxyUrlRaw);
   } catch (err) {
     return { ok: false, error: err?.message || "Invalid proxy URL" };
   }
   if (!proxyUrl) return { ok: false, error: "Proxy URL is empty" };
+  if (/^socks/i.test(proxyUrl)) {
+    return {
+      ok: false,
+      error: "Use an HTTP residential proxy URL (http://user:pass@host:port/), not socks://. Most providers give both."
+    };
+  }
+  proxyUrl = applyStickySession(proxyUrl, `test${Date.now().toString(36)}`);
   try {
-    const undici = await import("undici");
-    const agent = new undici.ProxyAgent(proxyUrl);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12e3);
-    try {
-      const res = await undici.fetch("https://api.ipify.org?format=json", {
-        dispatcher: agent,
-        signal: controller.signal,
-        headers: { Accept: "application/json" }
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        return { ok: false, error: `Proxy reachable but IP check failed (${res.status})` };
-      }
-      let ip = "";
-      try {
-        ip = String(JSON.parse(text)?.ip || "").trim();
-      } catch {
-        ip = text.trim().slice(0, 64);
-      }
-      return { ok: true, ip: ip || "unknown" };
-    } finally {
-      clearTimeout(timer);
-      try {
-        agent.close?.();
-      } catch {
-      }
+    const ipRes = await fetchViaProxy(proxyUrl, "https://api.ipify.org?format=json", {
+      Accept: "application/json",
+      "User-Agent": BROWSER_UA
+    });
+    if (ipRes.status < 200 || ipRes.status >= 300) {
+      return { ok: false, error: `Proxy reachable but IP check failed (${ipRes.status})` };
     }
+    let ip = "";
+    try {
+      ip = String(JSON.parse(ipRes.text)?.ip || "").trim();
+    } catch {
+      ip = ipRes.text.trim().slice(0, 64);
+    }
+    if (!ip) return { ok: false, error: "Proxy returned empty IP" };
+    let isp = "";
+    let hosting = false;
+    try {
+      const meta = await fetchViaProxy(
+        proxyUrl,
+        `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,proxy,hosting,isp,org,query`,
+        { Accept: "application/json", "User-Agent": BROWSER_UA }
+      );
+      const j = JSON.parse(meta.text);
+      if (j?.status === "success") {
+        isp = String(j.isp || j.org || "").trim();
+        hosting = Boolean(j.hosting || j.proxy);
+      }
+    } catch {
+    }
+    if (!isp && /^(3\.|13\.|18\.|34\.|35\.|52\.|54\.|16\.|44\.|63\.|64\.|100\.|107\.|174\.|184\.)/.test(ip)) {
+      hosting = true;
+      isp = "Likely cloud/datacenter (heuristic)";
+    }
+    const chatgpt = await fetchViaProxy(proxyUrl, "https://chatgpt.com/", {
+      Accept: "text/html,application/xhtml+xml",
+      "User-Agent": BROWSER_UA,
+      "Accept-Language": "en-US,en;q=0.9"
+    });
+    const chatgptBlocked = looksLikeCloudflare(chatgpt.status, chatgpt.text.slice(0, 4e3));
+    let udemyHtml = 0;
+    let udemyBlocked = false;
+    try {
+      const udemy = await fetchViaProxy(proxyUrl, "https://www.udemy.com/", {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": BROWSER_UA,
+        "Accept-Language": "en-US,en;q=0.9"
+      });
+      udemyHtml = udemy.status;
+      udemyBlocked = looksLikeCloudflare(udemy.status, udemy.text.slice(0, 4e3));
+    } catch {
+      udemyBlocked = true;
+    }
+    const residentialLikely = !hosting;
+    const warnings = [];
+    if (hosting) {
+      warnings.push(
+        "Exit IP looks like datacenter/VPN. ChatGPT Send and Udemy often fail \u2014 buy residential sticky (Webshare/IPRoyal/Bright Data)."
+      );
+    }
+    if (chatgptBlocked) warnings.push("ChatGPT returned a bot/Cloudflare wall through this proxy.");
+    if (udemyBlocked) {
+      warnings.push(
+        "Udemy returned a Cloudflare wall \u2014 keep Udemy on By extension unless this residential IP is trusted."
+      );
+    }
+    const oneClickReady = residentialLikely && !chatgptBlocked && chatgpt.status >= 200 && chatgpt.status < 400;
+    const message = oneClickReady ? `One-click ready \u2014 residential IP ${ip}${isp ? ` (${isp})` : ""}. ChatGPT HTML ${chatgpt.status}.` : `Proxy reachable (IP ${ip}) but NOT ready for one-click.${warnings[0] ? ` ${warnings[0]}` : ""}`;
+    return {
+      ok: true,
+      ip,
+      isp: isp || void 0,
+      hosting,
+      residentialLikely,
+      chatgptHtml: chatgpt.status,
+      chatgptBlocked,
+      udemyHtml,
+      udemyBlocked,
+      oneClickReady,
+      message,
+      warnings
+    };
   } catch (err) {
     return { ok: false, error: String(err?.message || err || "Proxy test failed") };
   }
@@ -3765,28 +3862,30 @@ function isDocumentRequest(req) {
   return /text\/html/i.test(accept);
 }
 async function proxyThrough(session, req, res, url3) {
-  const document = isDocumentRequest(req);
-  const panelMode = Boolean(session.referrer);
-  const target = {
-    token: session.token,
-    origin: session.origin,
-    cookies: session.cookies,
-    referrer: panelMode ? session.referrer : "",
-    referrerCandidates: panelMode ? session.referrerCandidates : []
-  };
-  const before = session.cookies.length;
-  const result = await forwardRequest({ target, req, res, url: url3, document });
-  const changed = result.cookies !== session.cookies && (result.cookies.length !== before || JSON.stringify(result.cookies) !== JSON.stringify(session.cookies));
-  session.cookies = result.cookies;
-  session.cookieHeader = cookiesToHeader(result.cookies);
-  if (result.referrerUsed && panelMode) session.referrer = result.referrerUsed;
-  session.expiresAt = Date.now() + SESSION_TTL_MS;
-  if (changed || result.referrerUsed) {
-    const sealed = await rememberSession(session);
-    setProxyCookie(res, session.token, sealed);
-  } else {
-    sessions.set(session.token, session);
-  }
+  return runWithProxySticky(session.token, async () => {
+    const document = isDocumentRequest(req);
+    const panelMode = Boolean(session.referrer);
+    const target = {
+      token: session.token,
+      origin: session.origin,
+      cookies: session.cookies,
+      referrer: panelMode ? session.referrer : "",
+      referrerCandidates: panelMode ? session.referrerCandidates : []
+    };
+    const before = session.cookies.length;
+    const result = await forwardRequest({ target, req, res, url: url3, document });
+    const changed = result.cookies !== session.cookies && (result.cookies.length !== before || JSON.stringify(result.cookies) !== JSON.stringify(session.cookies));
+    session.cookies = result.cookies;
+    session.cookieHeader = cookiesToHeader(result.cookies);
+    if (result.referrerUsed && panelMode) session.referrer = result.referrerUsed;
+    session.expiresAt = Date.now() + SESSION_TTL_MS;
+    if (changed || result.referrerUsed) {
+      const sealed = await rememberSession(session);
+      setProxyCookie(res, session.token, sealed);
+    } else {
+      sessions.set(session.token, session);
+    }
+  });
 }
 router6.post("/launch", async (req, res) => {
   try {
@@ -3997,7 +4096,6 @@ router6.all("/asset", (req, res) => {
 var toolProxyRoutes_default = router6;
 
 // src/lib/settingsRoutes.ts
-init_globalProxySettings();
 import { Router as Router7 } from "express";
 import { createClient as createClient12 } from "@supabase/supabase-js";
 var router7 = Router7();
@@ -4119,7 +4217,20 @@ router7.post("/global-proxy/test", async (req, res) => {
     if (result.ok === false) {
       return res.status(502).json({ ok: false, error: result.error });
     }
-    return res.json({ ok: true, ip: result.ip, message: `Proxy OK \u2014 outbound IP ${result.ip}` });
+    return res.json({
+      ok: true,
+      ip: result.ip,
+      isp: result.isp,
+      hosting: result.hosting,
+      residentialLikely: result.residentialLikely,
+      chatgptHtml: result.chatgptHtml,
+      chatgptBlocked: result.chatgptBlocked,
+      udemyHtml: result.udemyHtml,
+      udemyBlocked: result.udemyBlocked,
+      oneClickReady: result.oneClickReady,
+      warnings: result.warnings,
+      message: result.message
+    });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error?.message || "Proxy test failed" });
   }

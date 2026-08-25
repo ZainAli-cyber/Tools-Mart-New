@@ -6,8 +6,7 @@ type Props = {
 };
 
 /**
- * Admin: Global Proxy Engine — route server tool-proxy traffic through a residential HTTP proxy
- * so one-click tools can open without the Chrome extension.
+ * Admin: Global Proxy Engine — residential sticky HTTP proxy for one-click tools.
  */
 export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
   const [enabled, setEnabled] = useState(false);
@@ -17,6 +16,8 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
   const [error, setError] = useState('');
   const [hint, setHint] = useState('');
   const [okMsg, setOkMsg] = useState('');
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [ready, setReady] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -51,6 +52,8 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
     setBusy(true);
     setError('');
     setOkMsg('');
+    setWarnings([]);
+    setReady(false);
     try {
       const { saveGlobalProxySettings } = await import('../../lib/settingsApi');
       const data = await saveGlobalProxySettings({ enabled, url: url.trim() });
@@ -58,7 +61,7 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
       setUrl(String(data.url || url.trim()));
       setOkMsg(
         data.ready
-          ? 'Proxy saved. One-click tools will open via server proxy (no extension).'
+          ? 'Proxy saved. Click “Test one-click” — only green “One-click ready” means ChatGPT/Udemy can work without the extension.'
           : 'Proxy saved (engine off until enabled with a URL).',
       );
       setHint(data.setupRequired ? data.hint || '' : '');
@@ -80,6 +83,8 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
     setBusy(true);
     setError('');
     setOkMsg('');
+    setWarnings([]);
+    setReady(false);
     try {
       const { removeGlobalProxySettings } = await import('../../lib/settingsApi');
       await removeGlobalProxySettings();
@@ -97,10 +102,21 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
     setTesting(true);
     setError('');
     setOkMsg('');
+    setWarnings([]);
+    setReady(false);
     try {
       const { testGlobalProxySettings } = await import('../../lib/settingsApi');
       const data = await testGlobalProxySettings(url.trim() || undefined);
-      setOkMsg(data.message || (data.ip ? `Proxy OK — outbound IP ${data.ip}` : 'Proxy OK'));
+      setReady(Boolean(data.oneClickReady));
+      setWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      setOkMsg(data.message || (data.ip ? `Outbound IP ${data.ip}` : 'Proxy test finished'));
+      if (!data.oneClickReady) {
+        setError(
+          data.chatgptBlocked || data.hosting
+            ? 'This proxy is not strong enough for one-click. Replace it with a residential sticky HTTP proxy, then test again.'
+            : '',
+        );
+      }
     } catch (err: any) {
       setError(String(err?.message || 'Proxy test failed'));
     } finally {
@@ -118,12 +134,36 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
           <h3 className="text-sm font-extrabold text-red-200">Global Proxy Engine</h3>
         </div>
         <p className="mt-1 text-[11px] text-slate-400">
-          Route cloud / server tool-proxy traffic through a residential IP proxy so one-click tools
-          open without the Chrome extension.
+          One-click opens tools on the server. That only works with a{' '}
+          <strong className="text-slate-300">residential sticky HTTP</strong> proxy — not AWS/VPS
+          datacenter IPs. Extension mode still uses the member&apos;s real browser (no proxy needed).
         </p>
       </div>
 
       <div className="space-y-3 p-4 sm:p-5">
+        <div className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-3 py-2.5 text-[11px] leading-relaxed text-amber-100/90">
+          <p className="font-bold text-amber-200">Setup for ChatGPT / Udemy one-click</p>
+          <ol className="mt-1 list-decimal space-y-1 pl-4 text-amber-100/80">
+            <li>
+              Buy <strong>residential</strong> proxies (Webshare Residential, IPRoyal, Bright Data,
+              PacketStream — not datacenter / “premium shared VPS”).
+            </li>
+            <li>
+              Copy the <strong>HTTP</strong> URL, e.g.{' '}
+              <code className="text-amber-50">http://user:pass@host:80/</code> (enable sticky/session
+              if the provider shows it).
+            </li>
+            <li>
+              Paste below → Enable → Save → <strong>Test one-click</strong> until you see green
+              “One-click ready”.
+            </li>
+            <li>
+              Keep Cloudflare-heavy sites (Canva, some Udemy IPs) on <strong>By extension</strong> if
+              the test still flags them.
+            </li>
+          </ol>
+        </div>
+
         <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-[#2a1e1c] bg-[#0d0908] px-3 py-2.5">
           <input
             type="checkbox"
@@ -136,28 +176,33 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
 
         <div>
           <label className="mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-500">
-            Proxy URL
+            Residential HTTP proxy URL
           </label>
           <input
             type="text"
             value={url}
             onChange={e => setUrl(e.target.value)}
-            placeholder="http://user:pass@host:3128/"
+            placeholder="http://user:pass@host:80/"
             autoComplete="off"
             spellCheck={false}
             className="w-full rounded-xl border border-[#2a1e1c] bg-[#0d0908] px-3 py-2.5 text-xs text-white outline-none ring-red-600/40 placeholder:text-slate-600 focus:ring-2"
           />
           <p className="mt-1 text-[10px] text-slate-500">
-            Example format: <code className="text-slate-400">http://user:pass@ip:port/</code>. Use a{' '}
-            <strong className="text-slate-400">residential</strong> proxy — AWS/datacenter IPs often
-            load ChatGPT HTML but leave the Send button gray. Stored in Supabase only; do not commit
-            this URL to git.
+            Each tool tab auto-adds a sticky session so ChatGPT keeps one IP. Your old AWS IP
+            (e.g. 16.x) will fail the test below — that is expected.
           </p>
         </div>
 
         {hint && <p className="text-[11px] text-amber-400/90">{hint}</p>}
         {error && <p className="text-[11px] text-red-400">{error}</p>}
-        {okMsg && <p className="text-[11px] text-emerald-400">{okMsg}</p>}
+        {okMsg && (
+          <p className={`text-[11px] ${ready ? 'text-emerald-400' : 'text-slate-300'}`}>{okMsg}</p>
+        )}
+        {warnings.map(w => (
+          <p key={w} className="text-[11px] text-amber-400/90">
+            {w}
+          </p>
+        ))}
 
         <div className="flex flex-wrap gap-2 pt-1">
           <button
@@ -175,7 +220,7 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
             className="cursor-pointer inline-flex items-center gap-1.5 rounded-xl border border-[#2a1e1c] bg-[#0d0908] px-4 py-2 text-xs font-bold text-slate-300 transition hover:border-red-500/40 disabled:opacity-50"
           >
             {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            Test Proxy
+            Test one-click
           </button>
           <button
             type="button"

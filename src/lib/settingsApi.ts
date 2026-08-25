@@ -68,5 +68,19 @@ export function testGlobalProxySettings(url?: string) {
   return authorizedFetch('/api/settings/global-proxy/test', {
     method: 'POST',
     body: JSON.stringify(url ? { url } : {}),
-  }) as Promise<{ ok: boolean; ip?: string; message?: string; error?: string }>;
+  }) as Promise<{
+    ok: boolean;
+    ip?: string;
+    isp?: string;
+    hosting?: boolean;
+    residentialLikely?: boolean;
+    chatgptHtml?: number;
+    chatgptBlocked?: boolean;
+    udemyHtml?: number;
+    udemyBlocked?: boolean;
+    oneClickReady?: boolean;
+    warnings?: string[];
+    message?: string;
+    error?: string;
+  }>;
 }
