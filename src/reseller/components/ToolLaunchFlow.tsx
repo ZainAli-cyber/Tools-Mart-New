@@ -100,7 +100,7 @@ export const ConnectingToToolModal: React.FC<{
         </h3>
         <p className="mt-1 text-center text-xs text-slate-400">
           {ready
-            ? 'Your session is ready. Open the tool in a new tab.'
+            ? 'Session is ready. Click Open Tool (browser blocked the automatic tab).'
             : 'Auto-login in progress, please wait…'}
         </p>
         {toolName && (
@@ -319,12 +319,14 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
   const [sessionTool, setSessionTool] = useState<Tool | null>(null);
   const [connecting, setConnecting] = useState<{ name: string; step: LaunchProgressStep } | null>(null);
   const [readyUrl, setReadyUrl] = useState<string | null>(null);
+  const pendingDestRef = useRef<string | null>(null);
   const pendingRef = useRef<Tool | null>(null);
   const launchingRef = useRef(false);
 
   const showNeedExtensionUi = useCallback((tool: Tool, err?: NeedExtensionError | null) => {
     setConnecting(null);
     setReadyUrl(null);
+    pendingDestRef.current = null;
     if (allowsSessionApply(tool, err)) {
       setGuideTool(null);
       setSessionTool(tool);
@@ -334,10 +336,16 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
     }
   }, []);
 
+  const isPopupBlocked = (err: any) =>
+    err instanceof PopupBlockedError ||
+    err?.name === 'PopupBlockedError' ||
+    /pop-?up blocked/i.test(String(err?.message || ''));
+
   const runLaunch = useCallback(async (tool: Tool) => {
     if (launchingRef.current) return;
     launchingRef.current = true;
     pendingRef.current = tool;
+    pendingDestRef.current = null;
     setGuideTool(null);
     setSessionTool(null);
     setReadyUrl(null);
@@ -351,28 +359,37 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
         onProgress: step => {
           setConnecting({ name: tool.name, step });
         },
+        onDestinationReady: url => {
+          pendingDestRef.current = url;
+        },
       });
       setConnecting({ name: tool.name, step: 'done' });
       await new Promise(r => window.setTimeout(r, 120));
       setConnecting(null);
       pendingRef.current = null;
+      pendingDestRef.current = null;
     } catch (err: any) {
-      if (err instanceof NeedExtensionError) {
+      if (err instanceof NeedExtensionError || err?.name === 'NeedExtensionError') {
         setConnecting(null);
         showNeedExtensionUi(tool, err);
         return;
       }
-      if (err instanceof PopupBlockedError && err.url) {
-        // Access succeeded — stay on dashboard; member opens with a click (popup gesture).
-        setConnecting({ name: tool.name, step: 'done' });
-        setReadyUrl(err.url);
+      if (isPopupBlocked(err)) {
+        const url = String(err?.url || pendingDestRef.current || '').trim();
+        if (url) {
+          // Access succeeded — show Open Tool (user gesture) instead of a blocking alert.
+          setConnecting({ name: tool.name, step: 'done' });
+          setReadyUrl(url);
+          return;
+        }
+        setConnecting(null);
+        window.alert(
+          err?.message ||
+            'Pop-up blocked. Allow pop-ups for this site, then open the tool again.',
+        );
         return;
       }
       setConnecting(null);
-      if (err instanceof PopupBlockedError) {
-        window.alert(err.message);
-        return;
-      }
       window.alert(err?.message || 'Could not open this tool. Try signing in again.');
     } finally {
       launchingRef.current = false;
@@ -390,17 +407,36 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
   }, [guideTool, sessionTool, runLaunch]);
 
   const onOpenReady = useCallback(() => {
-    if (!readyUrl) return;
+    const url = String(readyUrl || pendingDestRef.current || '').trim();
+    if (!url) return;
+    // Prefer a real user-gesture <a> click — more reliable than window.open after async work.
     try {
-      openToolInNewTab(readyUrl);
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       setReadyUrl(null);
       setConnecting(null);
       pendingRef.current = null;
+      pendingDestRef.current = null;
     } catch (err: any) {
-      window.alert(
-        err?.message ||
-          'Pop-up blocked. Allow pop-ups for this site, then click Open Tool again.',
-      );
+      try {
+        openToolInNewTab(url);
+        setReadyUrl(null);
+        setConnecting(null);
+        pendingRef.current = null;
+        pendingDestRef.current = null;
+      } catch (err2: any) {
+        window.alert(
+          err2?.message ||
+            err?.message ||
+            'Pop-up blocked. Allow pop-ups for this site, then click Open Tool again.',
+        );
+      }
     }
   }, [readyUrl]);
 

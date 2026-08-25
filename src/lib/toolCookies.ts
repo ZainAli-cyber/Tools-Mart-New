@@ -34,15 +34,17 @@ export class NeedExtensionError extends Error {
 }
 
 /** Thrown when the browser blocks opening the tool in a new tab. Never navigate the portal. */
+/** Thrown when the browser blocks opening the tool in a new tab. Never navigate the portal. */
 export class PopupBlockedError extends Error {
-  url?: string;
+  readonly url: string;
   constructor(
-    message = 'Pop-up blocked. Allow pop-ups for this site, then try again. Your dashboard was left open.',
-    url?: string,
+    message = 'Pop-up blocked. Allow pop-ups for this site, then use Open Tool.',
+    url = '',
   ) {
     super(message);
     this.name = 'PopupBlockedError';
-    this.url = url;
+    this.url = String(url || '');
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -959,16 +961,20 @@ async function applyCookiesViaExtension(
 
 function finishOpen(dest: string, opts?: LaunchToolOptions, openedByExtension = false) {
   if (openedByExtension) return;
+  const url = absolutePortalUrl(String(dest || '').trim());
+  opts?.onDestinationReady?.(url);
   if (opts?.reservedTab) {
-    navigateReservedTab(opts.reservedTab, dest);
+    navigateReservedTab(opts.reservedTab, url);
     return;
   }
-  openToolInNewTab(absolutePortalUrl(dest));
+  openToolInNewTab(url);
 }
 
 export type LaunchToolOptions = {
   onNeedExtension?: () => void;
   onProgress?: (step: LaunchProgressStep) => void;
+  /** Fired with the final tool URL right before the new tab opens. */
+  onDestinationReady?: (url: string) => void;
   /** Tab opened synchronously on click — portal never navigates away. */
   reservedTab?: Window | null;
 };
