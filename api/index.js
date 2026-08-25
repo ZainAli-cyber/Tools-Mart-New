@@ -2446,9 +2446,15 @@ function applyStickySession(proxyUrl, stickyId) {
   if (!id) return proxyUrl;
   try {
     const u = new URL(proxyUrl);
-    const user = decodeURIComponent(u.username || "");
+    let user = decodeURIComponent(u.username || "");
     if (!user) return proxyUrl;
     if (/session/i.test(user)) return proxyUrl;
+    const host = (u.hostname || "").toLowerCase();
+    if (/webshare\.io$/i.test(host)) {
+      user = user.replace(/-\d{3,}$/i, "");
+      u.username = `${user}-${id}`;
+      return u.href;
+    }
     u.username = `${user}-session-${id}`;
     return u.href;
   } catch {

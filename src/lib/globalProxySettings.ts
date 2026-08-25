@@ -93,8 +93,9 @@ export function normalizeProxyUrl(raw: string): string {
 
 /**
  * Pin a residential sticky session so one tool tab keeps the same exit IP.
- * Works with common username patterns (Webshare / IPRoyal / Bright Data style).
- * If the URL already contains "session", it is left unchanged.
+ * - Webshare: user-us-SESSIONID (numeric / alphanumeric after country)
+ * - IPRoyal / Bright Data style: user-session-ID
+ * If the URL already contains a sticky marker, it is left unchanged.
  */
 export function applyStickySession(proxyUrl: string, stickyId: string): string {
   const id = String(stickyId || '')
@@ -103,9 +104,19 @@ export function applyStickySession(proxyUrl: string, stickyId: string): string {
   if (!id) return proxyUrl;
   try {
     const u = new URL(proxyUrl);
-    const user = decodeURIComponent(u.username || '');
+    let user = decodeURIComponent(u.username || '');
     if (!user) return proxyUrl;
     if (/session/i.test(user)) return proxyUrl;
+
+    const host = (u.hostname || '').toLowerCase();
+    if (/webshare\.io$/i.test(host)) {
+      // Drop generator sticky suffix (e.g. user-us-680248) so each tool tab gets its own pin.
+      user = user.replace(/-\d{3,}$/i, '');
+      // Webshare: {user}-us-1234  (not -session-)
+      u.username = `${user}-${id}`;
+      return u.href;
+    }
+
     // user → user-session-ID (most residential HTTP gateways)
     u.username = `${user}-session-${id}`;
     return u.href;
