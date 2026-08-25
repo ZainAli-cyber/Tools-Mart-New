@@ -107,6 +107,7 @@ export const CookieSessionApplyScreen: React.FC<CookieSessionApplyScreenProps> =
         toolId,
         dest,
         unlockReferrer,
+        forceProxy: true,
       });
 
       if (result.opened === 'proxy') {

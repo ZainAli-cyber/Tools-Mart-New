@@ -1032,10 +1032,18 @@ async function openOneClick(
   const referrer = resolvePanelUnlockReferrer(unlockReferrer, dest);
   const needsExt = needsPanelUnlockExtension(dest, unlockReferrer);
 
-  // One-click with cookies / panel unlock → server proxy first (no extra settings round-trip).
-  const preferServerProxy = needsExt || list.length > 0;
+  let proxyReady = false;
+  try {
+    const { isGlobalProxyReady } = await import('./toolProxyClient');
+    proxyReady = await isGlobalProxyReady();
+  } catch {
+    proxyReady = false;
+  }
 
-  if (preferServerProxy) {
+  // True one-click: Global Proxy Engine ON → server session, never ask for extension.
+  const tryServerProxy = proxyReady || needsExt || list.length > 0;
+
+  if (tryServerProxy) {
     await reportProgress(opts, 'session');
     if (panelDest || referrer) await reportProgress(opts, 'unlocking');
     try {
@@ -1046,14 +1054,27 @@ async function openOneClick(
         finishOpen(result.viewUrl, opts, false);
         return;
       }
+      if (proxyReady) {
+        // Engine is ON but API returned direct — still open without extension.
+        const openUrl = String(result.url || dest).trim() || dest;
+        await reportProgress(opts, 'launching');
+        finishOpen(openUrl, opts, false);
+        return;
+      }
       if (list.length === 0 && !needsExt) {
         await reportProgress(opts, 'launching');
         finishOpen(dest, opts, false);
         return;
       }
     } catch (err: any) {
+      if (proxyReady) {
+        throw new Error(
+          err?.message ||
+            'One-click proxy failed. In Admin → Global Proxy Engine, Save Proxy and pass “Test one-click”, then try again.',
+        );
+      }
       if (!list.length && !needsExt) throw err;
-      // Cookie / panel tools: fall through to extension if proxy launch failed.
+      // Proxy off / unavailable: fall through to extension or URL-only.
     }
   }
 
@@ -1084,6 +1105,7 @@ async function openOneClick(
   await reportProgress(opts, 'session');
 
   if (list.length > 0) {
+    // Cookies saved but Global Proxy Engine OFF → extension (or Session Apply).
     await ensureExtension(opts, COOKIES_NEED_EXTENSION_MSG, true);
     try {
       await applyCookiesViaExtension(list, dest, { openTab: false });
@@ -1125,12 +1147,14 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
     await reportProgress(opts, 'authenticating');
     const payload = await fetchLaunchPayload(key);
     const fromPayload = resolveAccessMethod(payload.accessMethod);
-    // Trust launch API; only force extension when catalog badge is explicitly By extension.
     const catalogRaw = String(tool.accessMethod || '').trim().toLowerCase();
-    const method =
-      catalogRaw === 'extension' || catalogRaw === 'by_extension'
-        ? 'extension'
-        : fromPayload;
+    // Prefer one_click if either API or catalog says so (stale "extension" column must not win).
+    const method: ToolAccessMethod =
+      fromPayload === 'one_click' || catalogRaw === 'one_click' || catalogRaw === 'one-click'
+        ? 'one_click'
+        : catalogRaw === 'extension' || catalogRaw === 'by_extension'
+          ? 'extension'
+          : fromPayload;
     const dest = String(payload.url || tool.toolUrl || '').trim();
     if (!dest) {
       throw new Error(

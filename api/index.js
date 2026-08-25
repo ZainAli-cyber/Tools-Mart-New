@@ -2030,15 +2030,23 @@ function toolAssigned(profile, tool) {
     return toolMatchesKey2(tool, value) || value.toLowerCase() === String(tool.name || "").trim().toLowerCase();
   });
 }
+function resolveToolAccessMethod(tool, extra) {
+  const candidates = [
+    extra?.accessMethod,
+    extra?.access_method,
+    tool?.access_method,
+    tool?.accessMethod
+  ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
+  if (candidates.some((v) => v === "one_click" || v === "one-click")) return "one_click";
+  return "extension";
+}
 function cookieFields(tool) {
   const extra = parseExtraBag(tool?.extra);
-  const method = tool?.access_method || extra.accessMethod || extra.access_method;
   const url3 = tool?.tool_url || extra.toolUrl || extra.tool_url || "";
   const cookiesRaw = tool?.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? "";
   const panelReferrer = tool?.panel_referrer || extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "";
-  const normalized = String(method || "").trim().toLowerCase() === "one_click" ? "one_click" : "extension";
   return {
-    accessMethod: normalized,
+    accessMethod: resolveToolAccessMethod(tool, extra),
     url: String(url3 || "").trim(),
     cookiesRaw: String(cookiesRaw || ""),
     panelReferrer: String(panelReferrer || "").trim()
@@ -3812,15 +3820,23 @@ function toolAssigned2(profile, tool) {
     return toolMatchesKey3(tool, value) || value.toLowerCase() === String(tool.name || "").trim().toLowerCase();
   });
 }
+function resolveToolAccessMethod2(tool, extra) {
+  const candidates = [
+    extra?.accessMethod,
+    extra?.access_method,
+    tool?.access_method,
+    tool?.accessMethod
+  ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
+  if (candidates.some((v) => v === "one_click" || v === "one-click")) return "one_click";
+  return "extension";
+}
 function cookieFields2(tool) {
   const extra = parseExtraJson(tool?.extra);
-  const method = tool?.access_method || extra.accessMethod || extra.access_method;
   const url3 = tool?.tool_url || extra.toolUrl || extra.tool_url || "";
   const cookiesRaw = tool?.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? "";
   const panelReferrer = tool?.panel_referrer || extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "";
-  const normalized = String(method || "").trim().toLowerCase() === "one_click" ? "one_click" : "extension";
   return {
-    accessMethod: normalized,
+    accessMethod: resolveToolAccessMethod2(tool, extra),
     url: String(url3 || "").trim(),
     cookiesRaw: String(cookiesRaw || ""),
     panelReferrer: String(panelReferrer || "").trim()

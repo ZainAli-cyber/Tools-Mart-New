@@ -297,9 +297,21 @@ function toolAssigned(profile: { tools?: any }, tool: { id?: string; name?: stri
   });
 }
 
+function resolveToolAccessMethod(tool: any, extra: Record<string, any>): 'one_click' | 'extension' {
+  const candidates = [
+    extra?.accessMethod,
+    extra?.access_method,
+    tool?.access_method,
+    tool?.accessMethod,
+  ]
+    .map(v => String(v || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (candidates.some(v => v === 'one_click' || v === 'one-click')) return 'one_click';
+  return 'extension';
+}
+
 function cookieFields(tool: any) {
   const extra = parseExtraBag(tool?.extra);
-  const method = tool?.access_method || extra.accessMethod || extra.access_method;
   const url = tool?.tool_url || extra.toolUrl || extra.tool_url || '';
   const cookiesRaw = tool?.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? '';
   const panelReferrer =
@@ -308,10 +320,8 @@ function cookieFields(tool: any) {
     extra.unlockReferrer ||
     extra.panel_referrer ||
     '';
-  const normalized =
-    String(method || '').trim().toLowerCase() === 'one_click' ? 'one_click' as const : 'extension' as const;
   return {
-    accessMethod: normalized,
+    accessMethod: resolveToolAccessMethod(tool, extra),
     url: String(url || '').trim(),
     cookiesRaw: String(cookiesRaw || ''),
     panelReferrer: String(panelReferrer || '').trim(),
