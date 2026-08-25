@@ -11,6 +11,7 @@ import { InvoicesPage } from './pages/InvoicesPage';
 import { MyDashboardPage } from './pages/MyDashboardPage';
 import { TutorialsPage } from './pages/TutorialsPage';
 import { ExtensionsPage } from './pages/ExtensionsPage';
+import { MobileAppPage } from './pages/MobileAppPage';
 import { CustomerShopPage } from './pages/CustomerShopPage';
 import { ResellerPage as ResellerPortalContent } from '../pages/ResellerPage';
 import { AccountProfileForm } from '../components/AccountProfileForm';
@@ -374,6 +375,8 @@ export const ResellerApp: React.FC = () => {
               <TutorialsPage adminWaLink={adminWa} />
             ) : userPage === 'extensions' ? (
               <ExtensionsPage customerId={self.customer_code || session.customerCode || session.id} />
+            ) : userPage === 'mobile-app' ? (
+              <MobileAppPage customerId={self.customer_code || session.customerCode || session.id} />
             ) : userPage === 'notifications' ? (
               <InboxPage notes={inbox} onRead={onReadNote} onReadAll={onReadAllNotes} onDelete={onDeleteNote} onDeleteRead={onDeleteReadNotes} />
             ) : userPage === 'inbox' ? (

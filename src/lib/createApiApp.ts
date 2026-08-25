@@ -12,6 +12,7 @@ import toolProxyRouter, {
   handleOriginToolApi,
 } from './toolProxyRoutes';
 import settingsRouter from './settingsRoutes';
+import mobileRouter from './mobileRoutes';
 
 /**
  * Express app with all /api/* routes. Used by local server.ts and Vercel api/index.ts.
@@ -82,6 +83,7 @@ export function createApiApp() {
   app.use('/api/devices', deviceRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/extension', extensionRouter);
+  app.use('/api/mobile', mobileRouter);
   app.use('/api/tool-proxy', toolProxyRouter);
   app.use('/api/notifications', notificationRouter);
 

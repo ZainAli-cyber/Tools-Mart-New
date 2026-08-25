@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 const BROWSER_KEY = 'atm_device_browser_id';
 
 function randomId() {
@@ -68,9 +70,13 @@ export function getDeviceFingerprint(extensionDeviceId?: string | null): DeviceF
 
 export function deviceHeaders(extra?: Record<string, string>): Record<string, string> {
   const fp = getDeviceFingerprint();
+  let label = fp.deviceLabel;
+  if (Capacitor.isNativePlatform()) {
+    label = `Mobile App · ${Capacitor.getPlatform()}`;
+  }
   return {
     'X-Device-Id': fp.deviceId,
-    'X-Device-Label': fp.deviceLabel,
+    'X-Device-Label': label,
     ...(extra || {}),
   };
 }

@@ -1,8 +1,8 @@
 import React from 'react';
-import { LayoutDashboard, ShoppingBag, Video, Briefcase, LogOut, ChevronsLeft, ChevronsRight, ArrowRight, Puzzle, Bell, Inbox } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Video, Briefcase, LogOut, ChevronsLeft, ChevronsRight, ArrowRight, Puzzle, Bell, Inbox, Smartphone } from 'lucide-react';
 import { ThemeToggle } from '../../components/ThemeToggle';
 
-export type UserPage = 'dashboard' | 'shop' | 'tutorials' | 'extensions' | 'notifications' | 'inbox';
+export type UserPage = 'dashboard' | 'shop' | 'tutorials' | 'extensions' | 'mobile-app' | 'notifications' | 'inbox';
 
 interface Props {
   current: UserPage;
@@ -94,6 +94,19 @@ export const UserSidebar: React.FC<Props> = ({
               </>
             )}
             {collapsed && <Tooltip label="Extensions" />}
+          </button>
+
+          <button onClick={() => onChange('mobile-app')} className={itemCls(current === 'mobile-app')} title={collapsed ? 'Mobile App' : undefined}>
+            <Smartphone className="w-4 h-4 shrink-0" />
+            {!collapsed && (
+              <>
+                <span className="text-xs font-semibold flex-1">Mobile App</span>
+                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border ${
+                  current === 'mobile-app' ? 'bg-white/20 border-white/30 text-white' : 'bg-emerald-600/20 border-emerald-500/40 text-emerald-400'
+                }`}>APK</span>
+              </>
+            )}
+            {collapsed && <Tooltip label="Mobile App" />}
           </button>
 
           <button onClick={() => onChange('notifications')} className={itemCls(current === 'notifications')} title={collapsed ? 'Notifications' : undefined}>

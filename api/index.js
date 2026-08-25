@@ -4641,6 +4641,24 @@ router7.post("/global-proxy/test", async (req, res) => {
 });
 var settingsRoutes_default = router7;
 
+// src/lib/mobileRoutes.ts
+import { Router as Router8 } from "express";
+var router8 = Router8();
+router8.get("/info", (_req, res) => {
+  const apkUrl = String(process.env.MOBILE_APK_URL || "/downloads/aitoolzmart.apk").trim();
+  const version = String(process.env.MOBILE_APK_VERSION || "1.0.0").trim();
+  res.json({
+    ok: true,
+    platform: "android",
+    apkUrl,
+    version,
+    minAndroid: 24,
+    appName: "AI Toolz Mart",
+    note: "Install once. Tools and cookies update automatically when you open them \u2014 no reinstall needed."
+  });
+});
+var mobileRoutes_default = router8;
+
 // src/lib/createApiApp.ts
 function createApiApp() {
   const app = express();
@@ -4692,6 +4710,7 @@ function createApiApp() {
   app.use("/api/devices", deviceRoutes_default);
   app.use("/api/settings", settingsRoutes_default);
   app.use("/api/extension", extensionRoutes_default);
+  app.use("/api/mobile", mobileRoutes_default);
   app.use("/api/tool-proxy", toolProxyRoutes_default);
   app.use("/api/notifications", notificationRoutes_default);
   const getAI = async () => {

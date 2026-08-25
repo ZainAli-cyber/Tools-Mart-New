@@ -12,9 +12,18 @@
     "clean": "rm -rf dist server.js api/index.js",
     "lint": "tsc --noEmit",
     "migrate:accounts": "tsx scripts/migrate-accounts.ts",
-    "verify:logins": "tsx scripts/verify-logins.ts"
+    "verify:logins": "tsx scripts/verify-logins.ts",
+    "build:mobile": "vite build && npm run build:api && npx cap sync android",
+    "cap:sync": "npx cap sync android",
+    "cap:open:android": "npx cap open android",
+    "android:apk": "cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/device": "^6.0.3",
+    "@capacitor/splash-screen": "^6.0.4",
     "@google/genai": "^2.4.0",
     "@supabase/supabase-js": "^2.111.0",
     "@tailwindcss/vite": "^4.1.14",
@@ -36,6 +45,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.1",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",

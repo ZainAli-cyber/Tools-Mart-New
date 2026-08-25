@@ -821,9 +821,10 @@ export async function fetchLaunchPayload(
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   const { deviceHeaders } = await import('./deviceFingerprint');
+  const { apiUrl } = await import('./mobile/portalBase');
   const omitCookies = Boolean(opts?.omitCookies);
   const qs = omitCookies ? '?omitCookies=1' : '';
-  const response = await fetch(`/api/extension/launch/${encodeURIComponent(toolKey)}${qs}`, {
+  const response = await fetch(apiUrl(`/api/extension/launch/${encodeURIComponent(toolKey)}${qs}`), {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...deviceHeaders(),
@@ -1026,6 +1027,26 @@ async function openViaExtension(
   finishOpen(dest, opts, false);
 }
 
+/** Mobile APK: fetch latest cookies from server and open in native in-app browser. */
+async function openViaMobileApp(
+  dest: string,
+  cookies: any[],
+  opts: LaunchToolOptions | undefined,
+  unlockReferrer: string | undefined,
+  toolName: string,
+) {
+  const { launchToolNative } = await import('./mobile/toolLauncher');
+  await reportProgress(opts, 'session');
+  if (isToolAccessUrl(dest) || unlockReferrer) await reportProgress(opts, 'unlocking');
+  await reportProgress(opts, 'launching');
+  await launchToolNative({
+    url: dest,
+    cookies,
+    referrer: unlockReferrer,
+    title: toolName,
+  });
+}
+
 async function openOneClick(
   toolId: string,
   dest: string,
@@ -1171,6 +1192,13 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
       payload.unlockReferrer || payload.panelReferrer || tool.panelReferrer || '',
     ).trim();
     const cookies = Array.isArray(payload.cookies) ? payload.cookies : [];
+
+    const { isMobileApp } = await import('./mobile/toolLauncher');
+    if (isMobileApp()) {
+      await openViaMobileApp(dest, cookies, opts, unlockReferrer || undefined, payload.name || tool.name);
+      opts?.onProgress?.('done');
+      return;
+    }
 
     if (method === 'one_click') {
       await openOneClick(key, dest, cookies, opts, unlockReferrer);
