@@ -300,11 +300,34 @@ function isBlockedHost(host: string): boolean {
   return false;
 }
 
+/**
+ * Public static CDNs (ChatGPT CSS/JS/fonts/images).
+ * MUST load in the member's browser directly — proxying them through Vercel
+ * drops bundles / times out and leaves the bare "What can I help with?" shell.
+ */
+export function isDirectStaticHost(host: string): boolean {
+  const h = String(host || '')
+    .toLowerCase()
+    .split(':')[0]
+    .replace(/^\./, '');
+  if (!h) return false;
+  if (h === 'oaistatic.com' || h.endsWith('.oaistatic.com')) return true;
+  if (h === 'cdn.openai.com' || h.endsWith('.cdn.openai.com')) return true;
+  if (h === 'oaiusercontent.com' || h.endsWith('.oaiusercontent.com')) return true;
+  // Common SPA static CDNs used by other one-click tools
+  if (h === 'cdnjs.cloudflare.com' || h === 'unpkg.com' || h === 'jsdelivr.net' || h.endsWith('.jsdelivr.net')) {
+    return true;
+  }
+  return false;
+}
+
 /** Absolute tool URL → portal path under /fx/<token>. */
 export function toProxyPath(target: ProxyTarget, absoluteUrl: string): string {
   try {
     const u = new URL(absoluteUrl);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return absoluteUrl;
+    // Leave public CDNs absolute so the browser loads CSS/JS from the real host.
+    if (isDirectStaticHost(u.hostname)) return absoluteUrl;
     const base = `${PROXY_BASE}/${encodeURIComponent(target.token)}`;
     // Never nest /fx/<token>/ inside itself (history.pushState bug / CF redirects).
     if (u.pathname === base || u.pathname.startsWith(`${base}/`)) {
@@ -473,6 +496,17 @@ function runtimeScript(target: ProxyTarget): string {
 
   function portalHost(){ return location.host; }
 
+  /** Public CDN hosts — never rewrite (keeps ChatGPT CSS/JS loading). */
+  function isDirectStatic(host){
+    var h=String(host||'').toLowerCase().split(':')[0];
+    if (!h) return false;
+    if (h==='oaistatic.com' || h.slice(-13)==='.oaistatic.com') return true;
+    if (h==='cdn.openai.com' || h.slice(-14)==='.cdn.openai.com') return true;
+    if (h==='oaiusercontent.com' || h.slice(-17)==='.oaiusercontent.com') return true;
+    if (h==='cdnjs.cloudflare.com' || h==='unpkg.com' || h==='jsdelivr.net' || h.slice(-12)==='.jsdelivr.net') return true;
+    return false;
+  }
+
   /** Current page mapped back to the tool URL space. */
   function virtualHref(){
     var p=location.pathname;
@@ -495,6 +529,8 @@ function runtimeScript(target: ProxyTarget): string {
     try {
       var u=new URL(abs);
       if (u.protocol!=='http:' && u.protocol!=='https:') return abs;
+      // CSS/JS CDNs stay on the real host so the SPA hydrates fully.
+      if (isDirectStatic(u.host)) return abs;
       // Already a portal /fx/<token> URL — never nest another prefix.
       if (u.host===portalHost()) {
         if (u.pathname===BASE || u.pathname.indexOf(BASE+'/')===0) return u.pathname+u.search+u.hash;
@@ -578,6 +614,8 @@ function runtimeScript(target: ProxyTarget): string {
         var mapped=toProxy(abs.href.replace(/^ws/,'http'));
         if (mapped.indexOf(BASE)===0) {
           u=(location.protocol==='https:'?'wss://':'ws://')+location.host+mapped;
+        } else if (/^https?:/i.test(mapped)) {
+          u=mapped.replace(/^http/,'ws');
         }
       } catch(e){}
       return protocols===undefined ? new OWS(u) : new OWS(u, protocols);
@@ -586,6 +624,18 @@ function runtimeScript(target: ProxyTarget): string {
     try { PatchedWS.CONNECTING=OWS.CONNECTING; PatchedWS.OPEN=OWS.OPEN; PatchedWS.CLOSING=OWS.CLOSING; PatchedWS.CLOSED=OWS.CLOSED; } catch(e){}
     window.WebSocket=PatchedWS;
   }
+
+  // Patch workers so relative chatgpt.com worker scripts stay inside /fx/…
+  try {
+    if (window.Worker) {
+      var OWorker=window.Worker;
+      function PatchedWorker(url, opts){
+        return new OWorker(typeof url==='string'?map(url):url, opts);
+      }
+      PatchedWorker.prototype=OWorker.prototype;
+      window.Worker=PatchedWorker;
+    }
+  } catch(e){}
 
   // Service workers cannot see our patches — keep the page on the network path.
   try {
@@ -741,6 +791,33 @@ export function rewriteHtml(target: ProxyTarget, html: string, pageUrl: string):
   out = out.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (m, css: string) => {
     return m.replace(css, rewriteCss(target, css, pageUrl));
   });
+
+  // Rewrite import map URLs the same way as href/src (CDN stays absolute).
+  out = out.replace(
+    /<script\b([^>]*\btype\s*=\s*["']importmap["'][^>]*)>([\s\S]*?)<\/script>/gi,
+    (m, attrs: string, body: string) => {
+      try {
+        const json = JSON.parse(body);
+        const rewriteMap = (obj: any) => {
+          if (!obj || typeof obj !== 'object') return obj;
+          const next: Record<string, string> = {};
+          for (const [k, v] of Object.entries(obj)) {
+            next[k] = typeof v === 'string' ? mapAttrValue(target, pageUrl, v) : String(v);
+          }
+          return next;
+        };
+        if (json.imports) json.imports = rewriteMap(json.imports);
+        if (json.scopes && typeof json.scopes === 'object') {
+          for (const scope of Object.keys(json.scopes)) {
+            json.scopes[scope] = rewriteMap(json.scopes[scope]);
+          }
+        }
+        return `<script${attrs}>${JSON.stringify(json)}</script>`;
+      } catch {
+        return m;
+      }
+    },
+  );
 
   const runtime = runtimeScript(target);
   if (/<head[^>]*>/i.test(out)) {

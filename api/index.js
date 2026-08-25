@@ -3023,10 +3023,22 @@ function isBlockedHost(host) {
   if (h === "::1" || h.startsWith("fd") || h.startsWith("fe80")) return true;
   return false;
 }
+function isDirectStaticHost(host) {
+  const h = String(host || "").toLowerCase().split(":")[0].replace(/^\./, "");
+  if (!h) return false;
+  if (h === "oaistatic.com" || h.endsWith(".oaistatic.com")) return true;
+  if (h === "cdn.openai.com" || h.endsWith(".cdn.openai.com")) return true;
+  if (h === "oaiusercontent.com" || h.endsWith(".oaiusercontent.com")) return true;
+  if (h === "cdnjs.cloudflare.com" || h === "unpkg.com" || h === "jsdelivr.net" || h.endsWith(".jsdelivr.net")) {
+    return true;
+  }
+  return false;
+}
 function toProxyPath(target, absoluteUrl) {
   try {
     const u = new URL(absoluteUrl);
     if (u.protocol !== "http:" && u.protocol !== "https:") return absoluteUrl;
+    if (isDirectStaticHost(u.hostname)) return absoluteUrl;
     const base = `${PROXY_BASE}/${encodeURIComponent(target.token)}`;
     if (u.pathname === base || u.pathname.startsWith(`${base}/`)) {
       return `${u.pathname}${u.search}${u.hash}`;
@@ -3152,6 +3164,17 @@ function runtimeScript(target) {
 
   function portalHost(){ return location.host; }
 
+  /** Public CDN hosts \u2014 never rewrite (keeps ChatGPT CSS/JS loading). */
+  function isDirectStatic(host){
+    var h=String(host||'').toLowerCase().split(':')[0];
+    if (!h) return false;
+    if (h==='oaistatic.com' || h.slice(-13)==='.oaistatic.com') return true;
+    if (h==='cdn.openai.com' || h.slice(-14)==='.cdn.openai.com') return true;
+    if (h==='oaiusercontent.com' || h.slice(-17)==='.oaiusercontent.com') return true;
+    if (h==='cdnjs.cloudflare.com' || h==='unpkg.com' || h==='jsdelivr.net' || h.slice(-12)==='.jsdelivr.net') return true;
+    return false;
+  }
+
   /** Current page mapped back to the tool URL space. */
   function virtualHref(){
     var p=location.pathname;
@@ -3174,6 +3197,8 @@ function runtimeScript(target) {
     try {
       var u=new URL(abs);
       if (u.protocol!=='http:' && u.protocol!=='https:') return abs;
+      // CSS/JS CDNs stay on the real host so the SPA hydrates fully.
+      if (isDirectStatic(u.host)) return abs;
       // Already a portal /fx/<token> URL \u2014 never nest another prefix.
       if (u.host===portalHost()) {
         if (u.pathname===BASE || u.pathname.indexOf(BASE+'/')===0) return u.pathname+u.search+u.hash;
@@ -3257,6 +3282,8 @@ function runtimeScript(target) {
         var mapped=toProxy(abs.href.replace(/^ws/,'http'));
         if (mapped.indexOf(BASE)===0) {
           u=(location.protocol==='https:'?'wss://':'ws://')+location.host+mapped;
+        } else if (/^https?:/i.test(mapped)) {
+          u=mapped.replace(/^http/,'ws');
         }
       } catch(e){}
       return protocols===undefined ? new OWS(u) : new OWS(u, protocols);
@@ -3265,6 +3292,18 @@ function runtimeScript(target) {
     try { PatchedWS.CONNECTING=OWS.CONNECTING; PatchedWS.OPEN=OWS.OPEN; PatchedWS.CLOSING=OWS.CLOSING; PatchedWS.CLOSED=OWS.CLOSED; } catch(e){}
     window.WebSocket=PatchedWS;
   }
+
+  // Patch workers so relative chatgpt.com worker scripts stay inside /fx/\u2026
+  try {
+    if (window.Worker) {
+      var OWorker=window.Worker;
+      function PatchedWorker(url, opts){
+        return new OWorker(typeof url==='string'?map(url):url, opts);
+      }
+      PatchedWorker.prototype=OWorker.prototype;
+      window.Worker=PatchedWorker;
+    }
+  } catch(e){}
 
   // Service workers cannot see our patches \u2014 keep the page on the network path.
   try {
@@ -3411,6 +3450,31 @@ function rewriteHtml(target, html, pageUrl) {
   out = out.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (m, css) => {
     return m.replace(css, rewriteCss(target, css, pageUrl));
   });
+  out = out.replace(
+    /<script\b([^>]*\btype\s*=\s*["']importmap["'][^>]*)>([\s\S]*?)<\/script>/gi,
+    (m, attrs, body) => {
+      try {
+        const json = JSON.parse(body);
+        const rewriteMap = (obj) => {
+          if (!obj || typeof obj !== "object") return obj;
+          const next = {};
+          for (const [k, v] of Object.entries(obj)) {
+            next[k] = typeof v === "string" ? mapAttrValue(target, pageUrl, v) : String(v);
+          }
+          return next;
+        };
+        if (json.imports) json.imports = rewriteMap(json.imports);
+        if (json.scopes && typeof json.scopes === "object") {
+          for (const scope of Object.keys(json.scopes)) {
+            json.scopes[scope] = rewriteMap(json.scopes[scope]);
+          }
+        }
+        return `<script${attrs}>${JSON.stringify(json)}</script>`;
+      } catch {
+        return m;
+      }
+    }
+  );
   const runtime = runtimeScript(target);
   if (/<head[^>]*>/i.test(out)) {
     out = out.replace(/<head([^>]*)>/i, `<head$1>${runtime}`);
