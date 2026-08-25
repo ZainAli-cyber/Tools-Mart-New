@@ -187,6 +187,21 @@ function hostsFromCookies(cookies: any[], origin: string): string[] {
       .toLowerCase();
     if (d) hosts.add(d);
   }
+  // ChatGPT one-click needs sibling OpenAI hosts for auth/CDN even if not in cookie JSON.
+  const list = [...hosts];
+  if (list.some(h => /(^|\.)(chatgpt\.com|openai\.com)$/i.test(h))) {
+    for (const h of [
+      'chatgpt.com',
+      'www.chatgpt.com',
+      'chat.openai.com',
+      'auth.openai.com',
+      'api.openai.com',
+      'cdn.oaistatic.com',
+      'ab.chatgpt.com',
+    ]) {
+      hosts.add(h);
+    }
+  }
   return [...hosts];
 }
 
@@ -631,8 +646,10 @@ async function proxyThrough(session: ProxySession, req: any, res: any, url: stri
     session.cookieHeader = cookiesToHeader(result.cookies);
     if (result.referrerUsed && panelMode) session.referrer = result.referrerUsed;
     session.expiresAt = Date.now() + SESSION_TTL_MS;
-    if (changed || result.referrerUsed) {
-      const sealed = await rememberSession(session);
+    // Always persist — Vercel lambdas lose memory; skipping DB writes caused
+    // ChatGPT mid-session 410 / lost cookies while Send was still loading.
+    const sealed = await rememberSession(session);
+    if (changed || result.referrerUsed || document) {
       setProxyCookie(res, session.token, sealed);
     } else {
       sessions.set(session.token, session);

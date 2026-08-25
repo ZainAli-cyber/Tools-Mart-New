@@ -107,12 +107,13 @@ export function normalizeProxyUrl(raw: string): string {
 function webshareStickyDigits(stickyId: string): string {
   const fromDigits = String(stickyId || '').replace(/\D/g, '');
   if (fromDigits.length >= 4) return fromDigits.slice(0, 12);
+  // Deterministic fallback — never use Date.now() (that rotates the exit IP mid-session).
   let hash = 0;
   for (const ch of String(stickyId || 'atm')) {
     hash = (Math.imul(31, hash) + ch.charCodeAt(0)) | 0;
   }
-  const mixed = `${Math.abs(hash)}${Date.now()}`.replace(/\D/g, '');
-  return mixed.slice(0, 10);
+  const mixed = `${Math.abs(hash)}7${Math.abs(hash << 3)}`.replace(/\D/g, '');
+  return (mixed || '1001').slice(0, 10);
 }
 
 /**

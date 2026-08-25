@@ -105,13 +105,16 @@ const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 function looksLikeCloudflare(status: number, body: string): boolean {
-  return (
-    status === 403 ||
-    status === 503 ||
-    /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|ray id:/i.test(
-      body,
+  const head = String(body || '').slice(0, 8000);
+  if (
+    /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|checking your browser before accessing/i.test(
+      head,
     )
-  );
+  ) {
+    return true;
+  }
+  if ((status === 403 || status === 503) && /cf-|challenge|cloudflare/i.test(head)) return true;
+  return false;
 }
 
 async function fetchViaProxy(

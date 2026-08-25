@@ -105,7 +105,11 @@ function domainMatches(host: string, domain?: string): boolean {
   const h = String(host || '').toLowerCase();
   const d = String(domain || '').toLowerCase().replace(/^\./, '');
   if (!d) return true;
-  return h === d || h.endsWith(`.${d}`);
+  if (h === d || h.endsWith(`.${d}`)) return true;
+  // ChatGPT auth spans chatgpt.com + openai.com — send family cookies either way.
+  const family = /(^|\.)(chatgpt\.com|openai\.com|oaistatic\.com|oaiusercontent\.com)$/i;
+  if (family.test(h) && family.test(d)) return true;
+  return false;
 }
 
 /** Cookie header for one target URL, using domain/path matching like a browser. */
@@ -119,12 +123,20 @@ export function cookieHeaderFor(cookies: JarCookie[], url: string): string {
   } catch {
     return '';
   }
-  const seen = new Map<string, string>();
+  // Prefer more-specific domain+path when duplicate names exist.
+  const ranked: Array<{ name: string; value: string; score: number }> = [];
   for (const c of cookies || []) {
     if (!domainMatches(host, c.domain)) continue;
     const cookiePath = c.path || '/';
     if (cookiePath !== '/' && !path.startsWith(cookiePath)) continue;
-    seen.set(c.name, c.value);
+    const dom = String(c.domain || '').replace(/^\./, '');
+    const score = dom.length * 1000 + cookiePath.length;
+    ranked.push({ name: c.name, value: c.value, score });
+  }
+  ranked.sort((a, b) => b.score - a.score);
+  const seen = new Map<string, string>();
+  for (const c of ranked) {
+    if (!seen.has(c.name)) seen.set(c.name, c.value);
   }
   return [...seen.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
 }
@@ -148,7 +160,7 @@ export function mergeSetCookies(cookies: JarCookie[], response: Response, url: s
   }
   if (!raw.length) return cookies;
 
-  const next = [...cookies];
+  let next = [...cookies];
   for (const line of raw) {
     const parts = String(line || '').split(';');
     const first = parts.shift() || '';
@@ -160,11 +172,30 @@ export function mergeSetCookies(cookies: JarCookie[], response: Response, url: s
 
     let domain = host;
     let path = '/';
+    let maxAge: number | null = null;
+    let expiresAt: number | null = null;
     for (const attr of parts) {
       const [k, v] = attr.split('=');
       const key = String(k || '').trim().toLowerCase();
       if (key === 'domain' && v) domain = String(v).trim().toLowerCase().replace(/^\./, '');
       if (key === 'path' && v) path = String(v).trim() || '/';
+      if (key === 'max-age' && v != null) {
+        const n = Number(v);
+        if (Number.isFinite(n)) maxAge = n;
+      }
+      if (key === 'expires' && v) {
+        const t = Date.parse(String(v).trim());
+        if (Number.isFinite(t)) expiresAt = t;
+      }
+    }
+
+    const expired =
+      (maxAge != null && maxAge <= 0) || (expiresAt != null && expiresAt <= Date.now());
+    if (expired) {
+      next = next.filter(
+        c => !(c.name === name && (c.domain || '') === domain && (c.path || '/') === path),
+      );
+      continue;
     }
 
     const idx = next.findIndex(
@@ -241,15 +272,30 @@ export function fromProxyPath(target: ProxyTarget, remainder: string): string | 
 
 export function isCloudflareChallenge(status: number, contentType: string, body: string): boolean {
   const text = String(body || '');
-  if (!/text\/html/i.test(contentType) && status !== 403 && status !== 503) {
-    // Still check body — CF often returns 200 HTML for challenges.
-    if (!/text\/html/i.test(contentType) && !/<!DOCTYPE html/i.test(text.slice(0, 200))) return false;
+  const head = text.slice(0, 12_000);
+  const looksHtml =
+    /text\/html/i.test(contentType) || /<!DOCTYPE html|<html[\s>]/i.test(text.slice(0, 400));
+  if (!looksHtml && status !== 403 && status !== 503) return false;
+
+  // Strong challenge signals only — do NOT match bare "cloudflare" / "ray id"
+  // (ChatGPT and other apps mention Cloudflare in normal HTML and would false-block).
+  const strong =
+    /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|security verification process|cf-challenge-running|enable javascript and cookies to continue|checking your browser before accessing/i.test(
+      head,
+    );
+  if (strong) return true;
+
+  // Ray ID alone is weak; require it together with a challenge framing word.
+  if (/ray id:/i.test(head) && /cloudflare|challenge|blocked|attention required|just a moment/i.test(head)) {
+    return true;
   }
-  return (
-    /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|security verification process|cf-challenge|cloudflare/i.test(
-      text,
-    ) || /ray id:/i.test(text)
-  );
+
+  // Hard CF statuses with challenge-ish markup
+  if ((status === 403 || status === 503) && /cf-|cloudflare|challenge/i.test(head) && /<!DOCTYPE|<html/i.test(head)) {
+    return true;
+  }
+
+  return false;
 }
 
 function cloudflareBlockedPage(toolHost: string): string {

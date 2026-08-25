@@ -2466,8 +2466,8 @@ function webshareStickyDigits(stickyId) {
   for (const ch of String(stickyId || "atm")) {
     hash = Math.imul(31, hash) + ch.charCodeAt(0) | 0;
   }
-  const mixed = `${Math.abs(hash)}${Date.now()}`.replace(/\D/g, "");
-  return mixed.slice(0, 10);
+  const mixed = `${Math.abs(hash)}7${Math.abs(hash << 3)}`.replace(/\D/g, "");
+  return (mixed || "1001").slice(0, 10);
 }
 function applyStickySession(proxyUrl, stickyId) {
   const id = String(stickyId || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
@@ -2636,9 +2636,14 @@ async function proxyAwareFetch(input, init) {
 }
 var BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 function looksLikeCloudflare(status, body) {
-  return status === 403 || status === 503 || /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|ray id:/i.test(
-    body
-  );
+  const head = String(body || "").slice(0, 8e3);
+  if (/just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|checking your browser before accessing/i.test(
+    head
+  )) {
+    return true;
+  }
+  if ((status === 403 || status === 503) && /cf-|challenge|cloudflare/i.test(head)) return true;
+  return false;
 }
 async function fetchViaProxy(proxyUrl, url3, headers, timeoutMs = 35e3) {
   const undici = await import("undici");
@@ -2856,7 +2861,10 @@ function domainMatches(host, domain) {
   const h = String(host || "").toLowerCase();
   const d = String(domain || "").toLowerCase().replace(/^\./, "");
   if (!d) return true;
-  return h === d || h.endsWith(`.${d}`);
+  if (h === d || h.endsWith(`.${d}`)) return true;
+  const family = /(^|\.)(chatgpt\.com|openai\.com|oaistatic\.com|oaiusercontent\.com)$/i;
+  if (family.test(h) && family.test(d)) return true;
+  return false;
 }
 function cookieHeaderFor(cookies, url3) {
   let host = "";
@@ -2868,12 +2876,19 @@ function cookieHeaderFor(cookies, url3) {
   } catch {
     return "";
   }
-  const seen = /* @__PURE__ */ new Map();
+  const ranked = [];
   for (const c of cookies || []) {
     if (!domainMatches(host, c.domain)) continue;
     const cookiePath = c.path || "/";
     if (cookiePath !== "/" && !path.startsWith(cookiePath)) continue;
-    seen.set(c.name, c.value);
+    const dom = String(c.domain || "").replace(/^\./, "");
+    const score = dom.length * 1e3 + cookiePath.length;
+    ranked.push({ name: c.name, value: c.value, score });
+  }
+  ranked.sort((a, b) => b.score - a.score);
+  const seen = /* @__PURE__ */ new Map();
+  for (const c of ranked) {
+    if (!seen.has(c.name)) seen.set(c.name, c.value);
   }
   return [...seen.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
 }
@@ -2889,7 +2904,7 @@ function mergeSetCookies(cookies, response, url3) {
     if (single) raw.push(single);
   }
   if (!raw.length) return cookies;
-  const next = [...cookies];
+  let next = [...cookies];
   for (const line of raw) {
     const parts = String(line || "").split(";");
     const first = parts.shift() || "";
@@ -2900,11 +2915,28 @@ function mergeSetCookies(cookies, response, url3) {
     if (!name) continue;
     let domain = host;
     let path = "/";
+    let maxAge = null;
+    let expiresAt = null;
     for (const attr of parts) {
       const [k, v] = attr.split("=");
       const key = String(k || "").trim().toLowerCase();
       if (key === "domain" && v) domain = String(v).trim().toLowerCase().replace(/^\./, "");
       if (key === "path" && v) path = String(v).trim() || "/";
+      if (key === "max-age" && v != null) {
+        const n = Number(v);
+        if (Number.isFinite(n)) maxAge = n;
+      }
+      if (key === "expires" && v) {
+        const t = Date.parse(String(v).trim());
+        if (Number.isFinite(t)) expiresAt = t;
+      }
+    }
+    const expired = maxAge != null && maxAge <= 0 || expiresAt != null && expiresAt <= Date.now();
+    if (expired) {
+      next = next.filter(
+        (c) => !(c.name === name && (c.domain || "") === domain && (c.path || "/") === path)
+      );
+      continue;
     }
     const idx = next.findIndex(
       (c) => c.name === name && (c.domain || "") === domain && (c.path || "/") === path
@@ -2971,12 +3003,20 @@ function fromProxyPath(target, remainder) {
 }
 function isCloudflareChallenge(status, contentType, body) {
   const text = String(body || "");
-  if (!/text\/html/i.test(contentType) && status !== 403 && status !== 503) {
-    if (!/text\/html/i.test(contentType) && !/<!DOCTYPE html/i.test(text.slice(0, 200))) return false;
+  const head = text.slice(0, 12e3);
+  const looksHtml = /text\/html/i.test(contentType) || /<!DOCTYPE html|<html[\s>]/i.test(text.slice(0, 400));
+  if (!looksHtml && status !== 403 && status !== 503) return false;
+  const strong = /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|security verification process|cf-challenge-running|enable javascript and cookies to continue|checking your browser before accessing/i.test(
+    head
+  );
+  if (strong) return true;
+  if (/ray id:/i.test(head) && /cloudflare|challenge|blocked|attention required|just a moment/i.test(head)) {
+    return true;
   }
-  return /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|security verification process|cf-challenge|cloudflare/i.test(
-    text
-  ) || /ray id:/i.test(text);
+  if ((status === 403 || status === 503) && /cf-|cloudflare|challenge/i.test(head) && /<!DOCTYPE|<html/i.test(head)) {
+    return true;
+  }
+  return false;
 }
 function cloudflareBlockedPage(toolHost) {
   const host = String(toolHost || "this site").replace(/[<>&"]/g, "");
@@ -3705,6 +3745,20 @@ function hostsFromCookies(cookies, origin) {
     const d = String(c?.domain || "").trim().replace(/^\./, "").toLowerCase();
     if (d) hosts.add(d);
   }
+  const list = [...hosts];
+  if (list.some((h) => /(^|\.)(chatgpt\.com|openai\.com)$/i.test(h))) {
+    for (const h of [
+      "chatgpt.com",
+      "www.chatgpt.com",
+      "chat.openai.com",
+      "auth.openai.com",
+      "api.openai.com",
+      "cdn.oaistatic.com",
+      "ab.chatgpt.com"
+    ]) {
+      hosts.add(h);
+    }
+  }
   return [...hosts];
 }
 function isPanelUnlockUrl(url3) {
@@ -4044,8 +4098,8 @@ async function proxyThrough(session, req, res, url3) {
     session.cookieHeader = cookiesToHeader(result.cookies);
     if (result.referrerUsed && panelMode) session.referrer = result.referrerUsed;
     session.expiresAt = Date.now() + SESSION_TTL_MS;
-    if (changed || result.referrerUsed) {
-      const sealed = await rememberSession(session);
+    const sealed = await rememberSession(session);
+    if (changed || result.referrerUsed || document) {
       setProxyCookie(res, session.token, sealed);
     } else {
       sessions.set(session.token, session);
