@@ -410,6 +410,15 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
     pendingRef.current = null;
   }, []);
 
+  const onContinueWithoutExtension = useCallback(() => {
+    const tool = guideTool || pendingRef.current;
+    if (!tool) return;
+    setGuideTool(null);
+    setSessionTool(null);
+    // Re-run launch as one-click (server proxy / session) — do not bounce through Session Apply.
+    void runLaunch({ ...tool, accessMethod: 'one_click' });
+  }, [guideTool, runLaunch]);
+
   const ui = (
     <>
       {connecting && (
@@ -437,13 +446,7 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
           onClose={() => setGuideTool(null)}
           onInstalled={onInstalledContinue}
           onContinueWithoutExtension={
-            // Never offer Session Apply for By extension tools.
-            allowsSessionApply(guideTool)
-              ? () => {
-                  setSessionTool(guideTool);
-                  setGuideTool(null);
-                }
-              : undefined
+            allowsSessionApply(guideTool) ? onContinueWithoutExtension : undefined
           }
           onOpenExtensionsPage={
             opts?.onOpenExtensionsPage
