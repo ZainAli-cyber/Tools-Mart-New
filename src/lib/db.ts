@@ -80,8 +80,8 @@ function toSnake(obj: any): any {
     memberId:        'member_id',
     memberName:      'member_name',
     paymentDate:     'payment_date',
-    // tools: desc → description
-    desc:            'description',
+    // tools table column is "desc" (quoted reserved word in SQL)
+    desc:            'desc',
     accessMethod:    'access_method',
     toolUrl:         'tool_url',
     cookiesJson:     'cookies_json',
@@ -138,6 +138,7 @@ function toCamel(obj: any): any {
     member_id:       'memberId',
     member_name:     'memberName',
     payment_date:    'paymentDate',
+    desc:            'desc',
     description:     'desc',
     access_method:   'accessMethod',
     tool_url:        'toolUrl',

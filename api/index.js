@@ -369,6 +369,7 @@ async function ensureToolRow(sb, key, body) {
   let { data, error } = await sb.from("tools").upsert({ ...seed, extra }).select("id").single();
   if (error && COLUMN_MISSING.test(error.message || "")) {
     const withoutCols = { ...seed };
+    delete withoutCols.description;
     delete withoutCols.show_on_home;
     delete withoutCols.access_method;
     delete withoutCols.tool_url;
@@ -536,6 +537,7 @@ router.post("/tools", requireAuth, async (req, res) => {
     let { data, error } = await sb.from("tools").upsert({ ...tool, extra }).select().single();
     if (error && COLUMN_MISSING.test(error.message || "")) {
       const withoutCols = { ...tool };
+      delete withoutCols.description;
       delete withoutCols.show_on_home;
       delete withoutCols.access_method;
       delete withoutCols.tool_url;
@@ -571,6 +573,7 @@ router.patch("/tools/:id", requireAuth, async (req, res) => {
     let { data, error } = await sb.from("tools").update({ ...payload, extra }).eq("id", toolId).select().single();
     if (error && COLUMN_MISSING.test(error.message || "")) {
       const withoutCols = { ...payload };
+      delete withoutCols.description;
       delete withoutCols.access_method;
       delete withoutCols.tool_url;
       delete withoutCols.cookies_json;
@@ -1046,7 +1049,7 @@ function snakeToCamelTool(t) {
     discount: t.discount,
     favicon: t.favicon,
     badge: t.badge,
-    desc: t.description,
+    desc: t.desc ?? t.description ?? "",
     fullDesc: t.full_desc,
     features: t.features,
     useCases: t.use_cases,
@@ -1073,8 +1076,9 @@ function camelToSnakeTool(t) {
   if (t.discount !== void 0) r.discount = t.discount;
   if (t.favicon !== void 0) r.favicon = t.favicon;
   if (t.badge !== void 0) r.badge = t.badge;
-  if (t.desc !== void 0) r.description = t.desc;
-  if (t.description !== void 0) r.description = t.description;
+  // Schema column is "desc" (see supabase_schema.sql), not "description".
+  if (t.desc !== void 0) r.desc = t.desc;
+  if (t.description !== void 0) r.desc = t.description;
   if (t.fullDesc !== void 0) r.full_desc = t.fullDesc;
   if (t.features !== void 0) r.features = t.features;
   if (t.useCases !== void 0) r.use_cases = t.useCases;

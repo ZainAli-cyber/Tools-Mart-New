@@ -35,22 +35,23 @@ export class NeedExtensionError extends Error {
 
 /** Thrown when the browser blocks opening the tool in a new tab. Never navigate the portal. */
 export class PopupBlockedError extends Error {
+  url?: string;
   constructor(
     message = 'Pop-up blocked. Allow pop-ups for this site, then try again. Your dashboard was left open.',
+    url?: string,
   ) {
     super(message);
     this.name = 'PopupBlockedError';
+    this.url = url;
   }
 }
 
 /**
- * Open a blank tool tab synchronously (must run inside the click handler).
- * After awaits, browsers may reuse the current window for window.open — never
- * call window.open after async work.
+ * Reserved blank tab (legacy). Prefer opening the real tool URL only after
+ * access succeeds so members never see about:blank during Connecting.
  */
 export function reserveToolTab(): Window {
   const probe = window.open('about:blank', '_blank');
-  // Some browsers return the current window when the popup is blocked.
   if (!probe || probe === window) {
     throw new PopupBlockedError();
   }
@@ -60,11 +61,9 @@ export function reserveToolTab(): Window {
     /* ignore */
   }
   try {
-    probe.document.title = 'Opening tool…';
-    probe.document.body.innerHTML =
-      '<p style="font-family:system-ui;padding:24px;color:#444">Applying session…</p>';
+    window.focus();
   } catch {
-    /* cross-origin / opaque — ignore */
+    /* ignore */
   }
   return probe;
 }
@@ -88,6 +87,7 @@ export function navigateReservedTab(tab: Window | null | undefined, url: string)
   if (!tab || tab.closed || tab === window) {
     throw new PopupBlockedError(
       'The tool tab was closed or blocked. Allow pop-ups for this site, then try again.',
+      dest,
     );
   }
   try {
@@ -98,6 +98,7 @@ export function navigateReservedTab(tab: Window | null | undefined, url: string)
     } catch {
       throw new PopupBlockedError(
         'Could not open the tool in a new tab. Allow pop-ups for this site, then try again.',
+        dest,
       );
     }
   }
@@ -113,12 +114,23 @@ export function closeReservedTab(tab: Window | null | undefined) {
 }
 
 /**
- * Open a tool URL in a new tab only. Prefer reserveToolTab + navigateReservedTab
- * across async work. Never navigates the portal tab.
+ * Open the accessed tool in a new tab (destination URL only — no blank placeholder).
  */
 export function openToolInNewTab(url: string): void {
-  const tab = reserveToolTab();
-  navigateReservedTab(tab, url);
+  const dest = absolutePortalUrl(String(url || '').trim());
+  if (!dest) throw new Error('No destination URL');
+  const tab = window.open(dest, '_blank');
+  if (!tab || tab === window) {
+    throw new PopupBlockedError(
+      'Pop-up blocked. Allow pop-ups for this site, then use Open Tool.',
+      dest,
+    );
+  }
+  try {
+    tab.opener = null;
+  } catch {
+    /* ignore */
+  }
 }
 
 export type ToolCookieFields = {
@@ -735,7 +747,7 @@ export async function saveCatalogTool(tool: Tool): Promise<{ usedFallback: boole
     discount: normalized.discount,
     favicon: normalized.favicon,
     badge: normalized.badge || null,
-    description: normalized.desc,
+    desc: normalized.desc,
     full_desc: normalized.fullDesc || null,
     features: normalized.features || null,
     use_cases: normalized.useCases || null,

@@ -7,13 +7,12 @@ import type { Tool } from '../../admin/data/adminStore';
 import {
   EXTENSION_DOWNLOAD_URL,
   EXTENSION_DISPLAY_NAME,
-  closeReservedTab,
   isAccessExtensionInstalled,
   isOneClick,
   launchAssignedTool,
   NeedExtensionError,
+  openToolInNewTab,
   PopupBlockedError,
-  reserveToolTab,
   type LaunchProgressStep,
 } from '../../lib/toolCookies';
 import { CookieSessionApplyScreen } from './CookieSessionApplyScreen';
@@ -73,8 +72,13 @@ function stepIndex(step: LaunchProgressStep): number {
 export const ConnectingToToolModal: React.FC<{
   toolName: string;
   activeStep: LaunchProgressStep;
-}> = ({ toolName, activeStep }) => {
+  /** When set, access succeeded but the browser blocked the new tab — show Open Tool. */
+  readyUrl?: string | null;
+  onOpenReady?: () => void;
+  onDismissReady?: () => void;
+}> = ({ toolName, activeStep, readyUrl, onOpenReady, onDismissReady }) => {
   const idx = stepIndex(activeStep);
+  const ready = Boolean(readyUrl);
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center px-4 bg-black/85 backdrop-blur-sm">
       <div
@@ -85,13 +89,19 @@ export const ConnectingToToolModal: React.FC<{
         aria-labelledby="atm-connecting-title"
       >
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-red-500/30 bg-red-600/15">
-          <Loader2 className="h-7 w-7 animate-spin text-red-400" />
+          {ready ? (
+            <CheckCircle2 className="h-7 w-7 text-emerald-400" />
+          ) : (
+            <Loader2 className="h-7 w-7 animate-spin text-red-400" />
+          )}
         </div>
         <h3 id="atm-connecting-title" className="text-center text-lg font-black text-white">
-          Connecting to Tool
+          {ready ? 'Access Ready' : 'Connecting to Tool'}
         </h3>
         <p className="mt-1 text-center text-xs text-slate-400">
-          Auto-login in progress, please wait…
+          {ready
+            ? 'Your session is ready. Open the tool in a new tab.'
+            : 'Auto-login in progress, please wait…'}
         </p>
         {toolName && (
           <p className="mt-2 text-center text-[11px] font-bold text-red-300">{toolName}</p>
@@ -99,8 +109,8 @@ export const ConnectingToToolModal: React.FC<{
 
         <ul className="mt-6 space-y-3">
           {CONNECT_STEPS.map((s, i) => {
-            const done = i < idx || activeStep === 'done';
-            const current = i === idx && activeStep !== 'done';
+            const done = ready || i < idx || activeStep === 'done';
+            const current = !ready && i === idx && activeStep !== 'done';
             return (
               <li key={s.id} className="flex items-center gap-3">
                 <span
@@ -121,6 +131,25 @@ export const ConnectingToToolModal: React.FC<{
             );
           })}
         </ul>
+
+        {ready && (
+          <div className="mt-6 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={onOpenReady}
+              className="w-full rounded-xl bg-red-600 py-3 text-sm font-black text-white hover:bg-red-500"
+            >
+              Open Tool
+            </button>
+            <button
+              type="button"
+              onClick={onDismissReady}
+              className="w-full rounded-xl border border-[#2a1e1c] py-2 text-xs font-bold text-slate-400 hover:text-white"
+            >
+              Stay on dashboard
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -282,16 +311,20 @@ export const ExtensionInstallGuide: React.FC<{
  * Branches on access_method FIRST:
  * - extension / by_extension → require Access extension; Installation Guide if missing; NEVER Session Apply
  * - one_click → open without requiring extension (cookies applied only if extension is already installed)
+ *
+ * UX: stay on the dashboard Connecting modal — open the tool tab only after access succeeds.
  */
 export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
   const [guideTool, setGuideTool] = useState<Tool | null>(null);
   const [sessionTool, setSessionTool] = useState<Tool | null>(null);
   const [connecting, setConnecting] = useState<{ name: string; step: LaunchProgressStep } | null>(null);
+  const [readyUrl, setReadyUrl] = useState<string | null>(null);
   const pendingRef = useRef<Tool | null>(null);
   const launchingRef = useRef(false);
 
   const showNeedExtensionUi = useCallback((tool: Tool, err?: NeedExtensionError | null) => {
     setConnecting(null);
+    setReadyUrl(null);
     if (allowsSessionApply(tool, err)) {
       setGuideTool(null);
       setSessionTool(tool);
@@ -301,17 +334,17 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
     }
   }, []);
 
-  const runLaunch = useCallback(async (tool: Tool, reservedTab?: Window | null) => {
+  const runLaunch = useCallback(async (tool: Tool) => {
     if (launchingRef.current) return;
     launchingRef.current = true;
     pendingRef.current = tool;
     setGuideTool(null);
     setSessionTool(null);
+    setReadyUrl(null);
 
     try {
       setConnecting({ name: tool.name, step: 'check' });
       await launchAssignedTool(tool, {
-        reservedTab: reservedTab || undefined,
         onNeedExtension: () => {
           showNeedExtensionUi(tool);
         },
@@ -324,12 +357,18 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
       setConnecting(null);
       pendingRef.current = null;
     } catch (err: any) {
-      closeReservedTab(reservedTab);
-      setConnecting(null);
       if (err instanceof NeedExtensionError) {
+        setConnecting(null);
         showNeedExtensionUi(tool, err);
         return;
       }
+      if (err instanceof PopupBlockedError && err.url) {
+        // Access succeeded — stay on dashboard; member opens with a click (popup gesture).
+        setConnecting({ name: tool.name, step: 'done' });
+        setReadyUrl(err.url);
+        return;
+      }
+      setConnecting(null);
       if (err instanceof PopupBlockedError) {
         window.alert(err.message);
         return;
@@ -341,40 +380,46 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
   }, [showNeedExtensionUi]);
 
   const launch = useCallback((tool: Tool) => {
-    // Must open the blank tab inside the click gesture — before any await.
-    let reserved: Window | null = null;
-    try {
-      reserved = reserveToolTab();
-    } catch (err: any) {
-      window.alert(
-        err?.message ||
-          'Pop-up blocked. Allow pop-ups for this site, then open the tool again.',
-      );
-      return;
-    }
-    void runLaunch(tool, reserved);
+    void runLaunch(tool);
   }, [runLaunch]);
 
   const onInstalledContinue = useCallback(() => {
     const tool = guideTool || sessionTool || pendingRef.current;
     if (!tool) return;
-    let reserved: Window | null = null;
+    void runLaunch(tool);
+  }, [guideTool, sessionTool, runLaunch]);
+
+  const onOpenReady = useCallback(() => {
+    if (!readyUrl) return;
     try {
-      reserved = reserveToolTab();
+      openToolInNewTab(readyUrl);
+      setReadyUrl(null);
+      setConnecting(null);
+      pendingRef.current = null;
     } catch (err: any) {
       window.alert(
         err?.message ||
-          'Pop-up blocked. Allow pop-ups for this site, then open the tool again.',
+          'Pop-up blocked. Allow pop-ups for this site, then click Open Tool again.',
       );
-      return;
     }
-    void runLaunch(tool, reserved);
-  }, [guideTool, sessionTool, runLaunch]);
+  }, [readyUrl]);
+
+  const onDismissReady = useCallback(() => {
+    setReadyUrl(null);
+    setConnecting(null);
+    pendingRef.current = null;
+  }, []);
 
   const ui = (
     <>
       {connecting && (
-        <ConnectingToToolModal toolName={connecting.name} activeStep={connecting.step} />
+        <ConnectingToToolModal
+          toolName={connecting.name}
+          activeStep={connecting.step}
+          readyUrl={readyUrl}
+          onOpenReady={onOpenReady}
+          onDismissReady={onDismissReady}
+        />
       )}
       {sessionTool && !connecting && !guideTool && allowsSessionApply(sessionTool) && (
         <CookieSessionApplyScreen
