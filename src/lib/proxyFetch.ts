@@ -258,6 +258,19 @@ export async function testProxyUrl(proxyUrlRaw: string): Promise<ProxyTestResult
       warnings,
     };
   } catch (err: any) {
-    return { ok: false, error: String(err?.message || err || 'Proxy test failed') };
+    const cause =
+      err?.cause?.message ||
+      err?.cause?.code ||
+      (typeof err?.cause === 'string' ? err.cause : '') ||
+      '';
+    const base = String(err?.message || err || 'Proxy test failed');
+    const detail = cause && !base.includes(String(cause)) ? `${base} (${cause})` : base;
+    let hint = detail;
+    if (/fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|aborted|UND_ERR/i.test(detail)) {
+      hint =
+        `${detail}. Check: (1) URL is http://USER:PASS@p.webshare.io:80/ with port 80, ` +
+        `(2) Session type Sticky not Rotating, (3) verify Webshare email, (4) Save Proxy then Test again.`;
+    }
+    return { ok: false, error: hint };
   }
 }

@@ -69,10 +69,25 @@ export function normalizeProxyUrl(raw: string): string {
     if (!/^https?:$/i.test(u.protocol)) {
       throw new Error('Proxy URL must start with http:// or https://');
     }
+    if (!u.hostname) {
+      throw new Error('Invalid proxy URL. Example: http://user:pass@p.webshare.io:80/');
+    }
+    // Explicit port — some runtimes fail CONNECT when port is omitted.
+    if (!u.port) {
+      u.port = /^https:$/i.test(u.protocol) ? '443' : '80';
+    }
+    // Rotating usernames break sticky ChatGPT sessions.
+    let user = decodeURIComponent(u.username || '');
+    if (user) {
+      user = user.replace(/-rotate$/i, '');
+      u.username = user;
+    }
     return u.href;
   } catch (err: any) {
-    if (err?.message && /HTTP endpoint|must start with http/i.test(err.message)) throw err;
-    throw new Error('Invalid proxy URL. Example: http://user-session-abc123:pass@host:80/');
+    if (err?.message && /HTTP endpoint|must start with http|Invalid proxy|Example:/i.test(err.message)) {
+      throw err;
+    }
+    throw new Error('Invalid proxy URL. Example: http://user:pass@p.webshare.io:80/');
   }
 }
 

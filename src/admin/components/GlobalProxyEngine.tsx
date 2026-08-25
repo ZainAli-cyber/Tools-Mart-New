@@ -182,14 +182,15 @@ export const GlobalProxyEngine: React.FC<Props> = ({ className = '' }) => {
             type="text"
             value={url}
             onChange={e => setUrl(e.target.value)}
-            placeholder="http://user:pass@host:80/"
+            placeholder="http://fygrkybx-us:PASSWORD@p.webshare.io:80/"
             autoComplete="off"
             spellCheck={false}
             className="w-full rounded-xl border border-[#2a1e1c] bg-[#0d0908] px-3 py-2.5 text-xs text-white outline-none ring-red-600/40 placeholder:text-slate-600 focus:ring-2"
           />
           <p className="mt-1 text-[10px] text-slate-500">
-            Each tool tab auto-adds a sticky session so ChatGPT keeps one IP. Your old AWS IP
-            (e.g. 16.x) will fail the test below — that is expected.
+            Use port <strong className="text-slate-400">:80</strong>, Sticky session (not Rotating),
+            and US username like <code className="text-slate-400">user-us</code>. Each tool tab
+            auto-adds sticky. Your old AWS IP (e.g. 16.x) will fail — that is expected.
           </p>
         </div>
 

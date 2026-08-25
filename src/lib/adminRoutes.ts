@@ -371,6 +371,24 @@ router.patch('/tools/:id', requireAuth, async (req, res) => {
         error: 'Database update returned no row. Check SUPABASE_SERVICE_ROLE_KEY and that the tools row exists.',
       });
     }
+
+    // Ensure access_method column matches the save when the column exists.
+    const wantMethod =
+      String(req.body?.accessMethod || '').trim().toLowerCase() === 'one_click' ? 'one_click' : 'extension';
+    if (req.body?.accessMethod !== undefined && data.access_method !== wantMethod) {
+      const force = await sb
+        .from('tools')
+        .update({ access_method: wantMethod, extra })
+        .eq('id', toolId)
+        .select()
+        .single();
+      if (!force.error && force.data) data = force.data;
+      else if (force.error && COLUMN_MISSING.test(force.error.message || '')) {
+        const extraOnly = await sb.from('tools').update({ extra }).eq('id', toolId).select().single();
+        if (!extraOnly.error && extraOnly.data) data = extraOnly.data;
+      }
+    }
+
     logActivity('Tool Updated', `Updated tool: ${data.name}`);
     const mapped = snakeToCamelTool(data);
     const usedFallback =
@@ -924,11 +942,20 @@ function snakeToCamelTool(t: any) {
     showOnHome:    t.show_on_home === false || t.show_on_home === 0 || extra.showOnHome === false
       ? false
       : true,
-    accessMethod:  String(t.access_method || extra.accessMethod || extra.access_method || 'extension')
-      .trim()
-      .toLowerCase() === 'one_click'
-      ? 'one_click'
-      : 'extension',
+    // Prefer extra.accessMethod: when access_method column is missing from schema,
+    // cookie saves land in extra while the column default stays "extension".
+    accessMethod: (() => {
+      const candidates = [
+        extra.accessMethod,
+        extra.access_method,
+        t.access_method,
+        t.accessMethod,
+      ]
+        .map(v => String(v || '').trim().toLowerCase())
+        .filter(Boolean);
+      if (candidates.some(v => v === 'one_click' || v === 'one-click')) return 'one_click';
+      return 'extension';
+    })(),
     toolUrl:       t.tool_url || extra.toolUrl || extra.tool_url || '',
     cookiesJson:   t.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? '',
     panelReferrer:

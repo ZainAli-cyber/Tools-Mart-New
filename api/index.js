@@ -594,6 +594,15 @@ router.patch("/tools/:id", requireAuth, async (req, res) => {
         error: "Database update returned no row. Check SUPABASE_SERVICE_ROLE_KEY and that the tools row exists."
       });
     }
+    const wantMethod = String(req.body?.accessMethod || "").trim().toLowerCase() === "one_click" ? "one_click" : "extension";
+    if (req.body?.accessMethod !== void 0 && data.access_method !== wantMethod) {
+      const force = await sb.from("tools").update({ access_method: wantMethod, extra }).eq("id", toolId).select().single();
+      if (!force.error && force.data) data = force.data;
+      else if (force.error && COLUMN_MISSING.test(force.error.message || "")) {
+        const extraOnly = await sb.from("tools").update({ extra }).eq("id", toolId).select().single();
+        if (!extraOnly.error && extraOnly.data) data = extraOnly.data;
+      }
+    }
     logActivity("Tool Updated", `Updated tool: ${data.name}`);
     const mapped = snakeToCamelTool(data);
     const usedFallback = Boolean(
@@ -1058,7 +1067,16 @@ function snakeToCamelTool(t) {
     isPrivate: t.is_private,
     isSemiPrivate: t.is_semi_private,
     showOnHome: t.show_on_home === false || t.show_on_home === 0 || extra.showOnHome === false ? false : true,
-    accessMethod: String(t.access_method || extra.accessMethod || extra.access_method || "extension").trim().toLowerCase() === "one_click" ? "one_click" : "extension",
+    accessMethod: (() => {
+      const candidates = [
+        extra.accessMethod,
+        extra.access_method,
+        t.access_method,
+        t.accessMethod
+      ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
+      if (candidates.some((v) => v === "one_click" || v === "one-click")) return "one_click";
+      return "extension";
+    })(),
     toolUrl: t.tool_url || extra.toolUrl || extra.tool_url || "",
     cookiesJson: t.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? "",
     panelReferrer: t.panel_referrer || extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || ""
@@ -2404,10 +2422,23 @@ function normalizeProxyUrl(raw) {
     if (!/^https?:$/i.test(u.protocol)) {
       throw new Error("Proxy URL must start with http:// or https://");
     }
+    if (!u.hostname) {
+      throw new Error("Invalid proxy URL. Example: http://user:pass@p.webshare.io:80/");
+    }
+    if (!u.port) {
+      u.port = /^https:$/i.test(u.protocol) ? "443" : "80";
+    }
+    let user = decodeURIComponent(u.username || "");
+    if (user) {
+      user = user.replace(/-rotate$/i, "");
+      u.username = user;
+    }
     return u.href;
   } catch (err) {
-    if (err?.message && /HTTP endpoint|must start with http/i.test(err.message)) throw err;
-    throw new Error("Invalid proxy URL. Example: http://user-session-abc123:pass@host:80/");
+    if (err?.message && /HTTP endpoint|must start with http|Invalid proxy|Example:/i.test(err.message)) {
+      throw err;
+    }
+    throw new Error("Invalid proxy URL. Example: http://user:pass@p.webshare.io:80/");
   }
 }
 function applyStickySession(proxyUrl, stickyId) {
@@ -2692,7 +2723,14 @@ async function testProxyUrl(proxyUrlRaw) {
       warnings
     };
   } catch (err) {
-    return { ok: false, error: String(err?.message || err || "Proxy test failed") };
+    const cause = err?.cause?.message || err?.cause?.code || (typeof err?.cause === "string" ? err.cause : "") || "";
+    const base = String(err?.message || err || "Proxy test failed");
+    const detail = cause && !base.includes(String(cause)) ? `${base} (${cause})` : base;
+    let hint = detail;
+    if (/fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|aborted|UND_ERR/i.test(detail)) {
+      hint = `${detail}. Check: (1) URL is http://USER:PASS@p.webshare.io:80/ with port 80, (2) Session type Sticky not Rotating, (3) verify Webshare email, (4) Save Proxy then Test again.`;
+    }
+    return { ok: false, error: hint };
   }
 }
 

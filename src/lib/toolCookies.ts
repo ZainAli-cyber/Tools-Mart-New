@@ -365,13 +365,18 @@ export function normalizeToolRow(row: any, fallback?: ToolCookieFields | null): 
       ? fallback || EMPTY_COOKIE_FIELDS
       : readCookieFallback()[row?.id] || EMPTY_COOKIE_FIELDS;
 
-  const access =
-    row?.access_method ||
-    row?.accessMethod ||
-    extraObj.accessMethod ||
-    extraObj.access_method ||
-    extra.accessMethod ||
-    'extension';
+  const accessCandidates = [
+    extraObj.accessMethod,
+    extraObj.access_method,
+    row?.access_method,
+    row?.accessMethod,
+    extra.accessMethod,
+  ]
+    .map(v => String(v || '').trim().toLowerCase())
+    .filter(Boolean);
+  const access = accessCandidates.some(v => v === 'one_click' || v === 'one-click')
+    ? 'one_click'
+    : accessCandidates[0] || 'extension';
   const showRaw = row?.show_on_home ?? row?.showOnHome ?? extraObj.showOnHome ?? extraObj.show_on_home;
 
   return {
@@ -682,12 +687,24 @@ export async function saveToolCookieSettings(
         writeCookieFallback(id, fields);
         db.saveTool({ ...tool, id, name: payload.name, ...fields });
         const persistedUrl = String(body?.toolUrl || '').trim();
+        const persistedMethod = String(body?.accessMethod || '').trim().toLowerCase();
         const usedFallback = Boolean(body?.usedFallback);
         if (fields.accessMethod === 'one_click' && fields.toolUrl.trim() && !persistedUrl) {
           return {
             ok: false,
             error:
               'Save reached the API but destination URL was not stored. Run supabase_tool_cookies.sql (ensure tools.extra exists), then Save again.',
+          };
+        }
+        if (
+          fields.accessMethod === 'one_click' &&
+          persistedMethod &&
+          persistedMethod !== 'one_click'
+        ) {
+          return {
+            ok: false,
+            error:
+              'Save did not switch Access to On one click. Run supabase_tool_cookies.sql in Supabase, then Save again.',
           };
         }
         return { ok: true, usedFallback };
