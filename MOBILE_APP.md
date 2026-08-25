@@ -2,7 +2,18 @@
 
 One-tap tool access for mobile users (no Chrome extension).
 
-## How cookies update (no reinstall)
+## Ready to build APK
+
+When you see this checklist complete, open Android Studio and build:
+
+- [x] Website logo on splash + app icon + dashboard header
+- [x] Brand colors (#0d0908 background, #DC2626 red accents)
+- [x] Live support chat (same ChatBotWidget as website)
+- [x] Support tickets inbox in app
+- [x] Bottom navigation: Home · Tools · Chat · Tickets · Profile
+- [x] Tools open in native in-app browser with fresh admin cookies
+
+## Build APK (Windows)
 
 1. Admin saves cookies in **Admin → Cookies** (same as today).
 2. User taps **Open** on a tool in the app.

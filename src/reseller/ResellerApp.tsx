@@ -30,6 +30,11 @@ import { InboxPage } from './pages/InboxPage';
 import { TicketsInbox } from '../components/TicketsInbox';
 import { useLiveNotes } from '../lib/useLiveNotes';
 import { NoteAlertToast } from '../components/NoteAlertToast';
+import { ChatBotWidget } from '../components/ChatBotWidget';
+import { isMobileApp } from '../lib/mobile/toolLauncher';
+import { MobileAppNav, mobileAppContentClass } from './components/MobileAppNav';
+import { SupportPage } from './pages/SupportPage';
+import { openSupportChat } from '../lib/supportChat';
 
 /** Which half of the portal is showing. */
 type Section = 'personal' | 'panel';
@@ -155,7 +160,8 @@ export const ResellerApp: React.FC = () => {
   if (!session) return <ResellerLogin onLogin={() => setSession(resellerAuth.session())} />;
 
   const isReseller = session.role === 'reseller';
-  const sideW = collapsed ? 64 : 224;
+  const nativeApp = isMobileApp();
+  const sideW = nativeApp ? 0 : collapsed ? 64 : 224;
   const unreadInbox = live.unread;
   const ticketAccount = {
     id: session.id,
@@ -277,6 +283,7 @@ export const ResellerApp: React.FC = () => {
   /* ── Personal dashboard ── */
   return (
     <div className="min-h-screen bg-[var(--bg-page)] text-slate-100 font-sans">
+      {!nativeApp && (
       <UserSidebar
         current={userPage}
         onChange={setUserPage}
@@ -290,10 +297,20 @@ export const ResellerApp: React.FC = () => {
         roleLabel={isReseller ? 'Reseller' : 'Member'}
         unreadCount={unreadInbox}
       />
+      )}
 
-      <div className="transition-all duration-300 min-h-screen flex flex-col" style={{ marginLeft: `${sideW}px` }}>
+      <div className={`transition-all duration-300 min-h-screen flex flex-col ${mobileAppContentClass()}`} style={{ marginLeft: `${sideW}px` }}>
         {/* Topbar */}
         <header className="sticky top-0 z-20 bg-[#0d0908]/95 backdrop-blur border-b border-[#2a1e1c] flex items-center justify-between gap-3 px-5 py-3">
+          {nativeApp ? (
+            <div className="flex items-center gap-3 min-w-0">
+              <img src="/logo.png" alt="AI Toolz Mart" className="h-10 w-auto shrink-0 object-contain" />
+              <div className="min-w-0">
+                <h1 className="text-sm font-black text-white truncate">AI Toolz Mart</h1>
+                <p className="text-[10px] text-slate-500 truncate">Hi, {session.name}</p>
+              </div>
+            </div>
+          ) : (
           <div>
             <h1 className="text-base sm:text-lg font-black text-white">
               Welcome back, <span className="text-red-500">{session.name}</span>
@@ -302,6 +319,7 @@ export const ResellerApp: React.FC = () => {
               {new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })}
             </p>
           </div>
+          )}
 
           <div className="flex items-center gap-2">
             {isReseller && (
@@ -377,6 +395,12 @@ export const ResellerApp: React.FC = () => {
               <ExtensionsPage customerId={self.customer_code || session.customerCode || session.id} />
             ) : userPage === 'mobile-app' ? (
               <MobileAppPage customerId={self.customer_code || session.customerCode || session.id} />
+            ) : userPage === 'support' ? (
+              <SupportPage
+                account={ticketAccount}
+                adminWaLink={adminWa}
+                adminWhatsapp={adminWhatsapp}
+              />
             ) : userPage === 'notifications' ? (
               <InboxPage notes={inbox} onRead={onReadNote} onReadAll={onReadAllNotes} onDelete={onDeleteNote} onDeleteRead={onDeleteReadNotes} />
             ) : userPage === 'inbox' ? (
@@ -437,7 +461,10 @@ export const ResellerApp: React.FC = () => {
         </RModal>
       )}
 
-      {/* Floating WhatsApp */}
+      {/* Support chat (creates tickets) — web + mobile app */}
+      <ChatBotWidget />
+
+      {!nativeApp && (
       <a href={adminWa} target="_blank" rel="noopener noreferrer" title="Contact Admin on WhatsApp"
         className="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center shadow-2xl shadow-emerald-900/40 transition">
         <MessageCircle className="w-6 h-6 text-white" />
@@ -447,6 +474,20 @@ export const ResellerApp: React.FC = () => {
           </span>
         )}
       </a>
+      )}
+
+      {nativeApp && (
+        <MobileAppNav
+          current={userPage}
+          onChange={page => {
+            setUserPage(page);
+            if (page === 'support') openSupportChat();
+          }}
+          onProfile={() => setShowProfile(true)}
+          unreadTickets={0}
+        />
+      )}
+
       {toastEl}
     </div>
   );

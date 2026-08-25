@@ -14,6 +14,8 @@ import {
 } from '../lib/tickets';
 import { readPortalSession } from '../lib/sessionStore';
 import { supabase } from '../lib/db';
+import { SUPPORT_CHAT_EVENT } from '../lib/supportChat';
+import { isMobileApp } from '../lib/mobile/toolLauncher';
 
 type GuestIdentity = { name: string; phone: string };
 type ChatRole = 'bot' | 'user' | 'staff';
@@ -138,6 +140,12 @@ export const ChatBotWidget: React.FC = () => {
   const staffSyncPrimed = useRef(false);
   phaseRef.current = phase;
   openRef.current = open;
+
+  useEffect(() => {
+    const handler = () => setOpen(true);
+    window.addEventListener(SUPPORT_CHAT_EVENT, handler);
+    return () => window.removeEventListener(SUPPORT_CHAT_EVENT, handler);
+  }, []);
 
   useEffect(() => {
     const session = readPortalSession();
@@ -459,16 +467,19 @@ export const ChatBotWidget: React.FC = () => {
     return 'bg-[#1a1210] text-slate-300 border border-[#2a1e1c] rounded-bl-md';
   };
 
+  const chatBottom = isMobileApp() ? 'bottom-24' : 'bottom-6';
+  const panelBottom = isMobileApp() ? 'bottom-36' : 'bottom-24';
+
   return (
     <>
       {toast && (
-        <div className="fixed bottom-24 right-6 z-[60] max-w-xs bg-[#130d0d] border border-red-500/40 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-2xl">
+        <div className={`fixed ${panelBottom} right-6 z-[60] max-w-xs bg-[#130d0d] border border-red-500/40 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-2xl`}>
           {toast}
         </div>
       )}
 
       {open && (
-        <div className="fixed bottom-24 right-4 sm:right-6 z-[60] w-[min(100vw-2rem,380px)] h-[min(72vh,520px)] flex flex-col bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden">
+        <div className={`fixed ${panelBottom} right-4 sm:right-6 z-[60] w-[min(100vw-2rem,380px)] h-[min(62vh,480px)] flex flex-col bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden`}>
           <div className="px-4 py-3 border-b border-red-800/40 bg-red-700 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-sm font-black truncate" style={{ color: '#ffffff' }}>AI TOOLZ MART</div>
@@ -656,7 +667,7 @@ export const ChatBotWidget: React.FC = () => {
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-red-700 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-2xl shadow-red-950/50 transition-transform hover:scale-110 cursor-pointer"
+        className={`fixed ${chatBottom} right-6 z-50 w-14 h-14 bg-red-700 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-2xl shadow-red-950/50 transition-transform hover:scale-110 cursor-pointer`}
         title={open ? 'Close chat' : 'Chat with us'}
         aria-label={open ? 'Close chat' : 'Open chat'}
       >

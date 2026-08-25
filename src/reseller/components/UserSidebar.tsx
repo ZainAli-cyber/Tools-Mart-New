@@ -2,7 +2,7 @@ import React from 'react';
 import { LayoutDashboard, ShoppingBag, Video, Briefcase, LogOut, ChevronsLeft, ChevronsRight, ArrowRight, Puzzle, Bell, Inbox, Smartphone } from 'lucide-react';
 import { ThemeToggle } from '../../components/ThemeToggle';
 
-export type UserPage = 'dashboard' | 'shop' | 'tutorials' | 'extensions' | 'mobile-app' | 'notifications' | 'inbox';
+export type UserPage = 'dashboard' | 'shop' | 'tutorials' | 'extensions' | 'mobile-app' | 'support' | 'notifications' | 'inbox';
 
 interface Props {
   current: UserPage;
@@ -45,7 +45,11 @@ export const UserSidebar: React.FC<Props> = ({
 
       {/* Brand */}
       <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-2'} p-4 border-b border-[#2a1e1c] h-16`}>
-        <div className="w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center text-sm font-black text-white shrink-0">T</div>
+        <img
+          src="/logo.png"
+          alt="AI Toolz Mart"
+          className={`${collapsed ? 'h-8 w-8 object-contain' : 'h-9 w-auto object-contain'} shrink-0`}
+        />
         {!collapsed && (
           <div className="leading-tight min-w-0">
             <div className="text-sm font-extrabold text-white truncate">Ai Toolz Mart</div>
