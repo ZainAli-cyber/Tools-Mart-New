@@ -101,6 +101,88 @@ export function normalizeCookies(raw: any[], fallbackHost = ''): JarCookie[] {
   return out;
 }
 
+/** Drop expired admin cookies before launch (stale Copy-Cookies JSON breaks Send). */
+export function filterLiveCookies(raw: any[]): any[] {
+  const nowSec = Date.now() / 1000;
+  return (Array.isArray(raw) ? raw : []).filter(c => {
+    if (!c || typeof c !== 'object') return false;
+    const exp = c.expirationDate ?? c.expires ?? c.expiry;
+    if (typeof exp === 'number' && exp > 0 && exp < nowSec) return false;
+    if (typeof exp === 'string') {
+      const t = Date.parse(exp);
+      if (Number.isFinite(t) && t < Date.now()) return false;
+    }
+    return true;
+  });
+}
+
+function isChatGptOrigin(origin: string): boolean {
+  try {
+    const h = new URL(origin).hostname.toLowerCase();
+    return h === 'chatgpt.com' || h.endsWith('.chatgpt.com') || h.includes('openai.com');
+  } catch {
+    return /chatgpt\.com|openai\.com/i.test(origin);
+  }
+}
+
+/**
+ * Warm ChatGPT auth on the server before the member opens the tab.
+ * Without this, conversation/init often 401s and Send stays disabled.
+ */
+export async function bootstrapSessionCookies(
+  target: Pick<ProxyTarget, 'origin' | 'cookies' | 'referrer'>,
+): Promise<{ cookies: JarCookie[]; ok: boolean; errors: string[] }> {
+  let cookies = [...(target.cookies || [])];
+  const errors: string[] = [];
+  let origin = String(target.origin || '').trim();
+  if (!origin || !isChatGptOrigin(origin)) {
+    return { cookies, ok: true, errors: [] };
+  }
+  try {
+    origin = new URL(origin).origin;
+  } catch {
+    return { cookies, ok: false, errors: ['Invalid tool origin URL'] };
+  }
+
+  const referer = String(target.referrer || `${origin}/`).trim() || `${origin}/`;
+  const endpoints = [`${origin}/api/auth/session`, `${origin}/backend-api/me`];
+  let anyOk = false;
+
+  for (const url of endpoints) {
+    try {
+      const headers: Record<string, string> = {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'application/json',
+        Referer: referer,
+        Origin: origin,
+      };
+      const cookie = cookieHeaderFor(cookies, url);
+      if (cookie) headers.Cookie = cookie;
+
+      const res = await proxyAwareFetch(url, { method: 'GET', redirect: 'manual', headers });
+      cookies = mergeSetCookies(cookies, res, url);
+      const body = await res.text();
+      const ct = res.headers.get('content-type') || '';
+      if (res.status >= 200 && res.status < 400 && !isCloudflareChallenge(res.status, ct, body)) {
+        anyOk = true;
+        continue;
+      }
+      if (isCloudflareChallenge(res.status, ct, body)) {
+        errors.push(`${url}: Cloudflare blocked the proxy IP — use residential sticky Webshare in Admin.`);
+      } else if (res.status === 401 || res.status === 403) {
+        errors.push(`${url}: session rejected (${res.status}) — copy fresh cookies from a logged-in ChatGPT tab.`);
+      } else {
+        errors.push(`${url}: HTTP ${res.status}`);
+      }
+    } catch (err: any) {
+      errors.push(`${url}: ${String(err?.message || err)}`);
+    }
+  }
+
+  return { cookies, ok: anyOk, errors };
+}
+
 function domainMatches(host: string, domain?: string): boolean {
   const h = String(host || '').toLowerCase();
   const d = String(domain || '').toLowerCase().replace(/^\./, '');
@@ -295,7 +377,27 @@ export function isCloudflareChallenge(status: number, contentType: string, body:
     return true;
   }
 
+  // Canva / similar bot walls (often 200 HTML with Ray ID — not our generic blocked page).
+  if (/designing again soon|we.?ll have you designing|help centre to see why|__cf_chl|cf_chl_rt/i.test(head)) {
+    return true;
+  }
+
   return false;
+}
+
+/** HTML shown when one-click cannot pass Cloudflare / bot checks. */
+export function oneClickBlockedHtml(toolHost: string): string {
+  return cloudflareBlockedPage(toolHost);
+}
+
+/** Hosts that cannot work on server one-click (extension only). */
+export function isOneClickBlockedHost(url?: string | null): boolean {
+  try {
+    const h = new URL(String(url || '').trim()).hostname.toLowerCase();
+    return h === 'canva.com' || h.endsWith('.canva.com') || h === 'canva.cn' || h.endsWith('.canva.cn');
+  } catch {
+    return /canva\.(com|cn)/i.test(String(url || ''));
+  }
 }
 
 function cloudflareBlockedPage(toolHost: string): string {

@@ -17,9 +17,13 @@ import {
 } from './deviceSessions';
 import { getGlobalProxyPublicStatus } from './globalProxySettings';
 import {
+  bootstrapSessionCookies,
+  filterLiveCookies,
   forwardRequest,
   fromProxyPath,
+  isOneClickBlockedHost,
   normalizeCookies,
+  oneClickBlockedHtml,
   unwrapNestedFxPath,
   type JarCookie,
   type ProxyTarget,
@@ -667,6 +671,15 @@ router.post('/launch', async (req, res) => {
     const { profile, tool, fields, cookies } = gate;
     const dest = fields.url;
 
+    if (isOneClickBlockedHost(dest)) {
+      return res.status(403).json({
+        error:
+          'Canva and similar sites cannot use one-click — they require Cloudflare in a real browser. In Admin → Cookies set this tool to By extension.',
+        accessMethod: 'extension',
+        blockedHost: true,
+      });
+    }
+
     // "By extension" tools must use the Access extension — never the server proxy.
     if (fields.accessMethod !== 'one_click') {
       return res.status(403).json({
@@ -684,6 +697,21 @@ router.post('/launch', async (req, res) => {
     }
 
     const proxyStatus = await getGlobalProxyPublicStatus();
+    if (!proxyStatus.ready) {
+      return res.status(503).json({
+        error:
+          'Global Proxy Engine is not ready. Admin must enable it with a residential sticky HTTP proxy (Webshare) and pass the one-click test.',
+      });
+    }
+
+    const liveRaw = filterLiveCookies(cookies);
+    if (!liveRaw.length) {
+      return res.status(400).json({
+        error:
+          'All saved cookies are expired. Admin must copy fresh cookies from a logged-in session and save again in Admin → Cookies.',
+      });
+    }
+
     const referrer = resolvePanelUnlockReferrer(fields.panelReferrer, dest);
     let originHost = '';
     try {
@@ -691,10 +719,27 @@ router.post('/launch', async (req, res) => {
     } catch {
       /* ignore */
     }
-    const jar = normalizeCookies(cookies, originHost);
+    const jar = normalizeCookies(liveRaw, originHost);
 
     pruneSessions();
     const token = newToken();
+
+    const bootstrap = await runWithProxySticky(token, () =>
+      bootstrapSessionCookies({
+        origin,
+        cookies: jar,
+        referrer: referrer || `${origin}/`,
+      }),
+    );
+    if (!bootstrap.ok) {
+      return res.status(502).json({
+        error:
+          bootstrap.errors[0] ||
+          'Could not warm the tool session. Copy fresh cookies or check Global Proxy Engine in Admin.',
+        details: bootstrap.errors,
+      });
+    }
+
     const session: ProxySession = {
       token,
       accountId: String(profile.id),
@@ -702,9 +747,9 @@ router.post('/launch', async (req, res) => {
       toolName: String(tool.name || 'Tool'),
       targetUrl: dest,
       origin,
-      cookies: jar,
-      cookieHeader: cookiesToHeader(cookies),
-      cookieHosts: hostsFromCookies(cookies, origin),
+      cookies: bootstrap.cookies,
+      cookieHeader: cookiesToHeader(bootstrap.cookies),
+      cookieHosts: hostsFromCookies(liveRaw, origin),
       referrer: referrer || (isPanelUnlockUrl(dest) ? DEFAULT_PANEL_REFERRER : ''),
       referrerCandidates: isPanelUnlockUrl(dest)
         ? panelUnlockReferrerCandidates(fields.panelReferrer || referrer || DEFAULT_PANEL_REFERRER)
@@ -755,6 +800,16 @@ export async function handleFxProxy(req: any, res: any) {
     }
 
     const isRoot = pathOnly === '/' || pathOnly === '';
+    if (isDocumentRequest(req) && /(?:^|[?&])__cf_chl/i.test(String(req.url || ''))) {
+      let host = session.origin;
+      try {
+        host = new URL(session.origin).hostname;
+      } catch {
+        /* ignore */
+      }
+      return res.status(403).type('html').send(oneClickBlockedHtml(host));
+    }
+
     const target: ProxyTarget = {
       token: session.token,
       origin: session.origin,

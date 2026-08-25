@@ -2857,6 +2857,73 @@ function normalizeCookies(raw, fallbackHost = "") {
   }
   return out;
 }
+function filterLiveCookies(raw) {
+  const nowSec = Date.now() / 1e3;
+  return (Array.isArray(raw) ? raw : []).filter((c) => {
+    if (!c || typeof c !== "object") return false;
+    const exp = c.expirationDate ?? c.expires ?? c.expiry;
+    if (typeof exp === "number" && exp > 0 && exp < nowSec) return false;
+    if (typeof exp === "string") {
+      const t = Date.parse(exp);
+      if (Number.isFinite(t) && t < Date.now()) return false;
+    }
+    return true;
+  });
+}
+function isChatGptOrigin(origin) {
+  try {
+    const h = new URL(origin).hostname.toLowerCase();
+    return h === "chatgpt.com" || h.endsWith(".chatgpt.com") || h.includes("openai.com");
+  } catch {
+    return /chatgpt\.com|openai\.com/i.test(origin);
+  }
+}
+async function bootstrapSessionCookies(target) {
+  let cookies = [...target.cookies || []];
+  const errors = [];
+  let origin = String(target.origin || "").trim();
+  if (!origin || !isChatGptOrigin(origin)) {
+    return { cookies, ok: true, errors: [] };
+  }
+  try {
+    origin = new URL(origin).origin;
+  } catch {
+    return { cookies, ok: false, errors: ["Invalid tool origin URL"] };
+  }
+  const referer = String(target.referrer || `${origin}/`).trim() || `${origin}/`;
+  const endpoints = [`${origin}/api/auth/session`, `${origin}/backend-api/me`];
+  let anyOk = false;
+  for (const url3 of endpoints) {
+    try {
+      const headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "application/json",
+        Referer: referer,
+        Origin: origin
+      };
+      const cookie = cookieHeaderFor(cookies, url3);
+      if (cookie) headers.Cookie = cookie;
+      const res = await proxyAwareFetch(url3, { method: "GET", redirect: "manual", headers });
+      cookies = mergeSetCookies(cookies, res, url3);
+      const body = await res.text();
+      const ct = res.headers.get("content-type") || "";
+      if (res.status >= 200 && res.status < 400 && !isCloudflareChallenge(res.status, ct, body)) {
+        anyOk = true;
+        continue;
+      }
+      if (isCloudflareChallenge(res.status, ct, body)) {
+        errors.push(`${url3}: Cloudflare blocked the proxy IP \u2014 use residential sticky Webshare in Admin.`);
+      } else if (res.status === 401 || res.status === 403) {
+        errors.push(`${url3}: session rejected (${res.status}) \u2014 copy fresh cookies from a logged-in ChatGPT tab.`);
+      } else {
+        errors.push(`${url3}: HTTP ${res.status}`);
+      }
+    } catch (err) {
+      errors.push(`${url3}: ${String(err?.message || err)}`);
+    }
+  }
+  return { cookies, ok: anyOk, errors };
+}
 function domainMatches(host, domain) {
   const h = String(host || "").toLowerCase();
   const d = String(domain || "").toLowerCase().replace(/^\./, "");
@@ -3016,7 +3083,21 @@ function isCloudflareChallenge(status, contentType, body) {
   if ((status === 403 || status === 503) && /cf-|cloudflare|challenge/i.test(head) && /<!DOCTYPE|<html/i.test(head)) {
     return true;
   }
+  if (/designing again soon|we.?ll have you designing|help centre to see why|__cf_chl|cf_chl_rt/i.test(head)) {
+    return true;
+  }
   return false;
+}
+function oneClickBlockedHtml(toolHost) {
+  return cloudflareBlockedPage(toolHost);
+}
+function isOneClickBlockedHost(url3) {
+  try {
+    const h = new URL(String(url3 || "").trim()).hostname.toLowerCase();
+    return h === "canva.com" || h.endsWith(".canva.com") || h === "canva.cn" || h.endsWith(".canva.cn");
+  } catch {
+    return /canva\.(com|cn)/i.test(String(url3 || ""));
+  }
 }
 function cloudflareBlockedPage(toolHost) {
   const host = String(toolHost || "this site").replace(/[<>&"]/g, "");
@@ -4114,6 +4195,13 @@ router6.post("/launch", async (req, res) => {
     }
     const { profile, tool, fields, cookies } = gate;
     const dest = fields.url;
+    if (isOneClickBlockedHost(dest)) {
+      return res.status(403).json({
+        error: "Canva and similar sites cannot use one-click \u2014 they require Cloudflare in a real browser. In Admin \u2192 Cookies set this tool to By extension.",
+        accessMethod: "extension",
+        blockedHost: true
+      });
+    }
     if (fields.accessMethod !== "one_click") {
       return res.status(403).json({
         error: "This tool requires the AI Toolz Mart Access browser extension. Install it from the Installation Guide, then open again.",
@@ -4127,15 +4215,40 @@ router6.post("/launch", async (req, res) => {
       return res.status(400).json({ error: "Invalid tool destination URL" });
     }
     const proxyStatus = await getGlobalProxyPublicStatus();
+    if (!proxyStatus.ready) {
+      return res.status(503).json({
+        error: "Global Proxy Engine is not ready. Admin must enable it with a residential sticky HTTP proxy (Webshare) and pass the one-click test."
+      });
+    }
+    const liveRaw = filterLiveCookies(cookies);
+    if (!liveRaw.length) {
+      return res.status(400).json({
+        error: "All saved cookies are expired. Admin must copy fresh cookies from a logged-in session and save again in Admin \u2192 Cookies."
+      });
+    }
     const referrer = resolvePanelUnlockReferrer(fields.panelReferrer, dest);
     let originHost = "";
     try {
       originHost = new URL(origin).hostname;
     } catch {
     }
-    const jar = normalizeCookies(cookies, originHost);
+    const jar = normalizeCookies(liveRaw, originHost);
     pruneSessions();
     const token = newToken();
+    const bootstrap2 = await runWithProxySticky(
+      token,
+      () => bootstrapSessionCookies({
+        origin,
+        cookies: jar,
+        referrer: referrer || `${origin}/`
+      })
+    );
+    if (!bootstrap2.ok) {
+      return res.status(502).json({
+        error: bootstrap2.errors[0] || "Could not warm the tool session. Copy fresh cookies or check Global Proxy Engine in Admin.",
+        details: bootstrap2.errors
+      });
+    }
     const session = {
       token,
       accountId: String(profile.id),
@@ -4143,9 +4256,9 @@ router6.post("/launch", async (req, res) => {
       toolName: String(tool.name || "Tool"),
       targetUrl: dest,
       origin,
-      cookies: jar,
-      cookieHeader: cookiesToHeader(cookies),
-      cookieHosts: hostsFromCookies(cookies, origin),
+      cookies: bootstrap2.cookies,
+      cookieHeader: cookiesToHeader(bootstrap2.cookies),
+      cookieHosts: hostsFromCookies(liveRaw, origin),
       referrer: referrer || (isPanelUnlockUrl(dest) ? DEFAULT_PANEL_REFERRER : ""),
       referrerCandidates: isPanelUnlockUrl(dest) ? panelUnlockReferrerCandidates(fields.panelReferrer || referrer || DEFAULT_PANEL_REFERRER) : [],
       expiresAt: Date.now() + SESSION_TTL_MS
@@ -4184,6 +4297,14 @@ async function handleFxProxy(req, res) {
       return res.redirect(302, `${nestedPrefix}${cleaned === "/" ? "/" : cleaned}${q}`);
     }
     const isRoot = pathOnly === "/" || pathOnly === "";
+    if (isDocumentRequest(req) && /(?:^|[?&])__cf_chl/i.test(String(req.url || ""))) {
+      let host = session.origin;
+      try {
+        host = new URL(session.origin).hostname;
+      } catch {
+      }
+      return res.status(403).type("html").send(oneClickBlockedHtml(host));
+    }
     const target = {
       token: session.token,
       origin: session.origin,
