@@ -52,6 +52,18 @@ function parseConfig(raw: unknown): GlobalProxyConfig {
   return { enabled: false, url: '' };
 }
 
+/** Always keep host:port visible (URL.href drops :80 for http). */
+export function serializeProxyUrl(u: URL): string {
+  const protocol = u.protocol === 'https:' ? 'https:' : 'http:';
+  const port = u.port || (protocol === 'https:' ? '443' : '80');
+  const user = u.username ? decodeURIComponent(u.username) : '';
+  const pass = u.password ? decodeURIComponent(u.password) : '';
+  const auth = user
+    ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`
+    : '';
+  return `${protocol}//${auth}${u.hostname}:${port}/`;
+}
+
 export function normalizeProxyUrl(raw: string): string {
   let s = String(raw || '').trim();
   if (!s) return '';
@@ -82,7 +94,7 @@ export function normalizeProxyUrl(raw: string): string {
       user = user.replace(/-rotate$/i, '');
       u.username = user;
     }
-    return u.href;
+    return serializeProxyUrl(u);
   } catch (err: any) {
     if (err?.message && /HTTP endpoint|must start with http|Invalid proxy|Example:/i.test(err.message)) {
       throw err;
@@ -91,9 +103,21 @@ export function normalizeProxyUrl(raw: string): string {
   }
 }
 
+/** Webshare sticky session ids must be numeric (Endpoint Generator uses digits). */
+function webshareStickyDigits(stickyId: string): string {
+  const fromDigits = String(stickyId || '').replace(/\D/g, '');
+  if (fromDigits.length >= 4) return fromDigits.slice(0, 12);
+  let hash = 0;
+  for (const ch of String(stickyId || 'atm')) {
+    hash = (Math.imul(31, hash) + ch.charCodeAt(0)) | 0;
+  }
+  const mixed = `${Math.abs(hash)}${Date.now()}`.replace(/\D/g, '');
+  return mixed.slice(0, 10);
+}
+
 /**
  * Pin a residential sticky session so one tool tab keeps the same exit IP.
- * - Webshare: user-us-SESSIONID (numeric / alphanumeric after country)
+ * - Webshare: user-us-SESSIONID (numeric after country)
  * - IPRoyal / Bright Data style: user-session-ID
  * If the URL already contains a sticky marker, it is left unchanged.
  */
@@ -112,14 +136,16 @@ export function applyStickySession(proxyUrl: string, stickyId: string): string {
     if (/webshare\.io$/i.test(host)) {
       // Drop generator sticky suffix (e.g. user-us-680248) so each tool tab gets its own pin.
       user = user.replace(/-\d{3,}$/i, '');
-      // Webshare: {user}-us-1234  (not -session-)
-      u.username = `${user}-${id}`;
-      return u.href;
+      // Webshare requires numeric session ids: {user}-us-123456
+      u.username = `${user}-${webshareStickyDigits(id)}`;
+      if (!u.port) u.port = '80';
+      return serializeProxyUrl(u);
     }
 
     // user → user-session-ID (most residential HTTP gateways)
     u.username = `${user}-session-${id}`;
-    return u.href;
+    if (!u.port) u.port = /^https:$/i.test(u.protocol) ? '443' : '80';
+    return serializeProxyUrl(u);
   } catch {
     return proxyUrl;
   }

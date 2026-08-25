@@ -113,6 +113,7 @@ function toCamel(obj) {
     member_id: "memberId",
     member_name: "memberName",
     payment_date: "paymentDate",
+    desc: "desc",
     description: "desc",
     access_method: "accessMethod",
     tool_url: "toolUrl",
@@ -1067,6 +1068,8 @@ function snakeToCamelTool(t) {
     isPrivate: t.is_private,
     isSemiPrivate: t.is_semi_private,
     showOnHome: t.show_on_home === false || t.show_on_home === 0 || extra.showOnHome === false ? false : true,
+    // Prefer extra.accessMethod: when access_method column is missing from schema,
+    // cookie saves land in extra while the column default stays "extension".
     accessMethod: (() => {
       const candidates = [
         extra.accessMethod,
@@ -1094,7 +1097,6 @@ function camelToSnakeTool(t) {
   if (t.discount !== void 0) r.discount = t.discount;
   if (t.favicon !== void 0) r.favicon = t.favicon;
   if (t.badge !== void 0) r.badge = t.badge;
-  // Schema column is "desc" (see supabase_schema.sql), not "description".
   if (t.desc !== void 0) r.desc = t.desc;
   if (t.description !== void 0) r.desc = t.description;
   if (t.fullDesc !== void 0) r.full_desc = t.fullDesc;
@@ -2406,6 +2408,14 @@ function parseConfig(raw) {
   }
   return { enabled: false, url: "" };
 }
+function serializeProxyUrl(u) {
+  const protocol = u.protocol === "https:" ? "https:" : "http:";
+  const port = u.port || (protocol === "https:" ? "443" : "80");
+  const user = u.username ? decodeURIComponent(u.username) : "";
+  const pass = u.password ? decodeURIComponent(u.password) : "";
+  const auth = user ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@` : "";
+  return `${protocol}//${auth}${u.hostname}:${port}/`;
+}
 function normalizeProxyUrl(raw) {
   let s = String(raw || "").trim();
   if (!s) return "";
@@ -2433,13 +2443,23 @@ function normalizeProxyUrl(raw) {
       user = user.replace(/-rotate$/i, "");
       u.username = user;
     }
-    return u.href;
+    return serializeProxyUrl(u);
   } catch (err) {
     if (err?.message && /HTTP endpoint|must start with http|Invalid proxy|Example:/i.test(err.message)) {
       throw err;
     }
     throw new Error("Invalid proxy URL. Example: http://user:pass@p.webshare.io:80/");
   }
+}
+function webshareStickyDigits(stickyId) {
+  const fromDigits = String(stickyId || "").replace(/\D/g, "");
+  if (fromDigits.length >= 4) return fromDigits.slice(0, 12);
+  let hash = 0;
+  for (const ch of String(stickyId || "atm")) {
+    hash = Math.imul(31, hash) + ch.charCodeAt(0) | 0;
+  }
+  const mixed = `${Math.abs(hash)}${Date.now()}`.replace(/\D/g, "");
+  return mixed.slice(0, 10);
 }
 function applyStickySession(proxyUrl, stickyId) {
   const id = String(stickyId || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
@@ -2452,11 +2472,13 @@ function applyStickySession(proxyUrl, stickyId) {
     const host = (u.hostname || "").toLowerCase();
     if (/webshare\.io$/i.test(host)) {
       user = user.replace(/-\d{3,}$/i, "");
-      u.username = `${user}-${id}`;
-      return u.href;
+      u.username = `${user}-${webshareStickyDigits(id)}`;
+      if (!u.port) u.port = "80";
+      return serializeProxyUrl(u);
     }
     u.username = `${user}-session-${id}`;
-    return u.href;
+    if (!u.port) u.port = /^https:$/i.test(u.protocol) ? "443" : "80";
+    return serializeProxyUrl(u);
   } catch {
     return proxyUrl;
   }
@@ -2574,7 +2596,8 @@ async function getProxyAgent(proxyUrl) {
   const agent = new undici.ProxyAgent({
     uri: proxyUrl,
     connections: 16,
-    pipelining: 1
+    pipelining: 1,
+    connect: { timeout: 3e4 }
   });
   cachedAgent = { key: proxyUrl, agent, at: now };
   return agent;
@@ -2609,11 +2632,16 @@ function looksLikeCloudflare(status, body) {
     body
   );
 }
-async function fetchViaProxy(proxyUrl, url3, headers) {
+async function fetchViaProxy(proxyUrl, url3, headers, timeoutMs = 35e3) {
   const undici = await import("undici");
-  const agent = new undici.ProxyAgent(proxyUrl);
+  const agent = new undici.ProxyAgent({
+    uri: proxyUrl,
+    connections: 4,
+    pipelining: 1,
+    connect: { timeout: timeoutMs }
+  });
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 18e3);
+  const timer = setTimeout(() => controller.abort(new Error("Proxy request timed out")), timeoutMs);
   try {
     const res = await undici.fetch(url3, {
       dispatcher: agent,
@@ -2645,15 +2673,31 @@ async function testProxyUrl(proxyUrlRaw) {
       error: "Use an HTTP residential proxy URL (http://user:pass@host:port/), not socks://. Most providers give both."
     };
   }
-  proxyUrl = applyStickySession(proxyUrl, `test${Date.now().toString(36)}`);
+  const stickyProxyUrl = applyStickySession(proxyUrl, `t${Date.now()}`);
   try {
-    const ipRes = await fetchViaProxy(proxyUrl, "https://api.ipify.org?format=json", {
-      Accept: "application/json",
-      "User-Agent": BROWSER_UA
-    });
-    if (ipRes.status < 200 || ipRes.status >= 300) {
-      return { ok: false, error: `Proxy reachable but IP check failed (${ipRes.status})` };
+    let activeProxy = stickyProxyUrl;
+    let ipRes = null;
+    let lastErr = null;
+    for (const candidate of [stickyProxyUrl, proxyUrl]) {
+      try {
+        const res = await fetchViaProxy(candidate, "https://api.ipify.org?format=json", {
+          Accept: "application/json",
+          "User-Agent": BROWSER_UA
+        });
+        if (res.status >= 200 && res.status < 300) {
+          ipRes = res;
+          activeProxy = candidate;
+          break;
+        }
+        lastErr = new Error(`Proxy reachable but IP check failed (${res.status})`);
+      } catch (err) {
+        lastErr = err;
+      }
     }
+    if (!ipRes) {
+      throw lastErr || new Error("Proxy IP check failed");
+    }
+    proxyUrl = activeProxy;
     let ip = "";
     try {
       ip = String(JSON.parse(ipRes.text)?.ip || "").trim();
@@ -2733,8 +2777,8 @@ async function testProxyUrl(proxyUrlRaw) {
     const base = String(err?.message || err || "Proxy test failed");
     const detail = cause && !base.includes(String(cause)) ? `${base} (${cause})` : base;
     let hint = detail;
-    if (/fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|aborted|UND_ERR/i.test(detail)) {
-      hint = `${detail}. Check: (1) URL is http://USER:PASS@p.webshare.io:80/ with port 80, (2) Session type Sticky not Rotating, (3) verify Webshare email, (4) Save Proxy then Test again.`;
+    if (/fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|aborted|UND_ERR|cancelled|timed out/i.test(detail)) {
+      hint = `${detail}. Check: (1) Save with http://USER:PASS@p.webshare.io:80/ (port stays after save now), (2) Sticky not Rotating, (3) verify Webshare email, (4) wait for deploy then Test again.`;
     }
     return { ok: false, error: hint };
   }

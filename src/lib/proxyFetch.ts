@@ -46,6 +46,7 @@ async function getProxyAgent(proxyUrl: string): Promise<unknown> {
     uri: proxyUrl,
     connections: 16,
     pipelining: 1,
+    connect: { timeout: 30_000 },
   } as any);
   cachedAgent = { key: proxyUrl, agent, at: now };
   return agent;
@@ -117,11 +118,17 @@ async function fetchViaProxy(
   proxyUrl: string,
   url: string,
   headers: Record<string, string>,
+  timeoutMs = 35_000,
 ): Promise<{ status: number; text: string }> {
   const undici = await import('undici');
-  const agent = new undici.ProxyAgent(proxyUrl);
+  const agent = new undici.ProxyAgent({
+    uri: proxyUrl,
+    connections: 4,
+    pipelining: 1,
+    connect: { timeout: timeoutMs },
+  } as any);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 18_000);
+  const timer = setTimeout(() => controller.abort(new Error('Proxy request timed out')), timeoutMs);
   try {
     const res = await undici.fetch(url, {
       dispatcher: agent,
@@ -161,16 +168,36 @@ export async function testProxyUrl(proxyUrlRaw: string): Promise<ProxyTestResult
   }
 
   // Pin a sticky session for the whole test (same as a real tool tab).
-  proxyUrl = applyStickySession(proxyUrl, `test${Date.now().toString(36)}`);
+  // Webshare needs numeric session ids — applyStickySession handles that.
+  const stickyProxyUrl = applyStickySession(proxyUrl, `t${Date.now()}`);
 
   try {
-    const ipRes = await fetchViaProxy(proxyUrl, 'https://api.ipify.org?format=json', {
-      Accept: 'application/json',
-      'User-Agent': BROWSER_UA,
-    });
-    if (ipRes.status < 200 || ipRes.status >= 300) {
-      return { ok: false, error: `Proxy reachable but IP check failed (${ipRes.status})` };
+    let activeProxy = stickyProxyUrl;
+    let ipRes: { status: number; text: string } | null = null;
+    let lastErr: any = null;
+
+    for (const candidate of [stickyProxyUrl, proxyUrl]) {
+      try {
+        const res = await fetchViaProxy(candidate, 'https://api.ipify.org?format=json', {
+          Accept: 'application/json',
+          'User-Agent': BROWSER_UA,
+        });
+        if (res.status >= 200 && res.status < 300) {
+          ipRes = res;
+          activeProxy = candidate;
+          break;
+        }
+        lastErr = new Error(`Proxy reachable but IP check failed (${res.status})`);
+      } catch (err) {
+        lastErr = err;
+      }
     }
+
+    if (!ipRes) {
+      throw lastErr || new Error('Proxy IP check failed');
+    }
+    proxyUrl = activeProxy;
+
     let ip = '';
     try {
       ip = String(JSON.parse(ipRes.text)?.ip || '').trim();
@@ -266,10 +293,10 @@ export async function testProxyUrl(proxyUrlRaw: string): Promise<ProxyTestResult
     const base = String(err?.message || err || 'Proxy test failed');
     const detail = cause && !base.includes(String(cause)) ? `${base} (${cause})` : base;
     let hint = detail;
-    if (/fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|aborted|UND_ERR/i.test(detail)) {
+    if (/fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|aborted|UND_ERR|cancelled|timed out/i.test(detail)) {
       hint =
-        `${detail}. Check: (1) URL is http://USER:PASS@p.webshare.io:80/ with port 80, ` +
-        `(2) Session type Sticky not Rotating, (3) verify Webshare email, (4) Save Proxy then Test again.`;
+        `${detail}. Check: (1) Save with http://USER:PASS@p.webshare.io:80/ (port stays after save now), ` +
+        `(2) Sticky not Rotating, (3) verify Webshare email, (4) wait for deploy then Test again.`;
     }
     return { ok: false, error: hint };
   }
