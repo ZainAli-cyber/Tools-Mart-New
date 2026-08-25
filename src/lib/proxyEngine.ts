@@ -192,8 +192,12 @@ export function toProxyPath(target: ProxyTarget, absoluteUrl: string): string {
   try {
     const u = new URL(absoluteUrl);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return absoluteUrl;
-    const originHost = new URL(target.origin).hostname.toLowerCase();
     const base = `${PROXY_BASE}/${encodeURIComponent(target.token)}`;
+    // Never nest /fx/<token>/ inside itself (history.pushState bug / CF redirects).
+    if (u.pathname === base || u.pathname.startsWith(`${base}/`)) {
+      return `${u.pathname}${u.search}${u.hash}`;
+    }
+    const originHost = new URL(target.origin).hostname.toLowerCase();
     const tail = `${u.pathname}${u.search}${u.hash}`;
     if (u.hostname.toLowerCase() === originHost) return `${base}${tail}`;
     return `${base}/${CROSS_HOST_MARKER}${u.host}${tail}`;
@@ -202,10 +206,21 @@ export function toProxyPath(target: ProxyTarget, absoluteUrl: string): string {
   }
 }
 
+/** Strip accidental /fx/<token> prefixes from a path remainder. */
+export function unwrapNestedFxPath(token: string, remainder: string): string {
+  let raw = String(remainder || '/');
+  if (!raw.startsWith('/')) raw = `/${raw}`;
+  const nested = `${PROXY_BASE}/${encodeURIComponent(String(token || '').trim())}`;
+  let guard = 0;
+  while (guard++ < 5 && (raw === nested || raw.startsWith(`${nested}/`))) {
+    raw = raw.slice(nested.length) || '/';
+  }
+  return raw;
+}
+
 /** Portal path remainder (after /fx/<token>) → absolute tool URL. */
 export function fromProxyPath(target: ProxyTarget, remainder: string): string | null {
-  const raw = String(remainder || '/');
-  const withSlash = raw.startsWith('/') ? raw : `/${raw}`;
+  const withSlash = unwrapNestedFxPath(target.token, remainder);
   try {
     if (withSlash.startsWith(`/${CROSS_HOST_MARKER}`)) {
       const rest = withSlash.slice(2);
@@ -222,6 +237,38 @@ export function fromProxyPath(target: ProxyTarget, remainder: string): string | 
   } catch {
     return null;
   }
+}
+
+export function isCloudflareChallenge(status: number, contentType: string, body: string): boolean {
+  const text = String(body || '');
+  if (!/text\/html/i.test(contentType) && status !== 403 && status !== 503) {
+    // Still check body — CF often returns 200 HTML for challenges.
+    if (!/text\/html/i.test(contentType) && !/<!DOCTYPE html/i.test(text.slice(0, 200))) return false;
+  }
+  return (
+    /just a moment|cf-browser-verification|challenge-platform|cdn-cgi\/challenge|attention required|unable to connect to the website|security verification process|cf-challenge|cloudflare/i.test(
+      text,
+    ) || /ray id:/i.test(text)
+  );
+}
+
+function cloudflareBlockedPage(toolHost: string): string {
+  const host = String(toolHost || 'this site').replace(/[<>&"]/g, '');
+  return `<!doctype html><meta charset="utf-8"><title>One-click blocked</title>
+<body style="font-family:system-ui;background:#0d0908;color:#fecaca;padding:2.5rem;max-width:38rem;margin:auto">
+<h1 style="font-size:1.25rem">One-click cannot open this site</h1>
+<p style="color:#94a3b8;font-size:.9rem;line-height:1.55">
+<strong style="color:#fda4af">${host}</strong> is protected by Cloudflare (or similar bot checks).
+The server proxy cannot complete that browser security check — that is why the extension works
+(real browser + your IP) but one-click fails.
+</p>
+<ol style="color:#cbd5e1;font-size:.85rem;line-height:1.65">
+<li>Admin → Cookies for this tool → set access to <strong>By extension</strong>.</li>
+<li>Members install the Access extension and open the tool again.</li>
+<li>Or keep one-click only for sites that allow residential-proxy access (many ChatGPT setups).</li>
+</ol>
+<p style="color:#64748b;font-size:.75rem;margin-top:1.5rem">This is not a broken cookie — it is a site security wall in front of one-click.</p>
+</body>`;
 }
 
 function resolveAgainst(base: string, href: string): string | null {
@@ -283,6 +330,8 @@ function runtimeScript(target: ProxyTarget): string {
     var p=location.pathname;
     if (p.indexOf(BASE)===0) {
       var rest=p.slice(BASE.length) || '/';
+      // Undo accidental /fx/<token>/fx/<token>/ nesting before mapping to the tool.
+      while (rest===BASE || rest.indexOf(BASE+'/')===0) rest=rest.slice(BASE.length)||'/';
       if (rest.charAt(1)===MARK && rest.charAt(0)==='/') {
         var body=rest.slice(2), i=body.indexOf('/');
         var host=i===-1?body:body.slice(0,i);
@@ -298,7 +347,12 @@ function runtimeScript(target: ProxyTarget): string {
     try {
       var u=new URL(abs);
       if (u.protocol!=='http:' && u.protocol!=='https:') return abs;
-      if (u.host===portalHost()) return abs;
+      // Already a portal /fx/<token> URL — never nest another prefix.
+      if (u.host===portalHost()) {
+        if (u.pathname===BASE || u.pathname.indexOf(BASE+'/')===0) return u.pathname+u.search+u.hash;
+        return abs;
+      }
+      if (u.pathname===BASE || u.pathname.indexOf(BASE+'/')===0) return u.pathname+u.search+u.hash;
       var o=new URL(ORIGIN);
       var tail=u.pathname+u.search+u.hash;
       if (u.host===o.host) return BASE+tail;
@@ -306,16 +360,31 @@ function runtimeScript(target: ProxyTarget): string {
     } catch(e){ return abs; }
   }
 
+  function alreadyProxied(raw){
+    if (!raw) return false;
+    if (raw===BASE || raw.indexOf(BASE+'/')===0) return true;
+    try {
+      var u=new URL(raw, location.href);
+      return u.host===portalHost() && (u.pathname===BASE || u.pathname.indexOf(BASE+'/')===0);
+    } catch(e){ return false; }
+  }
+
   function map(input){
     if (input==null) return input;
     var raw=String(input);
     if (!raw || raw.charAt(0)==='#') return input;
     if (/^(data|blob|javascript|mailto|tel|about):/i.test(raw)) return input;
-    if (raw.indexOf(BASE+'/')===0 || raw===BASE) return input;
+    if (alreadyProxied(raw)) {
+      try {
+        // Normalize full portal URLs down to path so we never double-prefix.
+        var u=new URL(raw, location.href);
+        if (u.host===portalHost()) return u.pathname+u.search+u.hash;
+      } catch(e){}
+      return raw;
+    }
     try {
       var abs=new URL(raw, virtualHref()).href;
-      if (raw.charAt(0)==='/' || /^https?:/i.test(raw)) return toProxy(abs);
-      // Relative paths already resolve inside the proxy path space.
+      if (raw.charAt(0)==='/' || /^https?:/i.test(raw) || raw.charAt(0)==='?') return toProxy(abs);
       return input;
     } catch(e){ return input; }
   }
@@ -411,21 +480,27 @@ function runtimeScript(target: ProxyTarget): string {
     return oset.call(this, name, value);
   };
 
-  // Keep SPA history inside the proxy path space.
+  // Keep SPA history inside the proxy path space — never nest /fx/<token>.
   ['pushState','replaceState'].forEach(function(fn){
     var orig=history[fn];
     if (!orig) return;
     history[fn]=function(state, title, url){
       if (url==null) return orig.call(history, state, title, url);
-      var mapped=url;
-      try {
-        var abs=new URL(String(url), virtualHref());
-        var proxied=toProxy(abs.href);
-        mapped = proxied.indexOf(BASE)===0 ? proxied : url;
-      } catch(e){}
-      return orig.call(history, state, title, mapped);
+      return orig.call(history, state, title, map(String(url)));
     };
   });
+
+  // Self-heal if we landed on a doubled /fx/<token>/fx/<token>/ URL.
+  try {
+    var p=location.pathname;
+    var doubled=BASE+BASE;
+    if (p===doubled || p.indexOf(doubled+'/')===0 || p.indexOf(BASE+BASE+'/')===0) {
+      var fixed=BASE + p.slice(BASE.length*2) + location.search + location.hash;
+      if (!fixed || fixed.charAt(0)!=='/') fixed=BASE+'/';
+      location.replace(fixed);
+      return;
+    }
+  } catch(e){}
 
   var oopenwin=window.open;
   window.open=function(url){
@@ -754,7 +829,23 @@ export async function forwardRequest(opts: {
   res.status(finalUpstream.status);
 
   if (REWRITE_HTML.test(contentType)) {
-    let html = rewriteHtml(activeTarget, finalBuf.toString('utf8'), finalUrl);
+    const rawHtml = finalBuf.toString('utf8');
+    // Cloudflare / bot walls cannot be solved by a server proxy — extension works
+    // because the member's real browser completes the check.
+    if (opts.document && isCloudflareChallenge(finalUpstream.status, contentType, rawHtml)) {
+      let host = 'this website';
+      try {
+        host = new URL(finalUrl).hostname;
+      } catch {
+        /* ignore */
+      }
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.status(403);
+      res.send(cloudflareBlockedPage(host));
+      return { cookies, referrerUsed: chosenReferrer };
+    }
+
+    let html = rewriteHtml(activeTarget, rawHtml, finalUrl);
     // Friendly page when a panel still rejects after every Referer candidate.
     if (
       opts.document &&

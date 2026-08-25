@@ -387,6 +387,7 @@ export const CookiesPage: React.FC = () => {
                     {APEX_PANEL_REFERRER}
                   </button>
                   . Leave empty for real domains like ChatGPT. Do not use <code className="text-slate-400">/login</code> — panels expect the dashboard root.
+                  Sites with Cloudflare (Canva, many design tools) often <strong>cannot</strong> use one-click — keep those on <strong>By extension</strong>.
                 </p>
                 {loginLikeReferrer && toolaccessUrl && (
                   <div className="mt-2 bg-amber-900/25 border border-amber-500/35 rounded-xl px-3 py-2 text-[11px] tip-amber leading-relaxed flex flex-wrap items-center gap-2">

@@ -20,6 +20,7 @@ import {
   forwardRequest,
   fromProxyPath,
   normalizeCookies,
+  unwrapNestedFxPath,
   type JarCookie,
   type ProxyTarget,
 } from './proxyEngine';
@@ -717,8 +718,15 @@ export async function handleFxProxy(req: any, res: any) {
 
     const remainder = String(req.url || '/');
     const pathOnly = remainder.split('?')[0] || '/';
-    const isRoot = pathOnly === '/' || pathOnly === '';
+    // Browser landed on /fx/<token>/fx/<token>/… — bounce to the single prefix.
+    const nestedPrefix = `/fx/${encodeURIComponent(session.token)}`;
+    if (pathOnly === nestedPrefix || pathOnly.startsWith(`${nestedPrefix}/`)) {
+      const cleaned = unwrapNestedFxPath(session.token, pathOnly);
+      const q = remainder.includes('?') ? remainder.slice(remainder.indexOf('?')) : '';
+      return res.redirect(302, `${nestedPrefix}${cleaned === '/' ? '/' : cleaned}${q}`);
+    }
 
+    const isRoot = pathOnly === '/' || pathOnly === '';
     const target: ProxyTarget = {
       token: session.token,
       origin: session.origin,
