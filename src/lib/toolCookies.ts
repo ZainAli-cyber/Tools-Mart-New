@@ -614,7 +614,7 @@ export async function loadCatalogTools(opts?: { includeCookies?: boolean }): Pro
 
 /**
  * Persist cookie settings via admin API (service role).
- * Never reports success for localStorage-only writes.
+ * Creates the tools row automatically when it does not exist yet (new tools).
  */
 export async function saveToolCookieSettings(
   tool: Tool,
@@ -625,28 +625,50 @@ export async function saveToolCookieSettings(
     return { ok: false, error: SESSION_EXPIRED_MSG };
   }
 
-  const keys = [tool.id, tool.name].filter(Boolean) as string[];
+  const name = String(tool.name || '').trim();
+  const id = String(tool.id || '').trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const keys = [...new Set([id, name].filter(Boolean))];
   let lastError = 'Could not save cookie settings to the database.';
+
+  const payload = {
+    id,
+    name: name || id,
+    category: tool.category || 'Other',
+    rating: tool.rating,
+    price: tool.price,
+    originalPrice: tool.originalPrice,
+    discount: tool.discount,
+    favicon: tool.favicon || '',
+    desc: tool.desc || '',
+    fullDesc: tool.fullDesc || '',
+    features: tool.features || [],
+    useCases: tool.useCases || [],
+    faqs: tool.faqs || [],
+    waText: tool.waText || name,
+    isPrivate: Boolean(tool.isPrivate),
+    isSemiPrivate: Boolean(tool.isSemiPrivate),
+    showOnHome: tool.showOnHome !== false,
+    badge: tool.badge || '',
+    accessMethod: fields.accessMethod,
+    toolUrl: fields.toolUrl || '',
+    cookiesJson: fields.cookiesJson || '',
+    panelReferrer: fields.panelReferrer || '',
+  };
 
   for (const key of keys) {
     try {
-      const res = await fetch(`/api/admin/tools/${encodeURIComponent(key)}`, {
+      const res = await fetch(`/api/admin/tools/${encodeURIComponent(String(key).trim())}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${adminJwt}`,
         },
-        body: JSON.stringify({
-          accessMethod: fields.accessMethod,
-          toolUrl: fields.toolUrl || '',
-          cookiesJson: fields.cookiesJson || '',
-          panelReferrer: fields.panelReferrer || '',
-        }),
+        body: JSON.stringify(payload),
       });
       const body = await readAdminJson(res);
       if (res.ok) {
-        writeCookieFallback(tool.id, fields);
-        db.saveTool({ ...tool, ...fields });
+        writeCookieFallback(id, fields);
+        db.saveTool({ ...tool, id, name: payload.name, ...fields });
         const persistedUrl = String(body?.toolUrl || '').trim();
         const usedFallback = Boolean(body?.usedFallback);
         if (fields.accessMethod === 'one_click' && fields.toolUrl.trim() && !persistedUrl) {
@@ -677,8 +699,8 @@ export async function saveToolCookieSettings(
   return {
     ok: false,
     error:
-      lastError +
-      ' Run supabase_tool_cookies.sql on production Supabase if columns are missing, confirm SUPABASE_SERVICE_ROLE_KEY on Vercel, then Save again.',
+      lastError ||
+      'Could not save cookie settings. Confirm SUPABASE_SERVICE_ROLE_KEY on Vercel, then try Save again.',
   };
 }
 

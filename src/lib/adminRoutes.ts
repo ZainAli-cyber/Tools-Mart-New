@@ -45,11 +45,74 @@ function toolMatchesKey(tool: { id?: string; name?: string }, key: string) {
 async function resolveToolId(sb: ReturnType<typeof toolsAdminDb>, key: string): Promise<string | null> {
   const raw = decodeURIComponent(String(key || '')).trim();
   if (!raw) return null;
-  const byId = await sb.from('tools').select('id,name').eq('id', raw).maybeSingle();
-  if (byId.data?.id) return byId.data.id;
+  const slug = slugifyToolKey(raw);
+  for (const candidate of [raw, slug]) {
+    if (!candidate) continue;
+    const byId = await sb.from('tools').select('id,name').eq('id', candidate).maybeSingle();
+    if (byId.data?.id) return String(byId.data.id);
+  }
   const catalog = await sb.from('tools').select('id,name');
-  const match = (catalog.data || []).find((row: any) => toolMatchesKey(row, raw));
-  return match?.id || null;
+  const match = (catalog.data || []).find((row: any) => toolMatchesKey(row, raw) || toolMatchesKey(row, slug));
+  return match?.id ? String(match.id) : null;
+}
+
+/** Create a tools row when Cookies is saved for a tool that only exists in the admin UI. */
+async function ensureToolRow(
+  sb: ReturnType<typeof toolsAdminDb>,
+  key: string,
+  body: any,
+): Promise<{ id: string; created: boolean } | { error: string }> {
+  const existing = await resolveToolId(sb, key);
+  if (existing) return { id: existing, created: false };
+
+  const name = String(body?.name || key || 'New Tool').trim() || 'New Tool';
+  const id =
+    slugifyToolKey(body?.id || key || name) ||
+    `tool-${Date.now().toString(36)}`;
+
+  const seed = camelToSnakeTool({
+    id,
+    name,
+    category: body?.category || 'Other',
+    rating: typeof body?.rating === 'number' ? body.rating : 4.9,
+    price: typeof body?.price === 'number' ? body.price : 0,
+    originalPrice: typeof body?.originalPrice === 'number' ? body.originalPrice : 0,
+    discount: typeof body?.discount === 'number' ? body.discount : 0,
+    favicon: body?.favicon || `https://www.google.com/s2/favicons?sz=128&domain=${encodeURIComponent(name)}`,
+    desc: body?.desc || `${name} access`,
+    fullDesc: body?.fullDesc || '',
+    features: Array.isArray(body?.features) ? body.features : [],
+    useCases: Array.isArray(body?.useCases) ? body.useCases : [],
+    faqs: Array.isArray(body?.faqs) ? body.faqs : [],
+    waText: body?.waText || name,
+    isPrivate: Boolean(body?.isPrivate),
+    isSemiPrivate: Boolean(body?.isSemiPrivate),
+    showOnHome: body?.showOnHome !== false,
+    badge: body?.badge || '',
+    accessMethod: body?.accessMethod,
+    toolUrl: body?.toolUrl,
+    cookiesJson: body?.cookiesJson,
+    panelReferrer: body?.panelReferrer,
+  });
+
+  const extra = await mergeCookieExtra(sb, id, body, {});
+  let { data, error } = await sb.from('tools').upsert({ ...seed, extra }).select('id').single();
+  if (error && COLUMN_MISSING.test(error.message || '')) {
+    const withoutCols = { ...seed };
+    delete withoutCols.show_on_home;
+    delete withoutCols.access_method;
+    delete withoutCols.tool_url;
+    delete withoutCols.cookies_json;
+    delete withoutCols.panel_referrer;
+    const retry = await sb.from('tools').upsert({ ...withoutCols, extra }).select('id').single();
+    data = retry.data;
+    error = retry.error;
+  }
+  if (error || !data?.id) {
+    return { error: error?.message || 'Could not create tool row in the database' };
+  }
+  logActivity('Tool Auto-Created', `Created tool from Cookies save: ${name} (${data.id})`);
+  return { id: String(data.id), created: true };
 }
 
 async function mergeCookieExtra(
@@ -251,14 +314,21 @@ router.post('/tools', requireAuth, async (req, res) => {
 router.patch('/tools/:id', requireAuth, async (req, res) => {
   try {
     const sb = toolsAdminDb();
-    const toolId = await resolveToolId(sb, req.params.id);
-    if (!toolId) {
-      return res.status(404).json({
-        error: `Tool not found in database for “${req.params.id}”. Save the tool from Admin → Tools first, then save Cookies again.`,
-      });
+    const ensured = await ensureToolRow(sb, req.params.id, {
+      ...req.body,
+      name: req.body?.name || req.params.id,
+      id: req.body?.id || req.params.id,
+    });
+    if ('error' in ensured) {
+      return res.status(500).json({ error: ensured.error });
     }
+    const toolId = ensured.id;
 
     const payload = camelToSnakeTool(req.body);
+    // Never overwrite primary key / blank out name on cookie-only patches.
+    delete (payload as any).id;
+    if (!String((payload as any).name || '').trim()) delete (payload as any).name;
+
     const extra = await mergeCookieExtra(sb, toolId, req.body);
     // Dual-write: dedicated columns (when present) AND extra JSON fallback for older schemas.
     let { data, error } = await sb
@@ -309,7 +379,7 @@ router.patch('/tools/:id', requireAuth, async (req, res) => {
       ) &&
       !data.tool_url &&
       Boolean(mapped.toolUrl || mapped.accessMethod === 'one_click' || mapped.panelReferrer);
-    res.json({ ...mapped, usedFallback });
+    res.json({ ...mapped, usedFallback, created: ensured.created || undefined });
   } catch (e: any) {
     return res.status(500).json({ error: e.message || 'Could not update tool' });
   }

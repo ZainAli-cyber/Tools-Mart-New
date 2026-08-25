@@ -142,8 +142,8 @@ export const CookiesPage: React.FC = () => {
     await load();
     showToast(
       result.usedFallback
-        ? `Saved “${name}” to DB (extra JSON). Run supabase_tool_cookies.sql on production for dedicated columns.`
-        : `Saved cookie settings for “${name}” to the database`,
+        ? `Saved “${name}” (including new tools) to the database.`
+        : `Saved cookie settings for “${name}”`,
     );
   };
 
