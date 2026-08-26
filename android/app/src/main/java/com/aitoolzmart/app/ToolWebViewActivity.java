@@ -68,25 +68,41 @@ public class ToolWebViewActivity extends AppCompatActivity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setBackgroundColor(Color.parseColor("#130d0d"));
-        bar.setPadding(24, 24, 24, 24);
-        bar.setElevation(8f);
+        int padH = (int) (12 * getResources().getDisplayMetrics().density);
+        int padV = (int) (8 * getResources().getDisplayMetrics().density);
+        bar.setPadding(padH, padV, padH, padV);
+        bar.setElevation(4f);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (int) (48 * getResources().getDisplayMetrics().density)
+        );
+        bar.setLayoutParams(barLp);
+        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
 
         ImageButton back = new ImageButton(this);
         back.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
         back.setBackgroundColor(Color.TRANSPARENT);
         back.setColorFilter(Color.parseColor("#fecaca"));
+        int btn = (int) (36 * getResources().getDisplayMetrics().density);
+        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(btn, btn);
+        back.setLayoutParams(backLp);
+        back.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        back.setPadding(padV, padV, padV, padV);
         back.setOnClickListener(v -> finish());
 
         TextView label = new TextView(this);
         label.setText(title != null && !title.isEmpty() ? title : "Tool");
         label.setTextColor(Color.parseColor("#ffffff"));
-        label.setTextSize(16f);
-        label.setPadding(24, 0, 0, 0);
+        label.setTextSize(14f);
+        label.setSingleLine(true);
+        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        label.setPadding(padH, 0, 0, 0);
 
         bar.addView(back);
         bar.addView(label, new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
         ));
 
         webView = new WebView(this);

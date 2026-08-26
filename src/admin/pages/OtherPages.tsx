@@ -7,7 +7,6 @@ import { saveCatalogTool, useCatalogTools } from '../../lib/toolCookies';
 import { SectionHeader, AdminTable, Th, Td, Tr, StatusBadge, AdminBtn, SearchInput, Badge, ProgressBar, DaysLeftBadge } from '../components/AdminUI';
 import { ToolEditor } from '../components/ToolEditor';
 import { DeviceLimitsToggle } from '../components/DeviceLimitsToggle';
-import { GlobalProxyEngine } from '../components/GlobalProxyEngine';
 import {
   AccountRole, AccountMeta, PLAN_OPTIONS, accountMetaFromRow,
   addDays, daysLeft, fmtDate, shortId, waLink,
@@ -557,7 +556,6 @@ export const CustomersPage: React.FC = () => {
       <SectionHeader title="Accounts" sub="All Users & Resellers — full payment & expiry tracking"/>
 
       <DeviceLimitsToggle />
-      <GlobalProxyEngine />
 
       {/* Banner */}
       <div className="bg-gradient-to-r from-red-900/60 to-red-950/40 border border-red-500/30 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center gap-4">
@@ -1768,7 +1766,6 @@ export const SettingsPage: React.FC = () => {
         </div>
       ))}
       <DeviceLimitsToggle compact />
-      <GlobalProxyEngine />
       <div className="bg-[#130d0d] border border-[#2a1e1c] rounded-2xl p-5 flex items-center justify-between">
         <div><h3 className="text-sm font-extrabold text-white">Maintenance Mode</h3><p className="text-xs text-slate-400 mt-1">Disable public site access</p></div>
         <button onClick={()=>setForm(p=>({...p,maintenanceMode:!p.maintenanceMode}))} className="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-xl border transition" style={form.maintenanceMode?{background:'#dc262622',color:'#f87171',borderColor:'#dc262644'}:{background:'#1a1210',color:'#666',borderColor:'#2a1e1c'}}>{form.maintenanceMode?'ON':'OFF'}</button>

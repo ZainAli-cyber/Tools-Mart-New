@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Inbox, Plus, Search, Send, Check, X, MessageCircle, RotateCcw } from 'lucide-react';
+import { Inbox, Plus, Search, Send, Check, X, MessageCircle, RotateCcw, ArrowLeft } from 'lucide-react';
 import {
   appendTicketReply,
   createTicket,
@@ -25,6 +25,7 @@ import {
 } from '../lib/tickets';
 import { supabase } from '../lib/db';
 import { waLink } from '../lib/accountStore';
+import { isMobileApp } from '../lib/mobile/toolLauncher';
 
 export type TicketsInboxMode = 'mine' | 'seller-inbox' | 'admin';
 
@@ -254,40 +255,30 @@ export const TicketsInbox: React.FC<{
   const staffClosed = deskMode && active && locked;
   // Customers cannot reply on closed/resolved tickets (no reopen). Staff must reopen first.
   const canReply = active && isTicketOpen(active.status) && !locked;
+  const mobile = isMobileApp();
+  const chatOpen = mobile && (!!activeId || composing);
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-black text-white">{title}</h2>
-          <p className="text-xs text-slate-500">{sub}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {mode === 'admin' && (
-            <button type="button" onClick={() => setAdminAll(v => !v)} className={btnGhost}>
-              {adminAll ? 'Assigned to me' : 'See all tickets'}
-            </button>
-          )}
-          {canCompose && (
-            <button type="button" onClick={() => { setComposing(true); setActiveId(null); }} className={btnRed}>
-              <Plus className="w-3.5 h-3.5" /> Submit New Ticket
-            </button>
-          )}
-        </div>
-      </div>
+  const closeChat = () => {
+    setActiveId(null);
+    setComposing(false);
+    setReply('');
+  };
 
-      {error && (
-        <div className="text-xs text-red-400 bg-red-600/10 border border-red-500/30 rounded-xl px-3 py-2">{error}</div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-[560px] h-[calc(100vh-240px)]">
-        <div className={`${card} overflow-hidden flex flex-col`}>
+  const listPane = (
+        <div className={`${card} overflow-hidden flex flex-col ${mobile ? 'min-h-[calc(100vh-200px)] h-[calc(100vh-200px)]' : ''}`}>
           <div className="p-3 border-b border-[#2a1e1c] space-y-2">
             <div className="flex items-center justify-between gap-2 px-1">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tickets</span>
-              {deskMode && openCount > 0 && (
-                <span className="text-[10px] font-black text-red-400 bg-red-600/15 px-1.5 py-0.5 rounded-md">{openCount} open</span>
-              )}
+              <div className="flex items-center gap-2">
+                {deskMode && openCount > 0 && (
+                  <span className="text-[10px] font-black text-red-400 bg-red-600/15 px-1.5 py-0.5 rounded-md">{openCount} open</span>
+                )}
+                {mobile && canCompose && (
+                  <button type="button" onClick={() => { setComposing(true); setActiveId(null); }} className={btnRed}>
+                    <Plus className="w-3.5 h-3.5" /> New
+                  </button>
+                )}
+              </div>
             </div>
             {deskMode && (
               <>
@@ -371,18 +362,29 @@ export const TicketsInbox: React.FC<{
             )}
           </div>
         </div>
+  );
 
-        <div className={`lg:col-span-2 ${card} flex flex-col overflow-hidden`}>
+  const threadPane = (
+        <div className={`${mobile ? 'fixed inset-0 z-[70] flex flex-col bg-[#0d0908]' : `lg:col-span-2 ${card} flex flex-col overflow-hidden`}`}>
           {composing && canCompose ? (
-            <div className="flex-1 p-5 space-y-4 overflow-y-auto">
-              <div>
-                <h3 className="text-sm font-bold text-white">Submit New Ticket</h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  {account.role === 'user' && account.ownerId
-                    ? 'This goes to your reseller.'
-                    : 'This goes to Admin Support.'}
-                </p>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="p-4 border-b border-[#2a1e1c] flex items-center gap-3"
+                style={mobile ? { paddingTop: 'max(env(safe-area-inset-top), 12px)' } : undefined}>
+                {mobile && (
+                  <button type="button" onClick={closeChat} className="p-2 rounded-xl bg-[#1a1210] border border-[#2a1e1c] text-slate-300 cursor-pointer">
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                )}
+                <div>
+                  <h3 className="text-sm font-bold text-white">Submit New Ticket</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {account.role === 'user' && account.ownerId
+                      ? 'This goes to your reseller.'
+                      : 'This goes to Admin Support.'}
+                  </p>
+                </div>
               </div>
+              <div className="flex-1 p-5 space-y-4 overflow-y-auto">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Subject</label>
                 <input className={inputCls} value={subject} onChange={e => setSubject(e.target.value)} placeholder="What do you need help with?" />
@@ -395,13 +397,20 @@ export const TicketsInbox: React.FC<{
                 <button type="button" disabled={saving || !subject.trim() || !message.trim()} onClick={() => void submitNew()} className={btnRed}>
                   <Send className="w-3.5 h-3.5" /> Submit
                 </button>
-                <button type="button" onClick={() => setComposing(false)} className={btnGhost}>Cancel</button>
+                <button type="button" onClick={closeChat} className={btnGhost}>Cancel</button>
+              </div>
               </div>
             </div>
           ) : active ? (
             <>
-              <div className="p-4 border-b border-[#2a1e1c] flex flex-wrap items-center justify-between gap-2">
+              <div className="p-3 sm:p-4 border-b border-[#2a1e1c] flex flex-wrap items-center justify-between gap-2 bg-[#130d0d]"
+                style={mobile ? { paddingTop: 'max(env(safe-area-inset-top), 12px)' } : undefined}>
                 <div className="flex items-center gap-3 min-w-0">
+                  {mobile && (
+                    <button type="button" onClick={closeChat} className="p-2 rounded-xl bg-[#1a1210] border border-[#2a1e1c] text-slate-300 cursor-pointer shrink-0">
+                      <ArrowLeft className="w-4 h-4" />
+                    </button>
+                  )}
                   <AvatarCircle
                     name={personFor(active, people)?.name || active.customer_name}
                     src={personFor(active, people)?.avatar}
@@ -417,6 +426,7 @@ export const TicketsInbox: React.FC<{
                       {personFor(active, people)?.name || active.customer_name}
                       {customerCode(active, people) ? ` · ID: ${customerCode(active, people)}` : ''}
                     </div>
+                    {!mobile && (
                     <div className="text-[10px] text-slate-500 truncate">
                       {active.customer_email}
                       {active.customer_phone ? ` · ${active.customer_phone}` : ''}
@@ -424,6 +434,7 @@ export const TicketsInbox: React.FC<{
                       {active.assignee_role === 'reseller' ? ' · Reseller inbox' : ' · Admin'}
                       {active.id ? ` · ${active.id}` : ''}
                     </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -457,7 +468,7 @@ export const TicketsInbox: React.FC<{
                   )}
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0a0808]">
                 <Bubble
                   mine={ownBubble('customer', mode)}
                   name={senderLabel('customer', active, people)}
@@ -487,7 +498,8 @@ export const TicketsInbox: React.FC<{
                 <div ref={bottomRef} />
               </div>
               {mode === 'mine' && locked ? (
-                <div className="p-4 border-t border-[#2a1e1c] space-y-2">
+                <div className="p-4 border-t border-[#2a1e1c] space-y-2 bg-[#130d0d]"
+                  style={mobile ? { paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' } : undefined}>
                   <p className="text-xs text-slate-400">
                     This ticket is {ticketStatusLabel(active.status).toLowerCase()} and cannot be reopened.
                     Submit a <span className="text-white font-bold">new ticket</span> if you still need help.
@@ -497,26 +509,28 @@ export const TicketsInbox: React.FC<{
                   </button>
                 </div>
               ) : staffClosed ? (
-                <div className="p-4 border-t border-[#2a1e1c] text-xs text-slate-500">
+                <div className="p-4 border-t border-[#2a1e1c] text-xs text-slate-500 bg-[#130d0d]">
                   This ticket is {ticketStatusLabel(active.status).toLowerCase()}. Customers cannot reopen it — they must start a new ticket. Use Reopen (staff) only if you need to continue this thread.
                 </div>
               ) : canReply ? (
-                <div className="p-4 border-t border-[#2a1e1c] space-y-2">
-                  <div className="flex gap-2">
+                <div className="p-3 border-t border-[#2a1e1c] space-y-2 bg-[#130d0d]"
+                  style={mobile ? { paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' } : undefined}>
+                  <div className="flex gap-2 items-end">
                     <input
                       value={reply}
                       onChange={e => setReply(e.target.value)}
-                      placeholder="Type a reply…"
+                      placeholder="Type a message…"
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendReply(); } }}
-                      className={inputCls}
+                      className={`${inputCls} py-3`}
                     />
-                    <button type="button" disabled={saving || !reply.trim()} onClick={() => void sendReply()} className={btnRed}>
-                      <Send className="w-3.5 h-3.5" />
+                    <button type="button" disabled={saving || !reply.trim()} onClick={() => void sendReply()}
+                      className="shrink-0 w-11 h-11 rounded-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white flex items-center justify-center cursor-pointer">
+                      <Send className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="p-4 border-t border-[#2a1e1c] text-xs text-slate-500">This ticket is closed.</div>
+                <div className="p-4 border-t border-[#2a1e1c] text-xs text-slate-500 bg-[#130d0d]">This ticket is closed.</div>
               )}
             </>
           ) : (
@@ -532,7 +546,46 @@ export const TicketsInbox: React.FC<{
             </div>
           )}
         </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {!mobile && (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-black text-white">{title}</h2>
+          <p className="text-xs text-slate-500">{sub}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {mode === 'admin' && (
+            <button type="button" onClick={() => setAdminAll(v => !v)} className={btnGhost}>
+              {adminAll ? 'Assigned to me' : 'See all tickets'}
+            </button>
+          )}
+          {canCompose && (
+            <button type="button" onClick={() => { setComposing(true); setActiveId(null); }} className={btnRed}>
+              <Plus className="w-3.5 h-3.5" /> Submit New Ticket
+            </button>
+          )}
+        </div>
       </div>
+      )}
+
+      {error && (
+        <div className="text-xs text-red-400 bg-red-600/10 border border-red-500/30 rounded-xl px-3 py-2">{error}</div>
+      )}
+
+      {mobile ? (
+        <>
+          {!chatOpen && listPane}
+          {chatOpen && threadPane}
+        </>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-[560px] h-[calc(100vh-240px)]">
+          {listPane}
+          {threadPane}
+        </div>
+      )}
     </div>
   );
 };

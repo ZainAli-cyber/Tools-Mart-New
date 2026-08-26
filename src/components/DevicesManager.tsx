@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MonitorSmartphone, Trash2, RefreshCw } from 'lucide-react';
+import { Monitor, Smartphone, Trash2, RefreshCw } from 'lucide-react';
 import {
   listAccountDevices,
   listMyDevices,
@@ -8,6 +8,7 @@ import {
   type DeviceSession,
 } from '../lib/deviceApi';
 import { getDeviceFingerprint } from '../lib/deviceFingerprint';
+import { isMobileApp } from '../lib/mobile/toolLauncher';
 
 const inp =
   'w-full bg-[#0d0908] border border-[#2a1e1c] focus:border-red-500/60 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none transition';
@@ -20,6 +21,22 @@ function fmtWhen(iso?: string | null) {
   } catch {
     return iso;
   }
+}
+
+function isMobileDevice(session: DeviceSession) {
+  const label = String(session.device_label || '').toLowerCase();
+  const id = String(session.device_id || '').toLowerCase();
+  return (
+    label.includes('mobile app') ||
+    label.includes('android') ||
+    label.includes('iphone') ||
+    label.includes('ipad') ||
+    /android|iphone|ipad|mobile/.test(id)
+  );
+}
+
+function deviceKind(session: DeviceSession): 'mobile' | 'desktop' {
+  return isMobileDevice(session) ? 'mobile' : 'desktop';
 }
 
 export const DevicesManager: React.FC<{
@@ -71,7 +88,9 @@ export const DevicesManager: React.FC<{
   }, [accountId]);
 
   const revoke = async (session: DeviceSession) => {
-    if (!confirm(`Remove device "${session.device_label || session.device_id}"?`)) return;
+    const kind = deviceKind(session);
+    const name = session.device_label || (kind === 'mobile' ? 'Mobile device' : 'Desktop device');
+    if (!confirm(`Remove "${name}"? You will need to sign in again on that device.`)) return;
     try {
       await revokeDevice(session.id);
       await load();
@@ -96,6 +115,61 @@ export const DevicesManager: React.FC<{
     }
   };
 
+  const mobileDevices = devices.filter(d => deviceKind(d) === 'mobile');
+  const desktopDevices = devices.filter(d => deviceKind(d) === 'desktop');
+
+  const renderDevice = (d: DeviceSession) => {
+    const kind = deviceKind(d);
+    const isCurrent = currentId && d.device_id === currentId;
+    const Icon = kind === 'mobile' ? Smartphone : Monitor;
+    return (
+      <div
+        key={d.id}
+        className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border ${
+          isCurrent
+            ? 'bg-red-600/10 border-red-500/40'
+            : 'bg-[#0d0908] border-[#2a1e1c]'
+        }`}
+      >
+        <div className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+          kind === 'mobile' ? 'bg-emerald-600/20 text-emerald-300' : 'bg-blue-600/20 text-blue-300'
+        }`}>
+          <Icon className="w-4 h-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-bold text-white truncate">
+              {d.device_label || (kind === 'mobile' ? 'Mobile App' : 'Desktop browser')}
+            </span>
+            <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${
+              kind === 'mobile'
+                ? 'bg-emerald-600/15 text-emerald-400 border-emerald-500/30'
+                : 'bg-blue-600/15 text-blue-400 border-blue-500/30'
+            }`}>
+              {kind === 'mobile' ? 'Mobile' : 'Desktop'}
+            </span>
+            {isCurrent && (
+              <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-red-600 text-white">
+                This device
+              </span>
+            )}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-1">
+            Last seen {fmtWhen(d.last_seen)} · Added {fmtWhen(d.created_at)}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void revoke(d)}
+          title="Remove device"
+          className="p-2 rounded-lg text-slate-500 hover:text-red-300 hover:bg-red-600/10 transition cursor-pointer shrink-0"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  };
+
   const body = (
     <div className="space-y-4">
       {error && (
@@ -106,8 +180,9 @@ export const DevicesManager: React.FC<{
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-slate-400">
-          {devices.length} / {maxDevices} device{maxDevices === 1 ? '' : 's'} active
+          {devices.length} / {maxDevices} device{maxDevices === 1 ? '' : 's'}
           {accountName ? ` · ${accountName}` : ''}
+          {isMobileApp() ? ' · viewing from app' : ''}
         </p>
         <button
           type="button"
@@ -144,16 +219,13 @@ export const DevicesManager: React.FC<{
               Cannot exceed your seller limit of {maxCapHint}.
             </p>
           )}
-          <p className="text-[10px] text-slate-500">
-            Set to 1 for one device at a time. Revoke old devices if the user is over the limit.
-          </p>
         </div>
       )}
 
       {!canEditMax && (
         <p className="text-[11px] text-slate-500">
-          Max devices: <span className="text-white font-semibold">{maxDevices}</span>
-          {' '}(only admin/reseller can change this)
+          Limit: <span className="text-white font-semibold">{maxDevices}</span> device{maxDevices === 1 ? '' : 's'}
+          {' '}(desktop + mobile count together)
         </p>
       )}
 
@@ -162,50 +234,23 @@ export const DevicesManager: React.FC<{
       ) : devices.length === 0 ? (
         <p className="text-xs text-slate-500 py-6 text-center">No registered devices yet.</p>
       ) : (
-        <div className="space-y-2 max-h-72 overflow-y-auto">
-          {devices.map(d => {
-            const isCurrent = currentId && d.device_id === currentId;
-            return (
-              <div
-                key={d.id}
-                className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border ${
-                  isCurrent
-                    ? 'bg-red-600/10 border-red-500/40'
-                    : 'bg-[#0d0908] border-[#2a1e1c]'
-                }`}
-              >
-                <div className="mt-0.5 w-8 h-8 rounded-lg bg-red-600/20 text-red-300 flex items-center justify-center shrink-0">
-                  <MonitorSmartphone className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-white truncate">
-                      {d.device_label || 'Device'}
-                    </span>
-                    {isCurrent && (
-                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-red-600 text-white">
-                        Current
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate mt-0.5">
-                    {d.device_id}
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-1">
-                    Last seen {fmtWhen(d.last_seen)} · Added {fmtWhen(d.created_at)}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void revoke(d)}
-                  title="Revoke device"
-                  className="p-2 rounded-lg text-slate-500 hover:text-red-300 hover:bg-red-600/10 transition cursor-pointer shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            );
-          })}
+        <div className="space-y-4 max-h-[28rem] overflow-y-auto">
+          {desktopDevices.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400/80 px-0.5">
+                Desktop ({desktopDevices.length})
+              </p>
+              {desktopDevices.map(renderDevice)}
+            </div>
+          )}
+          {mobileDevices.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80 px-0.5">
+                Mobile ({mobileDevices.length})
+              </p>
+              {mobileDevices.map(renderDevice)}
+            </div>
+          )}
         </div>
       )}
 
