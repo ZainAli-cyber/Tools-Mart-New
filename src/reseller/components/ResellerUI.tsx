@@ -1,5 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import { isMobileApp } from '../../lib/mobile/toolLauncher';
 
 export const inpCls = 'w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] focus:border-red-500/60 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none transition';
 export const lblCls = 'text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5';
@@ -74,27 +75,55 @@ export const RSearch: React.FC<{ value: string; onChange: (v: string) => void; p
   </div>
 );
 
-/* ── Modal shell ── */
+/* ── Modal shell (full-screen page on mobile app — no stacked popups) ── */
 export const RModal: React.FC<{
   title: string; sub?: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode;
-}> = ({ title, sub, onClose, children, footer }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-black/80 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
-    <div className="w-full max-w-md bg-[var(--bg-surface)] border border-[var(--border)] rounded-3xl shadow-2xl my-auto"
-      style={{ boxShadow: '0 0 60px var(--red-glow)' }} onClick={e => e.stopPropagation()}>
-      <div className="flex items-start justify-between p-5 border-b border-[var(--border-subtle)]">
-        <div>
-          <h3 className="text-lg font-black text-white">{title}</h3>
-          {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+}> = ({ title, sub, onClose, children, footer }) => {
+  const fullScreen = isMobileApp();
+  if (fullScreen) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg-page)]" role="dialog" aria-modal="true">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-page)] px-4 py-3"
+          style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+          <div className="min-w-0">
+            <h3 className="text-lg font-black text-white truncate">{title}</h3>
+            {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+          </div>
+          <button type="button" onClick={onClose}
+            className="p-2 shrink-0 bg-red-600/10 hover:bg-red-600/20 rounded-xl text-red-400 cursor-pointer transition">
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <button onClick={onClose} className="p-2 bg-red-600/10 hover:bg-red-600/20 rounded-xl text-red-400 hover:text-red-300 cursor-pointer transition">
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        {footer && (
+          <div className="border-t border-[var(--border-subtle)] px-4 py-3 flex gap-2 justify-end"
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}>
+            {footer}
+          </div>
+        )}
       </div>
-      <div className="p-5">{children}</div>
-      {footer && <div className="p-5 border-t border-[var(--border-subtle)] flex gap-2 justify-end">{footer}</div>}
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-black/80 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+      <div className="w-full max-w-md bg-[var(--bg-surface)] border border-[var(--border)] rounded-3xl shadow-2xl my-auto"
+        style={{ boxShadow: '0 0 60px var(--red-glow)' }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b border-[var(--border-subtle)]">
+          <div>
+            <h3 className="text-lg font-black text-white">{title}</h3>
+            {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+          </div>
+          <button onClick={onClose} className="p-2 bg-red-600/10 hover:bg-red-600/20 rounded-xl text-red-400 hover:text-red-300 cursor-pointer transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+        {footer && <div className="p-5 border-t border-[var(--border-subtle)] flex gap-2 justify-end">{footer}</div>}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* ── Buttons ── */
 export const GhostBtn: React.FC<{ children: React.ReactNode; onClick?: () => void; disabled?: boolean }> = ({ children, onClick, disabled }) => (

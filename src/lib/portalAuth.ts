@@ -1,6 +1,5 @@
-// ── Unified sign-in for all three roles ────────────────────────────────────
-// One form handles admin, reseller and customer logins. The correct dashboard
-// is resolved from the account role so there is no separate login page.
+// ── Unified sign-in for every account ───────────────────────────────────────
+// One form. Role is detected automatically after login.
 
 import { supabase } from './db';
 import { resellerAuth } from '../reseller/store/resellerAuth';
@@ -11,7 +10,7 @@ export type AuthResult = { ok: boolean; redirect?: string; error?: string };
 const ADMIN_DASHBOARD = '/admin';
 const MEMBER_DASHBOARD = '/reseller';
 
-/** Signs in an admin, reseller or customer from a single set of credentials. */
+/** Signs in from a single set of credentials; redirects by account role. */
 export async function portalLogin(email: string, password: string): Promise<AuthResult> {
   const clean = email.trim().toLowerCase();
   if (!clean || !password) return { ok: false, error: 'Email and password are required' };

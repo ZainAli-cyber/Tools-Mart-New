@@ -2,7 +2,20 @@ import React from 'react';
 import { LayoutDashboard, ShoppingBag, Video, Briefcase, LogOut, ChevronsLeft, ChevronsRight, ArrowRight, Puzzle, Bell, Inbox, Smartphone } from 'lucide-react';
 import { ThemeToggle } from '../../components/ThemeToggle';
 
-export type UserPage = 'dashboard' | 'shop' | 'tutorials' | 'extensions' | 'mobile-app' | 'support' | 'notifications' | 'inbox';
+export type UserPage =
+  | 'dashboard'
+  | 'shop'
+  | 'tutorials'
+  | 'extensions'
+  | 'mobile-app'
+  | 'support'
+  | 'notifications'
+  | 'inbox'
+  | 'profile'
+  | 'members'
+  | 'orders'
+  | 'accounts'
+  | 'settings';
 
 interface Props {
   current: UserPage;

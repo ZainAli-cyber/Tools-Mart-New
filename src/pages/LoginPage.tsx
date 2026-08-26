@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import {
   Mail, Lock, User, Phone, Eye, EyeOff, AlertCircle, CheckCircle2,
-  ShieldCheck, Store, UserCircle, MessageCircle, Loader2,
+  MessageCircle, Loader2,
 } from 'lucide-react';
 import { portalLogin, portalSignup } from '../lib/portalAuth';
+import { resellerAuth } from '../reseller/store/resellerAuth';
+import { isMobileApp } from '../lib/mobile/toolLauncher';
 
 type Tab = 'login' | 'signup';
 
@@ -13,7 +15,15 @@ const inputCls =
   'w-full bg-slate-900 border border-slate-700 focus:border-red-500 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none transition';
 const labelCls = 'text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2';
 
-export const LoginPage: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavigate }) => {
+type Props = {
+  onNavigate?: (p: string) => void;
+  /** When set, stay in-app after login (mobile / portal shells) instead of hard redirect. */
+  onSuccess?: () => void;
+  /** Full-screen shell for the native app / portal logout screen. */
+  embedded?: boolean;
+};
+
+export const LoginPage: React.FC<Props> = ({ onNavigate, onSuccess, embedded = false }) => {
   const [tab, setTab] = useState<Tab>('login');
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState('');
@@ -25,9 +35,26 @@ export const LoginPage: React.FC<{ onNavigate: (p: string) => void }> = ({ onNav
 
   const switchTab = (t: Tab) => { setTab(t); setError(''); setNotice(''); };
 
+  const finishLogin = () => {
+    if (onSuccess) {
+      onSuccess();
+      return;
+    }
+    const session = resellerAuth.session();
+    const redirect = session?.role === 'admin' ? '/admin' : '/reseller';
+    window.location.href = redirect;
+  };
+
   const submitLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(''); setNotice(''); setLoading(true);
+    if (onSuccess || embedded) {
+      const result = await resellerAuth.login(login.email, login.password);
+      setLoading(false);
+      if (result.ok) finishLogin();
+      else setError(result.error || 'Unable to sign in');
+      return;
+    }
     const result = await portalLogin(login.email, login.password);
     setLoading(false);
     if (result.ok && result.redirect) window.location.href = result.redirect;
@@ -41,30 +68,36 @@ export const LoginPage: React.FC<{ onNavigate: (p: string) => void }> = ({ onNav
     setLoading(true);
     const result = await portalSignup(signup);
     setLoading(false);
-    if (result.ok && result.redirect) {
+    if (result.ok) {
       setNotice('Account created — taking you to your dashboard…');
-      window.location.href = result.redirect;
+      if (onSuccess || embedded) finishLogin();
+      else if (result.redirect) window.location.href = result.redirect;
     } else setError(result.error || 'Unable to create account');
   };
 
-  return (
-    <div className="min-h-[70vh] px-4 sm:px-6 lg:px-8 py-12">
-      <div className="max-w-md mx-auto">
+  const native = isMobileApp() || embedded;
+  const shellCls = native
+    ? 'min-h-screen px-4 py-10 flex items-center justify-center bg-[var(--bg-page)]'
+    : 'min-h-[70vh] px-4 sm:px-6 lg:px-8 py-12';
 
-        {/* Heading */}
+  return (
+    <div className={shellCls}>
+      <div className="w-full max-w-md mx-auto">
         <div className="text-center mb-6 space-y-2">
+          {native && (
+            <img src="/logo.png" alt="AI Toolz Mart" className="h-14 w-auto mx-auto object-contain mb-2" />
+          )}
           <h1 className="text-2xl sm:text-3xl font-black text-white">
             {tab === 'login' ? 'Sign in to your account' : 'Create your account'}
           </h1>
           <p className="text-sm text-slate-400">
             {tab === 'login'
-              ? 'Customers, resellers and admins all sign in here.'
+              ? 'Enter your email and password to continue.'
               : 'Free to join — then activate a package with our team.'}
           </p>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
-          {/* Tabs */}
           <div className="grid grid-cols-2 border-b border-slate-800">
             {(['login', 'signup'] as Tab[]).map(t => (
               <button key={t} onClick={() => switchTab(t)}
@@ -121,22 +154,6 @@ export const LoginPage: React.FC<{ onNavigate: (p: string) => void }> = ({ onNav
                   className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-black text-sm rounded-xl transition shadow-lg shadow-red-900/30 cursor-pointer flex items-center justify-center gap-2">
                   {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in…</> : 'Sign In →'}
                 </button>
-
-                {/* Roles handled by this one form */}
-                <div className="pt-2 grid grid-cols-3 gap-2">
-                  {[
-                    { icon: <UserCircle className="w-3.5 h-3.5" />, label: 'Customer' },
-                    { icon: <Store className="w-3.5 h-3.5" />, label: 'Reseller' },
-                    { icon: <ShieldCheck className="w-3.5 h-3.5" />, label: 'Admin' },
-                  ].map(r => (
-                    <div key={r.label} className="flex flex-col items-center gap-1 bg-slate-950/60 border border-slate-800 rounded-xl py-2 text-[10px] font-bold text-slate-400">
-                      <span className="text-red-400">{r.icon}</span> {r.label}
-                    </div>
-                  ))}
-                </div>
-                <p className="text-center text-[11px] text-slate-500">
-                  We detect your role automatically and open the right dashboard.
-                </p>
               </form>
             ) : (
               <form onSubmit={submitSignup} className="space-y-4">
@@ -186,12 +203,11 @@ export const LoginPage: React.FC<{ onNavigate: (p: string) => void }> = ({ onNav
                   </div>
                 </div>
 
-                {/* What a new account gets */}
                 <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-1.5">
                   <p className="text-[11px] font-bold text-white">What happens next</p>
                   <p className="text-[11px] text-slate-400">
-                    You get a free customer account. All tools stay <span className="text-red-400 font-semibold">locked</span> until
-                    you pay for a package — message us on WhatsApp and we unlock the tools included in your plan.
+                    You get a free account. Tools stay <span className="text-red-400 font-semibold">locked</span> until
+                    you activate a package — message us on WhatsApp to unlock your plan.
                   </p>
                 </div>
 
@@ -217,9 +233,11 @@ export const LoginPage: React.FC<{ onNavigate: (p: string) => void }> = ({ onNav
           )}
         </p>
 
-        <p className="text-center text-xs text-slate-600 mt-2">
-          <button onClick={() => onNavigate('/plans')} className="hover:text-slate-400 cursor-pointer">View packages &amp; pricing</button>
-        </p>
+        {!native && onNavigate && (
+          <p className="text-center text-xs text-slate-600 mt-2">
+            <button onClick={() => onNavigate('/plans')} className="hover:text-slate-400 cursor-pointer">View packages &amp; pricing</button>
+          </p>
+        )}
       </div>
     </div>
   );

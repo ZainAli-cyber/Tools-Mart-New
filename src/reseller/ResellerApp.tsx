@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MessageCircle, Bell, ArrowLeft, Briefcase } from 'lucide-react';
 import { resellerAuth } from './store/resellerAuth';
-import { ResellerLogin } from './pages/ResellerLogin';
+import { LoginPage } from '../pages/LoginPage';
 import { ResellerSidebar, ResellerPage } from './components/ResellerSidebar';
 import { UserSidebar, UserPage } from './components/UserSidebar';
 import { OverviewPage } from './pages/OverviewPage';
@@ -32,9 +32,13 @@ import { useLiveNotes } from '../lib/useLiveNotes';
 import { NoteAlertToast } from '../components/NoteAlertToast';
 import { ChatBotWidget } from '../components/ChatBotWidget';
 import { isMobileApp } from '../lib/mobile/toolLauncher';
-import { MobileAppNav, mobileAppContentClass } from './components/MobileAppNav';
+import { MobileAppNav, mobileAppContentClass, type MobileRole } from './components/MobileAppNav';
 import { SupportPage } from './pages/SupportPage';
 import { openSupportChat } from '../lib/supportChat';
+import { MobileProfilePage } from './pages/MobileProfilePage';
+import { OrdersPage as AdminOrdersPage } from '../admin/pages/OrdersPage';
+import { CustomersPage as AdminCustomersPage, SupportPage as AdminSupportPage, SettingsPage as AdminSettingsPage } from '../admin/pages/OtherPages';
+import { DashboardPage as AdminDashboardPage } from '../admin/pages/DashboardPage';
 
 /** Which half of the portal is showing. */
 type Section = 'personal' | 'panel';
@@ -145,6 +149,11 @@ export const ResellerApp: React.FC = () => {
   useEffect(() => { if (session) load(); }, [session, load]);
 
   useEffect(() => {
+    if (!session) return;
+    void import('../lib/mobile/pushSetup').then(m => m.initMobilePush());
+  }, [session]);
+
+  useEffect(() => {
     const iv = setInterval(() => {
       if (!resellerAuth.isAuthenticated()) setSession(null);
     }, 60000);
@@ -155,12 +164,32 @@ export const ResellerApp: React.FC = () => {
     void resellerAuth.logout();
     setSession(null);
     setSection('personal');
+    setUserPage('dashboard');
+    setShowProfile(false);
+    setShowNotices(false);
   };
 
-  if (!session) return <ResellerLogin onLogin={() => setSession(resellerAuth.session())} />;
+  if (!session) {
+    return (
+      <LoginPage
+        embedded
+        onSuccess={() => {
+          const next = resellerAuth.session();
+          if (next?.role === 'admin' && !isMobileApp()) {
+            window.location.href = '/admin';
+            return;
+          }
+          setSession(next);
+        }}
+        onNavigate={path => { window.location.href = path; }}
+      />
+    );
+  }
 
   const isReseller = session.role === 'reseller';
+  const isAdmin = session.role === 'admin';
   const nativeApp = isMobileApp();
+  const mobileRole: MobileRole = isAdmin ? 'admin' : isReseller ? 'reseller' : 'user';
   const sideW = nativeApp ? 0 : collapsed ? 64 : 224;
   const unreadInbox = live.unread;
   const ticketAccount = {
@@ -177,8 +206,14 @@ export const ResellerApp: React.FC = () => {
   const onDeleteReadNotes = () => { void live.removeRead(); };
   const openNotes = () => {
     live.dismissToast();
+    setShowNotices(false);
     if (section === 'panel' && isReseller) setPanelPage('notifications');
     else setUserPage('notifications');
+  };
+  const openProfile = () => {
+    setShowNotices(false);
+    if (nativeApp) setUserPage('profile');
+    else setShowProfile(true);
   };
   const toastEl = (
     <NoteAlertToast note={live.toast} onOpen={openNotes} onClose={live.dismissToast} />
@@ -193,8 +228,8 @@ export const ResellerApp: React.FC = () => {
   if (!self.meta.plan) notices.push('No plan assigned yet — contact the administrator to get started.');
   const bellCount = unreadInbox;
 
-  /* ── Reseller management panel ── */
-  if (section === 'panel' && isReseller) {
+  /* ── Reseller management panel (web only — mobile uses full-screen tabs) ── */
+  if (section === 'panel' && isReseller && !nativeApp) {
     const renderPanel = () => {
       switch (panelPage) {
         case 'members':  return <MyMembersPage ownerId={session.id} ownerName={session.name} ownerMaxDevices={self.max_devices} members={members} payments={payments} onReload={load} />;
@@ -322,7 +357,7 @@ export const ResellerApp: React.FC = () => {
           )}
 
           <div className="flex items-center gap-2">
-            {isReseller && (
+            {isReseller && !nativeApp && (
               <button onClick={() => { setSection('panel'); setPanelPage('overview'); }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold rounded-xl transition cursor-pointer">
                 <Briefcase className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Reseller Panel</span>
@@ -330,7 +365,10 @@ export const ResellerApp: React.FC = () => {
             )}
 
             <div className="relative">
-              <button onClick={() => setShowNotices(s => !s)}
+              <button onClick={() => {
+                if (nativeApp) openNotes();
+                else setShowNotices(s => !s);
+              }}
                 className="relative p-2 bg-[#1a1210] hover:bg-[#231a18] border border-[#2a1e1c] rounded-xl text-slate-400 hover:text-white transition cursor-pointer">
                 <Bell className="w-4 h-4" />
                 {bellCount > 0 && (
@@ -339,7 +377,7 @@ export const ResellerApp: React.FC = () => {
                   </span>
                 )}
               </button>
-              {showNotices && (
+              {!nativeApp && showNotices && (
                 <div className="absolute right-0 mt-2 w-72 bg-[#130d0d] border border-[#3a2a26] rounded-2xl shadow-2xl p-3 z-40 space-y-2">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Notifications</p>
                   {inbox.slice(0, 5).map(note => (
@@ -362,7 +400,7 @@ export const ResellerApp: React.FC = () => {
               )}
             </div>
 
-            <button onClick={() => setShowProfile(true)}
+            <button onClick={openProfile}
               className="w-8 h-8 rounded-full overflow-hidden bg-red-600 flex items-center justify-center text-xs font-black text-white cursor-pointer hover:bg-red-700 transition"
               title="My Profile">
               {self.avatar
@@ -375,7 +413,6 @@ export const ResellerApp: React.FC = () => {
         {userPage === 'shop' ? (
           <main className={isReseller ? 'flex-1' : 'flex-1 p-5 lg:p-6'}>
             {isReseller ? (
-              /* Keep the reseller shop focused on the reseller program. */
               <ResellerPortalContent />
             ) : (
               <CustomerShopPage
@@ -389,7 +426,31 @@ export const ResellerApp: React.FC = () => {
           </main>
         ) : (
           <main className="flex-1 p-5 lg:p-6">
-            {userPage === 'tutorials' ? (
+            {userPage === 'profile' ? (
+              <MobileProfilePage
+                mode={isReseller ? 'self-seller' : 'self-user'}
+                roleLabel={isAdmin ? 'Admin' : isReseller ? 'Reseller' : 'Member'}
+                account={{
+                  customer_code: self.customer_code || session.customerCode || session.id,
+                  name: self.name || session.name,
+                  email: self.email || session.email,
+                  phone: self.phone || '',
+                  avatar: self.avatar || '',
+                  max_devices: self.max_devices,
+                }}
+                onSaved={() => { void load(); }}
+                onLogout={handleLogout}
+                onOpenSettings={isAdmin ? () => setUserPage('settings') : undefined}
+              />
+            ) : userPage === 'members' && isReseller ? (
+              <MyMembersPage ownerId={session.id} ownerName={session.name} ownerMaxDevices={self.max_devices} members={members} payments={payments} onReload={load} />
+            ) : userPage === 'orders' && isAdmin ? (
+              <AdminOrdersPage />
+            ) : userPage === 'accounts' && isAdmin ? (
+              <AdminCustomersPage />
+            ) : userPage === 'settings' && isAdmin ? (
+              <AdminSettingsPage />
+            ) : userPage === 'tutorials' ? (
               <TutorialsPage adminWaLink={adminWa} />
             ) : userPage === 'extensions' ? (
               <ExtensionsPage customerId={self.customer_code || session.customerCode || session.id} />
@@ -404,34 +465,46 @@ export const ResellerApp: React.FC = () => {
             ) : userPage === 'notifications' ? (
               <InboxPage notes={inbox} onRead={onReadNote} onReadAll={onReadAllNotes} onDelete={onDeleteNote} onDeleteRead={onDeleteReadNotes} />
             ) : userPage === 'inbox' ? (
-              <TicketsInbox mode="mine" account={ticketAccount} />
+              isAdmin
+                ? <AdminSupportPage />
+                : <TicketsInbox mode={isReseller ? 'seller-inbox' : 'mine'} account={ticketAccount} />
+            ) : isAdmin ? (
+              <AdminDashboardPage onNavigate={p => {
+                if (p === 'orders') setUserPage('orders');
+                else if (p === 'customers') setUserPage('accounts');
+                else if (p === 'support') setUserPage('inbox');
+                else if (p === 'notifications') setUserPage('notifications');
+                else if (p === 'settings') setUserPage('settings');
+              }} />
             ) : (
-                  <MyDashboardPage
-                  name={session.name}
-                  customerId={self.customer_code || session.customerCode || session.id}
-                  joinDate={self.join_date}
-                  meta={self.meta}
-                  ownedTools={self.tools}
-                  allTools={allTools}
-                  adminWhatsapp={adminWhatsapp}
-                  adminWaLink={adminWa}
-                  onShop={() => setUserPage('shop')}
-                  onTutorials={() => setUserPage('tutorials')}
-                  onProfile={() => setShowProfile(true)}
-                  onExtensions={() => setUserPage('extensions')}
-                />
+              <MyDashboardPage
+                name={session.name}
+                customerId={self.customer_code || session.customerCode || session.id}
+                joinDate={self.join_date}
+                meta={self.meta}
+                ownedTools={self.tools}
+                allTools={allTools}
+                adminWhatsapp={adminWhatsapp}
+                adminWaLink={adminWa}
+                onShop={() => setUserPage('shop')}
+                onTutorials={() => setUserPage('tutorials')}
+                onProfile={openProfile}
+                onExtensions={() => setUserPage('extensions')}
+              />
             )}
           </main>
         )}
 
+        {!nativeApp && (
         <footer className="border-t border-[#1a1210] px-6 py-3 flex items-center justify-between text-xs text-slate-700">
           <span>AI TOOLZ MART · Digital Tools Suite</span>
           <span>{new Date().getFullYear()} · Secure Session</span>
         </footer>
+        )}
       </div>
 
-      {/* Profile */}
-      {showProfile && (
+      {/* Profile modal — web only; mobile uses full-screen Profile page */}
+      {!nativeApp && showProfile && (
         <RModal title="My Profile" sub="Update your account details. Your unique ID never changes." onClose={() => setShowProfile(false)}>
           <AccountProfileForm
             mode={isReseller ? 'self-seller' : 'self-user'}
@@ -461,8 +534,8 @@ export const ResellerApp: React.FC = () => {
         </RModal>
       )}
 
-      {/* Support chat (creates tickets) — web + mobile app */}
-      <ChatBotWidget />
+      {/* Support chat — web floating; mobile opens full-screen from Support tab */}
+      {(!nativeApp || userPage === 'support') && !isAdmin && <ChatBotWidget />}
 
       {!nativeApp && (
       <a href={adminWa} target="_blank" rel="noopener noreferrer" title="Contact Admin on WhatsApp"
@@ -478,13 +551,12 @@ export const ResellerApp: React.FC = () => {
 
       {nativeApp && (
         <MobileAppNav
+          role={mobileRole}
           current={userPage}
           onChange={page => {
             setUserPage(page);
             if (page === 'support') openSupportChat();
           }}
-          onProfile={() => setShowProfile(true)}
-          unreadTickets={0}
         />
       )}
 

@@ -44,8 +44,10 @@ export const AccountProfileForm: React.FC<{
   sellerMaxDevices?: number;
   onSaved: () => void;
   onCancel: () => void;
+  /** Hide Cancel when the form is a full-screen page (mobile profile). */
+  hideCancel?: boolean;
   save: (payload: Record<string, any>) => Promise<void>;
-}> = ({ mode, account, sellers = [], sellerMaxDevices, onSaved, onCancel, save }) => {
+}> = ({ mode, account, sellers = [], sellerMaxDevices, onSaved, onCancel, hideCancel = false, save }) => {
   const lockEmail = mode === 'self-user' || mode === 'seller-member';
   const showRole = mode === 'admin';
   const showSeller = mode === 'admin' && (account.role || 'user') !== 'admin';
@@ -196,10 +198,12 @@ export const AccountProfileForm: React.FC<{
       )}
 
       <div className="flex gap-2 justify-end pt-1">
-        <button type="button" onClick={onCancel}
-          className="px-5 py-2.5 bg-[#1a1210] hover:bg-[#231a18] border border-[#3a2a26] text-slate-300 hover:text-white text-sm font-bold rounded-xl transition cursor-pointer">
-          Cancel
-        </button>
+        {!hideCancel && (
+          <button type="button" onClick={onCancel}
+            className="px-5 py-2.5 bg-[#1a1210] hover:bg-[#231a18] border border-[#3a2a26] text-slate-300 hover:text-white text-sm font-bold rounded-xl transition cursor-pointer">
+            Cancel
+          </button>
+        )}
         <button type="button" onClick={submit} disabled={saving}
           className="px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-black rounded-xl transition cursor-pointer">
           {saving ? 'Saving…' : 'Save Profile'}

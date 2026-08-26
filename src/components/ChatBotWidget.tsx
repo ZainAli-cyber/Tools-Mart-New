@@ -469,6 +469,7 @@ export const ChatBotWidget: React.FC = () => {
 
   const chatBottom = isMobileApp() ? 'bottom-24' : 'bottom-6';
   const panelBottom = isMobileApp() ? 'bottom-36' : 'bottom-24';
+  const native = isMobileApp();
 
   return (
     <>
@@ -479,7 +480,14 @@ export const ChatBotWidget: React.FC = () => {
       )}
 
       {open && (
-        <div className={`fixed ${panelBottom} right-4 sm:right-6 z-[60] w-[min(100vw-2rem,380px)] h-[min(62vh,480px)] flex flex-col bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden`}>
+        <div
+          className={
+            native
+              ? 'fixed inset-0 z-[60] flex flex-col bg-[var(--bg-input)]'
+              : `fixed ${panelBottom} right-4 sm:right-6 z-[60] w-[min(100vw-2rem,380px)] h-[min(62vh,480px)] flex flex-col bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden`
+          }
+          style={native ? { paddingBottom: 'max(env(safe-area-inset-bottom), 0px)' } : undefined}
+        >
           <div className="px-4 py-3 border-b border-red-800/40 bg-red-700 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-sm font-black truncate" style={{ color: '#ffffff' }}>AI TOOLZ MART</div>
@@ -664,15 +672,17 @@ export const ChatBotWidget: React.FC = () => {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className={`fixed ${chatBottom} right-6 z-50 w-14 h-14 bg-red-700 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-2xl shadow-red-950/50 transition-transform hover:scale-110 cursor-pointer`}
-        title={open ? 'Close chat' : 'Chat with us'}
-        aria-label={open ? 'Close chat' : 'Open chat'}
-      >
-        {open ? <X className="w-6 h-6" /> : <MessageCircle className="w-7 h-7" />}
-      </button>
+      {!native && (
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          className={`fixed ${chatBottom} right-6 z-50 w-14 h-14 bg-red-700 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-2xl shadow-red-950/50 transition-transform hover:scale-110 cursor-pointer`}
+          title={open ? 'Close chat' : 'Chat with us'}
+          aria-label={open ? 'Close chat' : 'Open chat'}
+        >
+          {open ? <X className="w-6 h-6" /> : <MessageCircle className="w-7 h-7" />}
+        </button>
+      )}
     </>
   );
 };

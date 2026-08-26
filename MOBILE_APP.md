@@ -10,8 +10,60 @@ When you see this checklist complete, open Android Studio and build:
 - [x] Brand colors (#0d0908 background, #DC2626 red accents)
 - [x] Live support chat (same ChatBotWidget as website)
 - [x] Support tickets inbox in app
-- [x] Bottom navigation: Home · Tools · Chat · Tickets · Profile
-- [x] Tools open in native in-app browser with fresh admin cookies
+- [x] Bottom navigation by role (user / reseller / admin)
+- [x] Top bar: bell (notifications) + profile (theme, settings, logout)
+- [x] Full-screen pages on mobile (no stacked popups)
+- [x] One shared login screen for every account
+- [x] Push notifications (FCM) — alerts when app is closed or in background
+
+## Push notifications setup
+
+Lock-screen alerts require Firebase + a rebuilt APK.
+
+### 1. Firebase project
+
+1. Open [Firebase Console](https://console.firebase.google.com/) → **Add project** (or use existing).
+2. **Add app** → Android → package name **`com.aitoolzmart.app`**.
+3. Download **`google-services.json`** and place it at:
+   ```
+   android/app/google-services.json
+   ```
+   (See `android/app/google-services.json.example` for structure.)
+
+### 2. Server (Vercel)
+
+1. Firebase → **Project settings** → **Service accounts** → **Generate new private key**.
+2. In Vercel → **Environment variables**, add:
+   | Variable | Value |
+   |----------|--------|
+   | `FIREBASE_SERVICE_ACCOUNT_JSON` | Paste the **entire** JSON file contents (one line is fine) |
+
+Redeploy after adding the env var.
+
+### 3. Supabase
+
+Run in SQL editor:
+
+```sql
+-- see supabase_push_tokens.sql in repo root
+```
+
+### 4. Rebuild APK
+
+Push only works in the native app (not the mobile browser). After steps 1–3:
+
+```bash
+npm run build:mobile
+npm run cap:open:android
+```
+
+Build APK in Android Studio, copy to `public/downloads/aitoolzmart.apk`, deploy.
+
+### 5. Test
+
+1. Install APK, sign in, allow notifications when prompted.
+2. From admin dashboard, send a broadcast or reply to a support ticket for that user.
+3. User should get a **system notification** (sound + lock screen) even when the app is closed.
 
 ## Build APK (Windows)
 
@@ -53,6 +105,7 @@ npm run android:apk
 | `CAPACITOR_USE_BUNDLED=1` | Ship dashboard inside APK instead of loading remote portal |
 | `MOBILE_APK_URL` | Download link shown on dashboard (default: `/downloads/aitoolzmart.apk`) |
 | `MOBILE_APK_VERSION` | Version label on download button |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase service account JSON for FCM push (Vercel server) |
 
 ## Architecture
 

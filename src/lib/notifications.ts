@@ -174,6 +174,17 @@ export async function pushNotes(rows: Record<string, any>[]) {
   } catch {
     /* bell insert should never fail the main action */
   }
+  void dispatchPushAfterNotes(rows);
+}
+
+async function dispatchPushAfterNotes(rows: Record<string, any>[]) {
+  if (typeof window === 'undefined') {
+    const { dispatchPushOnServer } = await import('./mobile/pushClient');
+    await dispatchPushOnServer(rows);
+    return;
+  }
+  const { requestPushDispatch } = await import('./mobile/pushClient');
+  await requestPushDispatch(rows);
 }
 
 export async function notifyAdminAndOwner(input: {
@@ -329,8 +340,12 @@ export async function sendNotes(input: {
   ];
 
   const full = await supabase.from('notifications').insert(rows);
-  if (!full.error) return;
+  if (!full.error) {
+    void dispatchPushAfterNotes(rows);
+    return;
+  }
   const fallback = rows.map(({ audience: _a, recipient_id: _r, ...rest }) => rest);
   const retry = await supabase.from('notifications').insert(fallback);
   if (retry.error) throw new Error(retry.error.message);
+  void dispatchPushAfterNotes(rows);
 }

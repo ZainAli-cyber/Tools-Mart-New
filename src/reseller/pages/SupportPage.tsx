@@ -47,8 +47,8 @@ export const SupportPage: React.FC<{
       <div className="rounded-2xl border border-[#2a1e1c] bg-[#130d0d] p-4">
         <p className="text-xs font-bold text-white">Quick tip</p>
         <p className="mt-1 text-[11px] leading-5 text-slate-500">
-          Tap <strong className="text-red-400">Chat</strong> in the bottom bar anytime, or use Live chat above to open
-          the assistant and create a ticket in a few taps.
+          Tap <strong className="text-red-400">Live chat</strong> above to open the assistant and create a ticket.
+          Use the bottom <strong className="text-red-400">Support</strong> tab anytime.
         </p>
       </div>
     )}

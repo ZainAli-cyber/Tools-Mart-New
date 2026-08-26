@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { authStore } from './store/authStore';
-import { AdminLogin } from './pages/AdminLogin';
+import { LoginPage } from '../pages/LoginPage';
 import { AdminSidebar, AdminPage } from './components/AdminSidebar';
 import { DashboardPage } from './pages/DashboardPage';
 import { OrdersPage } from './pages/OrdersPage';
@@ -12,6 +12,8 @@ import { CookiesPage } from './pages/CookiesPage';
 import { Bell, Search, LogOut } from 'lucide-react';
 import { useLiveNotes } from '../lib/useLiveNotes';
 import { NoteAlertToast } from '../components/NoteAlertToast';
+import { resellerAuth } from '../reseller/store/resellerAuth';
+import { isMobileApp } from '../lib/mobile/toolLauncher';
 
 export const AdminApp: React.FC = () => {
   const [authed, setAuthed] = useState(authStore.isAuthenticated());
@@ -29,12 +31,34 @@ export const AdminApp: React.FC = () => {
     return () => clearInterval(iv);
   }, []);
 
+  // Mobile APK loads /reseller — send admins there for the native shell
+  useEffect(() => {
+    if (authed && isMobileApp()) {
+      window.location.href = '/reseller';
+    }
+  }, [authed]);
+
   const handleLogout = () => {
     authStore.logout();
     setAuthed(false);
   };
 
-  if (!authed) return <AdminLogin onLogin={() => setAuthed(true)} />;
+  if (!authed) {
+    return (
+      <LoginPage
+        embedded
+        onSuccess={() => {
+          const session = resellerAuth.session();
+          if (session?.role !== 'admin') {
+            window.location.href = '/reseller';
+            return;
+          }
+          setAuthed(true);
+        }}
+        onNavigate={path => { window.location.href = path; }}
+      />
+    );
+  }
 
   const sideW = collapsed ? 64 : 224;
 
