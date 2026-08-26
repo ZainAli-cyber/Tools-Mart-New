@@ -2,10 +2,8 @@ package com.aitoolzmart.app;
 
 import android.annotation.SuppressLint;
 import android.graphics.Color;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.view.View;
+import android.text.TextUtils;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -22,11 +20,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 
 /**
  * Full-screen in-app browser. Applies admin cookies from the launch API, then
@@ -95,7 +96,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
         label.setTextColor(Color.parseColor("#ffffff"));
         label.setTextSize(14f);
         label.setSingleLine(true);
-        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        label.setEllipsize(TextUtils.TruncateAt.END);
         label.setPadding(padH, 0, 0, 0);
 
         bar.addView(back);
@@ -112,8 +113,9 @@ public class ToolWebViewActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        // Desktop Chrome UA — many panel sites reject mobile WebView UA and force login.
         settings.setUserAgentString(
-            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 AI-Toolz-Mart/1.0"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         );
 
         CookieManager cm = CookieManager.getInstance();
@@ -126,6 +128,23 @@ public class ToolWebViewActivity extends AppCompatActivity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request == null || request.getUrl() == null) return false;
+                String next = request.getUrl().toString();
+                // Re-apply Referer on every main navigation (panel unlock needs it on redirects).
+                if (needsUnlockReferrer(next) && !referrerUrl.isEmpty()) {
+                    view.loadUrl(next, unlockHeaders());
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (url == null) return false;
+                if (needsUnlockReferrer(url) && !referrerUrl.isEmpty()) {
+                    view.loadUrl(url, unlockHeaders());
+                    return true;
+                }
                 return false;
             }
         });
@@ -137,16 +156,36 @@ public class ToolWebViewActivity extends AppCompatActivity {
         ));
         setContentView(root);
 
+        webView.loadUrl(destinationUrl, unlockHeaders());
+    }
+
+    private Map<String, String> unlockHeaders() {
         Map<String, String> headers = new HashMap<>();
-        if (!referrerUrl.isEmpty()) {
-            headers.put("Referer", referrerUrl);
-            try {
-                headers.put("Origin", new URL(referrerUrl).getProtocol() + "://" + new URL(referrerUrl).getHost());
-            } catch (Exception ignored) {
-                /* ignore */
-            }
+        if (referrerUrl.isEmpty()) return headers;
+        headers.put("Referer", referrerUrl);
+        try {
+            URL u = new URL(referrerUrl);
+            headers.put("Origin", u.getProtocol() + "://" + u.getHost());
+        } catch (Exception ignored) {
+            /* ignore */
         }
-        webView.loadUrl(destinationUrl, headers);
+        return headers;
+    }
+
+    private boolean needsUnlockReferrer(String url) {
+        if (referrerUrl.isEmpty()) return false;
+        String host = hostFromUrl(url);
+        if (host == null) return false;
+        return isPanelHost(host) || isPanelHost(hostFromUrl(destinationUrl));
+    }
+
+    private boolean isPanelHost(String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(Locale.US);
+        return h.equals("toolaccess.click")
+            || h.endsWith(".toolaccess.click")
+            || h.equals("xemrush.site")
+            || h.endsWith(".xemrush.site");
     }
 
     private void applyCookies(CookieManager cm, String cookiesJson, String destUrl) {
@@ -155,7 +194,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
             JSONArray list = new JSONArray(cookiesJson);
             String destHost = hostFromUrl(destUrl);
             boolean destHttps = destUrl.toLowerCase(Locale.US).startsWith("https://");
-            Set<String> cleared = new HashSet<>();
+            boolean panelDest = isPanelHost(destHost);
+            Set<String> clearedUrls = new HashSet<>();
 
             for (int i = 0; i < list.length(); i++) {
                 JSONObject c = list.optJSONObject(i);
@@ -165,30 +205,118 @@ public class ToolWebViewActivity extends AppCompatActivity {
                 String value = c.optString("value", "");
                 String path = c.optString("path", "/");
                 if (path.isEmpty()) path = "/";
-                String domain = c.optString("domain", "").trim();
-                boolean secure = c.optBoolean("secure", destHttps);
 
+                boolean hostOnly = c.optBoolean("hostOnly", false);
+                String domain = c.optString("domain", "").trim();
+                String cookieUrlField = c.optString("url", "").trim();
+
+                // Prefer explicit cookie.url host when domain is missing (Chrome export often does this).
+                if (domain.isEmpty() && !cookieUrlField.isEmpty()) {
+                    String fromUrl = hostFromUrl(cookieUrlField);
+                    if (fromUrl != null) domain = fromUrl;
+                }
                 if (domain.isEmpty() && destHost != null) domain = destHost;
                 domain = domain.replaceAll("^\\.", "");
+                if (domain.isEmpty()) continue;
+
+                boolean secure = c.optBoolean("secure", destHttps);
+                if (name.startsWith("__Secure-") || name.startsWith("__Host-")) secure = true;
+
+                String sameSite = normalizeSameSite(c.optString("sameSite", ""));
+                if ("None".equals(sameSite)) secure = true;
+
+                // Host-only / __Host- cookies must NOT include Domain=
+                boolean omitDomain = hostOnly || name.startsWith("__Host-");
 
                 String cookieUrl = urlForDomain(domain, path, secure);
-                if (cookieUrl != null && cleared.add(cookieUrl + "|" + domain)) {
+                if (cookieUrl == null) continue;
+
+                // Clear any previous value for this cookie name on this host URL.
+                String clearKey = cookieUrl + "|" + name;
+                if (clearedUrls.add(clearKey)) {
                     cm.setCookie(cookieUrl, name + "=; Max-Age=0; path=" + path);
+                    if (!omitDomain) {
+                        cm.setCookie(cookieUrl, name + "=; Max-Age=0; path=" + path + "; domain=." + domain);
+                    }
                 }
 
-                StringBuilder sb = new StringBuilder();
-                sb.append(name).append("=").append(value);
-                sb.append("; path=").append(path);
-                if (!name.startsWith("__Host-") && !domain.isEmpty()) {
-                    sb.append("; domain=").append(domain.startsWith(".") ? domain : "." + domain);
+                writeCookie(cm, cookieUrl, name, value, path, omitDomain ? null : domain, secure, sameSite, c);
+
+                // Panel dual-write (matches Chrome extension): host-only on exact host + parent .toolaccess.click
+                if (panelDest && destHost != null) {
+                    String destCookieUrl = urlForDomain(destHost, path, true);
+                    if (destCookieUrl != null) {
+                        writeCookie(cm, destCookieUrl, name, value, path, null, true, sameSite.isEmpty() ? "Lax" : sameSite, c);
+                    }
+                    String apex = panelApex(destHost);
+                    if (apex != null && !apex.equalsIgnoreCase(domain) && !apex.equalsIgnoreCase(destHost)) {
+                        String apexUrl = urlForDomain(apex, path, true);
+                        if (apexUrl != null) {
+                            writeCookie(cm, apexUrl, name, value, path, apex, true, sameSite.isEmpty() ? "None" : sameSite, c);
+                        }
+                    }
                 }
-                if (secure) sb.append("; Secure");
-                if (cookieUrl != null) cm.setCookie(cookieUrl, sb.toString());
             }
             cm.flush();
         } catch (Exception ignored) {
-            /* best effort */
+            /* best effort — still attempt to load */
         }
+    }
+
+    private void writeCookie(
+        CookieManager cm,
+        String cookieUrl,
+        String name,
+        String value,
+        String path,
+        String domainOrNull,
+        boolean secure,
+        String sameSite,
+        JSONObject c
+    ) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(name).append("=").append(value);
+        sb.append("; path=").append(path);
+        if (domainOrNull != null && !domainOrNull.isEmpty() && !name.startsWith("__Host-")) {
+            String d = domainOrNull.replaceAll("^\\.", "");
+            sb.append("; domain=").append(".").append(d);
+        }
+        if (secure) sb.append("; Secure");
+        if (c.optBoolean("httpOnly", false)) sb.append("; HttpOnly");
+        if (!sameSite.isEmpty()) sb.append("; SameSite=").append(sameSite);
+
+        long exp = 0;
+        if (c.has("expirationDate")) exp = (long) c.optDouble("expirationDate", 0);
+        else if (c.has("expires")) exp = (long) c.optDouble("expires", 0);
+        if (exp > 1_000_000_000_000L) exp = exp / 1000L; // ms → s
+        if (exp > 1_000_000_000L) {
+            try {
+                SimpleDateFormat fmt = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
+                fmt.setTimeZone(TimeZone.getTimeZone("GMT"));
+                sb.append("; Expires=").append(fmt.format(new Date(exp * 1000L)));
+            } catch (Exception ignored) {
+                /* ignore */
+            }
+        }
+
+        cm.setCookie(cookieUrl, sb.toString());
+    }
+
+    private String normalizeSameSite(String raw) {
+        String s = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.US);
+        if (s.isEmpty()) return "";
+        if (s.equals("no_restriction") || s.equals("none") || s.equals("unspecified")) return "None";
+        if (s.equals("lax")) return "Lax";
+        if (s.equals("strict")) return "Strict";
+        return "";
+    }
+
+    private String panelApex(String host) {
+        if (host == null) return null;
+        String h = host.toLowerCase(Locale.US);
+        if (h.equals("toolaccess.click") || h.endsWith(".toolaccess.click")) return "toolaccess.click";
+        if (h.equals("xemrush.site") || h.endsWith(".xemrush.site")) return "xemrush.site";
+        return null;
     }
 
     private String hostFromUrl(String url) {

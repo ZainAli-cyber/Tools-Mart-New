@@ -1036,13 +1036,14 @@ async function openViaMobileApp(
   toolName: string,
 ) {
   const { launchToolNative } = await import('./mobile/toolLauncher');
+  const referrer = resolvePanelUnlockReferrer(unlockReferrer, dest);
   await reportProgress(opts, 'session');
-  if (isToolAccessUrl(dest) || unlockReferrer) await reportProgress(opts, 'unlocking');
+  if (isToolAccessUrl(dest) || referrer) await reportProgress(opts, 'unlocking');
   await reportProgress(opts, 'launching');
   await launchToolNative({
     url: dest,
-    cookies,
-    referrer: unlockReferrer,
+    cookies: Array.isArray(cookies) ? cookies : [],
+    referrer: referrer || undefined,
     title: toolName,
   });
 }
