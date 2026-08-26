@@ -17,6 +17,19 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    // firebase-admin is server-only (FCM). Never bundle it into the browser build.
+    optimizeDeps: {
+      exclude: ['firebase-admin'],
+    },
+    build: {
+      rollupOptions: {
+        external: [
+          'firebase-admin',
+          'firebase-admin/app',
+          'firebase-admin/messaging',
+        ],
+      },
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.

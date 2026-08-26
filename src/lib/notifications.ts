@@ -178,13 +178,24 @@ export async function pushNotes(rows: Record<string, any>[]) {
 }
 
 async function dispatchPushAfterNotes(rows: Record<string, any>[]) {
-  if (typeof window === 'undefined') {
-    const { dispatchPushOnServer } = await import('./mobile/pushClient');
-    await dispatchPushOnServer(rows);
+  if (!rows.length) return;
+  // Browser / Vite: HTTP only — never pull firebase-admin into the client bundle.
+  if (typeof window !== 'undefined') {
+    try {
+      const { requestPushDispatch } = await import('./mobile/pushClient');
+      await requestPushDispatch(rows);
+    } catch {
+      /* ignore */
+    }
     return;
   }
-  const { requestPushDispatch } = await import('./mobile/pushClient');
-  await requestPushDispatch(rows);
+  // Node API / server.ts — @vite-ignore keeps firebase-admin out of vite build analysis.
+  try {
+    const mod = await import(/* @vite-ignore */ './pushDispatchServer');
+    await mod.dispatchPushOnServer(rows);
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function notifyAdminAndOwner(input: {

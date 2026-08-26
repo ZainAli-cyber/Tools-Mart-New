@@ -8,7 +8,7 @@ export type PushDispatchRow = {
   read?: boolean;
 };
 
-/** Ask the API to send FCM push (browser/client path). */
+/** Ask the API to send FCM push. Safe for the browser bundle (no firebase-admin). */
 export async function requestPushDispatch(rows: PushDispatchRow[]) {
   if (!rows.length) return;
   try {
@@ -26,21 +26,5 @@ export async function requestPushDispatch(rows: PushDispatchRow[]) {
     });
   } catch {
     /* push must never break main flow */
-  }
-}
-
-/** Node/server path — dynamic import avoids bundling firebase-admin in the browser. */
-export async function dispatchPushOnServer(rows: Record<string, any>[]) {
-  if (typeof window !== 'undefined') return;
-  try {
-    const { dispatchPushForNoteRows } = await import('../mobileRoutes');
-    await dispatchPushForNoteRows(rows);
-  } catch {
-    try {
-      const { sendPushForNoteRows } = await import('../pushEngine');
-      await sendPushForNoteRows(rows);
-    } catch {
-      /* ignore */
-    }
   }
 }
