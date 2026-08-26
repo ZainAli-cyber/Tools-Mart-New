@@ -402,25 +402,21 @@ export function normalizeToolRow(row: any, fallback?: ToolCookieFields | null): 
     showOnHome: showRaw === false || showRaw === 'false' || showRaw === 0 ? false : true,
     // Admin "By extension" may be stored as extension or by_extension — never one_click.
     accessMethod: isOneClick(access) ? 'one_click' : 'extension',
-    // Prefer extra cookie fields over possibly-stale dedicated columns.
+    // Prefer DB row.extra cookie fields over possibly-stale dedicated columns.
+    // Never prefer the local fallback map (EMPTY_COOKIE_FIELDS) via `in` checks — that
+    // object always has toolUrl/cookiesJson keys and would wipe values loaded from the API.
     toolUrl:
       'toolUrl' in extraObj || 'tool_url' in extraObj
         ? String(extraObj.toolUrl || extraObj.tool_url || '')
-        : 'toolUrl' in extra
-          ? String(extra.toolUrl || '')
-          : String(row.tool_url || row.toolUrl || ''),
+        : String(row.tool_url || row.toolUrl || extra.toolUrl || ''),
     cookiesJson:
       'cookiesJson' in extraObj || 'cookies_json' in extraObj
         ? (extraObj.cookiesJson ?? extraObj.cookies_json ?? '')
-        : 'cookiesJson' in extra
-          ? (extra.cookiesJson ?? '')
-          : (row.cookies_json ?? row.cookiesJson ?? ''),
+        : (row.cookies_json ?? row.cookiesJson ?? extra.cookiesJson ?? ''),
     panelReferrer:
       'panelReferrer' in extraObj || 'unlockReferrer' in extraObj || 'panel_referrer' in extraObj
         ? String(extraObj.panelReferrer || extraObj.unlockReferrer || extraObj.panel_referrer || '')
-        : 'panelReferrer' in extra
-          ? String(extra.panelReferrer || '')
-          : String(row.panel_referrer || row.panelReferrer || ''),
+        : String(row.panel_referrer || row.panelReferrer || extra.panelReferrer || ''),
   };
 }
 
