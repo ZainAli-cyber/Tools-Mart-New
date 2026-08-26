@@ -113,10 +113,10 @@ public class ToolWebViewActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        // Desktop Chrome UA — many panel sites reject mobile WebView UA and force login.
-        // Pair with wide-viewport + overview so the desktop layout fits the phone screen.
+        // Real Android Chrome mobile UA (not the default WebView "; wv" token) so panels
+        // serve their mobile layout while cookies + Referer still unlock the session.
         settings.setUserAgentString(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
         );
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
@@ -157,21 +157,15 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                // Desktop UA keeps panel sessions logged in, but sites often ship a fixed
-                // desktop layout. Force a scalable viewport so the full UI fits on phone.
+                // Ensure a normal mobile viewport so responsive panel UIs fill the screen.
                 view.evaluateJavascript(
                     "(function(){"
                         + "try{"
-                        + "var w=Math.max(document.documentElement.scrollWidth||0,document.body&&document.body.scrollWidth||0,1280);"
-                        + "var sw=Math.max(window.innerWidth||0,screen.width||0,1);"
-                        + "var scale=Math.min(1,sw/w);"
                         + "var m=document.querySelector('meta[name=\"viewport\"]');"
                         + "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');"
                         + "(document.head||document.documentElement).appendChild(m);}"
-                        + "m.setAttribute('content','width='+Math.round(w)+', initial-scale='+scale.toFixed(4)"
-                        + "+', minimum-scale=0.1, maximum-scale=5, user-scalable=yes');"
-                        + "document.documentElement.style.overflowX='auto';"
-                        + "if(document.body)document.body.style.overflowX='auto';"
+                        + "m.setAttribute('content',"
+                        + "'width=device-width, initial-scale=1, minimum-scale=0.5, maximum-scale=5, user-scalable=yes');"
                         + "}catch(e){}"
                         + "})();",
                     null
