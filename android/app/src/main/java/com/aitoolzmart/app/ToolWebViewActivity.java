@@ -113,10 +113,10 @@ public class ToolWebViewActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        // Real Android Chrome mobile UA (not the default WebView "; wv" token) so panels
-        // serve their mobile layout while cookies + Referer still unlock the session.
+        // Desktop Chrome UA keeps panel cookie sessions (mobile UA makes many panels
+        // drop the session). Layout is forced to phone width via viewport below.
         settings.setUserAgentString(
-            "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         );
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
@@ -130,6 +130,12 @@ public class ToolWebViewActivity extends AppCompatActivity {
         cm.setAcceptThirdPartyCookies(webView, true);
 
         applyCookies(cm, cookiesJson, destinationUrl);
+
+        final int phoneWidthPx = Math.max(
+            360,
+            Math.round(getResources().getDisplayMetrics().widthPixels
+                / Math.max(0.01f, getResources().getDisplayMetrics().density))
+        );
 
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
@@ -157,15 +163,32 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                // Ensure a normal mobile viewport so responsive panel UIs fill the screen.
+                // Keep desktop UA (cookies), but emulate a phone viewport so responsive
+                // CSS can show mobile UI. If the panel still ships a fixed desktop page,
+                // fall back to scaling the full layout into the screen.
                 view.evaluateJavascript(
                     "(function(){"
                         + "try{"
+                        + "var phone=" + phoneWidthPx + ";"
                         + "var m=document.querySelector('meta[name=\"viewport\"]');"
                         + "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');"
                         + "(document.head||document.documentElement).appendChild(m);}"
-                        + "m.setAttribute('content',"
-                        + "'width=device-width, initial-scale=1, minimum-scale=0.5, maximum-scale=5, user-scalable=yes');"
+                        + "function applyMobile(){"
+                        + "  m.setAttribute('content','width='+phone+', initial-scale=1, minimum-scale=0.5,"
+                        + " maximum-scale=5, user-scalable=yes');"
+                        + "  try{window.dispatchEvent(new Event('resize'));}catch(e){}"
+                        + "}"
+                        + "function fitDesktop(){"
+                        + "  var w=Math.max(document.documentElement.scrollWidth||0,"
+                        + "    document.body&&document.body.scrollWidth||0,phone);"
+                        + "  if(w<=phone*1.25)return;"
+                        + "  var scale=Math.min(1,phone/w);"
+                        + "  m.setAttribute('content','width='+Math.round(w)+', initial-scale='+scale.toFixed(4)"
+                        + "    +', minimum-scale=0.1, maximum-scale=5, user-scalable=yes');"
+                        + "}"
+                        + "applyMobile();"
+                        + "setTimeout(fitDesktop,400);"
+                        + "setTimeout(fitDesktop,1200);"
                         + "}catch(e){}"
                         + "})();",
                     null
