@@ -533,8 +533,8 @@ export const ResellerApp: React.FC = () => {
         </RModal>
       )}
 
-      {/* Support chat — always mounted for members so Live chat never misses the open event */}
-      {!isAdmin && <ChatBotWidget />}
+      {/* Live chat widget — website only (not in the mobile APK) */}
+      {!isAdmin && !nativeApp && <ChatBotWidget />}
 
       {!nativeApp && (
       <a href={adminWa} target="_blank" rel="noopener noreferrer" title="Contact Admin on WhatsApp"
