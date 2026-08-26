@@ -124,7 +124,7 @@ export const MobileAppPage: React.FC<{ customerId: string }> = ({ customerId }) 
         {[
           { icon: Zap, title: 'One tap open', text: 'Every entitled tool from your dashboard.' },
           { icon: Cookie, title: 'Fresh cookies', text: 'Fetched from admin on every launch.' },
-          { icon: CheckCircle2, title: 'Support built-in', text: 'Live chat + ticket inbox in the app.' },
+          { icon: CheckCircle2, title: 'Support built-in', text: 'Ticket inbox and WhatsApp support in the app.' },
         ].map(({ icon: Icon, title, text }) => (
           <div key={title} className="rounded-xl border border-[#2a1e1c] bg-[#130d0d] p-4">
             <Icon className="h-5 w-5 text-red-500" />
