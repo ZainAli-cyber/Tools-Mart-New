@@ -402,22 +402,25 @@ export function normalizeToolRow(row: any, fallback?: ToolCookieFields | null): 
     showOnHome: showRaw === false || showRaw === 'false' || showRaw === 0 ? false : true,
     // Admin "By extension" may be stored as extension or by_extension — never one_click.
     accessMethod: isOneClick(access) ? 'one_click' : 'extension',
-    toolUrl: row.tool_url || row.toolUrl || extraObj.toolUrl || extraObj.tool_url || extra.toolUrl || '',
+    // Prefer extra cookie fields over possibly-stale dedicated columns.
+    toolUrl:
+      'toolUrl' in extraObj || 'tool_url' in extraObj
+        ? String(extraObj.toolUrl || extraObj.tool_url || '')
+        : 'toolUrl' in extra
+          ? String(extra.toolUrl || '')
+          : String(row.tool_url || row.toolUrl || ''),
     cookiesJson:
-      row.cookies_json ??
-      row.cookiesJson ??
-      extraObj.cookiesJson ??
-      extraObj.cookies_json ??
-      extra.cookiesJson ??
-      '',
+      'cookiesJson' in extraObj || 'cookies_json' in extraObj
+        ? (extraObj.cookiesJson ?? extraObj.cookies_json ?? '')
+        : 'cookiesJson' in extra
+          ? (extra.cookiesJson ?? '')
+          : (row.cookies_json ?? row.cookiesJson ?? ''),
     panelReferrer:
-      row.panel_referrer ||
-      row.panelReferrer ||
-      extraObj.panelReferrer ||
-      extraObj.unlockReferrer ||
-      extraObj.panel_referrer ||
-      extra.panelReferrer ||
-      '',
+      'panelReferrer' in extraObj || 'unlockReferrer' in extraObj || 'panel_referrer' in extraObj
+        ? String(extraObj.panelReferrer || extraObj.unlockReferrer || extraObj.panel_referrer || '')
+        : 'panelReferrer' in extra
+          ? String(extra.panelReferrer || '')
+          : String(row.panel_referrer || row.panelReferrer || ''),
   };
 }
 
@@ -691,11 +694,19 @@ export async function saveToolCookieSettings(
         const persistedUrl = String(body?.toolUrl || '').trim();
         const persistedMethod = String(body?.accessMethod || '').trim().toLowerCase();
         const usedFallback = Boolean(body?.usedFallback);
-        if (fields.accessMethod === 'one_click' && fields.toolUrl.trim() && !persistedUrl) {
+        const wantedUrl = fields.toolUrl.trim();
+        if (wantedUrl && !persistedUrl) {
           return {
             ok: false,
             error:
               'Save reached the API but destination URL was not stored. Run supabase_tool_cookies.sql (ensure tools.extra exists), then Save again.',
+          };
+        }
+        if (wantedUrl && persistedUrl && persistedUrl !== wantedUrl) {
+          return {
+            ok: false,
+            error:
+              `Save returned a different URL than you entered.\nSaved: ${persistedUrl}\nEntered: ${wantedUrl}\nOpen Cookies again and Save once more.`,
           };
         }
         if (

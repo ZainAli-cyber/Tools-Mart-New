@@ -311,15 +311,19 @@ function resolveToolAccessMethod(tool: any, extra: Record<string, any>): 'one_cl
 }
 
 function cookieFields(tool: any) {
-  const extra = parseExtraBag(tool?.extra);
-  const url = tool?.tool_url || extra.toolUrl || extra.tool_url || '';
-  const cookiesRaw = tool?.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? '';
+  const extra = parseExtraJson(tool?.extra);
+  const url =
+    'toolUrl' in extra || 'tool_url' in extra
+      ? String(extra.toolUrl || extra.tool_url || '')
+      : String(tool?.tool_url || '');
+  const cookiesRaw =
+    'cookiesJson' in extra || 'cookies_json' in extra
+      ? String(extra.cookiesJson ?? extra.cookies_json ?? '')
+      : String(tool?.cookies_json ?? '');
   const panelReferrer =
-    tool?.panel_referrer ||
-    extra.panelReferrer ||
-    extra.unlockReferrer ||
-    extra.panel_referrer ||
-    '';
+    'panelReferrer' in extra || 'unlockReferrer' in extra || 'panel_referrer' in extra
+      ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || '')
+      : String(tool?.panel_referrer || '');
   return {
     accessMethod: resolveToolAccessMethod(tool, extra),
     url: String(url || '').trim(),

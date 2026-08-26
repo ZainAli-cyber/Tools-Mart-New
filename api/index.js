@@ -1,77 +1,80 @@
-// api/handler.ts
-import express2 from "express";
-
-// src/lib/createApiApp.ts
-import express from "express";
-
-// src/lib/adminRoutes.ts
-import { Router } from "express";
-import { createClient as createClient3 } from "@supabase/supabase-js";
-
-// src/lib/auth.ts
-import { createClient } from "@supabase/supabase-js";
-function client(token) {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url3 || !anon) throw new Error("Supabase authentication is not configured");
-  return createClient(url3, anon, {
-    auth: { persistSession: false },
-    global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
-  });
-}
-async function authenticateAdmin(email, password) {
-  const supabase2 = client();
-  const { data, error } = await supabase2.auth.signInWithPassword({ email, password });
-  if (error || !data.user || !data.session) return null;
-  const { data: profile } = await supabase2.from("customers").select("id,role,status").eq("auth_user_id", data.user.id).single();
-  if (profile?.role !== "admin" || profile.status === "blocked") return null;
-  return data.session.access_token;
-}
-async function requireAuth(req, res, next) {
-  try {
-    const header = req.headers.authorization;
-    if (!header?.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Unauthorized \u2014 no token" });
-    }
-    const token = header.slice(7);
-    const supabase2 = client(token);
-    const { data, error } = await supabase2.auth.getUser(token);
-    if (error || !data.user) return res.status(401).json({ error: "Unauthorized \u2014 invalid or expired token" });
-    const { data: profile } = await supabase2.from("customers").select("id,email,role,status").eq("auth_user_id", data.user.id).single();
-    if (profile?.role !== "admin" || profile.status === "blocked") {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    req.admin = profile;
-    next();
-  } catch {
-    return res.status(401).json({ error: "Unauthorized \u2014 invalid or expired token" });
-  }
-}
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 
 // src/lib/db.ts
-import { createClient as createClient2 } from "@supabase/supabase-js";
-var nodeEnv = typeof process !== "undefined" ? process.env : {};
-var SUPABASE_URL = nodeEnv.SUPABASE_URL || nodeEnv.VITE_SUPABASE_URL || "https://duvwpbetvftqissnstoy.supabase.co";
-var SUPABASE_ANON = nodeEnv.SUPABASE_ANON_KEY || nodeEnv.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1dndwYmV0dmZ0cWlzc25zdG95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4NjkxMTksImV4cCI6MjEwMjQ0NTExOX0.2_-KYBcp3z4xa9MMsg4GAAdWpABhOIWInfN2SIFiv1w";
-var supabase = createClient2(SUPABASE_URL, SUPABASE_ANON, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
-  }
+var db_exports = {};
+__export(db_exports, {
+  DEFAULT_SETTINGS: () => DEFAULT_SETTINGS,
+  logActivity: () => logActivity,
+  readDb: () => readDb,
+  seedIfEmpty: () => seedIfEmpty,
+  supabase: () => supabase,
+  writeDb: () => writeDb
 });
-var TABLE = {
-  tools: "tools",
-  orders: "orders",
-  customers: "customers",
-  coupons: "coupons",
-  tickets: "tickets",
-  settings: "settings",
-  activity: "activity_log",
-  notifications: "notifications",
-  banners: "banners",
-  resellerPayments: "reseller_payments"
-};
+import { createClient as createClient2 } from "@supabase/supabase-js";
+function toSnake(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return obj;
+  const map = {
+    invoiceNo: "invoice_no",
+    orderDate: "order_date",
+    customerId: "customer_id",
+    customerName: "customer_name",
+    customerEmail: "customer_email",
+    customerPhone: "customer_phone",
+    customerCity: "customer_city",
+    toolId: "tool_id",
+    finalAmount: "final_amount",
+    paymentMethod: "payment_method",
+    paymentStatus: "payment_status",
+    transactionId: "transaction_id",
+    adminNotes: "admin_notes",
+    couponCode: "coupon_code",
+    subStatus: "sub_status",
+    activationDate: "activation_date",
+    expiryDate: "expiry_date",
+    daysLeft: "days_left",
+    createdAt: "created_at",
+    joinDate: "join_date",
+    totalOrders: "total_orders",
+    totalSpend: "total_spend",
+    usageLimit: "usage_limit",
+    usedCount: "used_count",
+    minPurchase: "min_purchase",
+    customerEmail2: "customer_email",
+    originalPrice: "original_price",
+    isPrivate: "is_private",
+    isSemiPrivate: "is_semi_private",
+    fullDesc: "full_desc",
+    waText: "wa_text",
+    useCases: "use_cases",
+    authUserId: "auth_user_id",
+    planDays: "plan_days",
+    ownerId: "owner_id",
+    memberId: "member_id",
+    memberName: "member_name",
+    paymentDate: "payment_date",
+    // tools table column is "desc" (quoted reserved word in SQL)
+    desc: "desc",
+    accessMethod: "access_method",
+    toolUrl: "tool_url",
+    cookiesJson: "cookies_json",
+    panelReferrer: "panel_referrer",
+    showOnHome: "show_on_home"
+  };
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const snakeKey = map[k] || k;
+    out[snakeKey] = v;
+  }
+  return out;
+}
 function toCamel(obj) {
   if (!obj || typeof obj !== "object") return obj;
   if (Array.isArray(obj)) return obj.map(toCamel);
@@ -145,6 +148,23 @@ async function readDb(name, defaultVal) {
     return defaultVal;
   }
 }
+async function writeDb(name, data) {
+  const table = TABLE[name];
+  if (!table) return;
+  try {
+    if (name === "settings") {
+      const row = toSnake({ ...data, id: 1 });
+      await supabase.from("settings").upsert(row);
+      return;
+    }
+    const rows = Array.isArray(data) ? data : [data];
+    if (rows.length === 0) return;
+    const snakeRows = rows.map(toSnake);
+    await supabase.from(table).upsert(snakeRows);
+  } catch (e) {
+    console.error(`Supabase writeDb error [${name}]:`, e);
+  }
+}
 async function logActivity(action, detail) {
   try {
     await supabase.from("activity_log").insert({
@@ -157,8 +177,320 @@ async function logActivity(action, detail) {
     console.error("logActivity error:", e);
   }
 }
+function seedIfEmpty() {
+}
+var nodeEnv, SUPABASE_URL, SUPABASE_ANON, supabase, TABLE, DEFAULT_SETTINGS;
+var init_db = __esm({
+  "src/lib/db.ts"() {
+    nodeEnv = typeof process !== "undefined" ? process.env : {};
+    SUPABASE_URL = nodeEnv.SUPABASE_URL || nodeEnv.VITE_SUPABASE_URL || "https://duvwpbetvftqissnstoy.supabase.co";
+    SUPABASE_ANON = nodeEnv.SUPABASE_ANON_KEY || nodeEnv.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1dndwYmV0dmZ0cWlzc25zdG95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4NjkxMTksImV4cCI6MjEwMjQ0NTExOX0.2_-KYBcp3z4xa9MMsg4GAAdWpABhOIWInfN2SIFiv1w";
+    supabase = createClient2(SUPABASE_URL, SUPABASE_ANON, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+    TABLE = {
+      tools: "tools",
+      orders: "orders",
+      customers: "customers",
+      coupons: "coupons",
+      tickets: "tickets",
+      settings: "settings",
+      activity: "activity_log",
+      notifications: "notifications",
+      banners: "banners",
+      resellerPayments: "reseller_payments"
+    };
+    DEFAULT_SETTINGS = {
+      siteName: "AI TOOLZ MART",
+      contactEmail: "emaan@aitoolsmart.com",
+      whatsapp: "+923275855578",
+      currency: "PKR",
+      invoicePrefix: "INV",
+      taxPercent: "0",
+      maintenanceMode: false,
+      easypaisa: "03XX-XXXXXXX",
+      jazzcash: "03XX-XXXXXXX",
+      paypalEmail: "payments@aitoolzmart.com",
+      bankName: "Meezan Bank",
+      bankAccount: "0123456789"
+    };
+  }
+});
+
+// src/lib/mobile/portalBase.ts
+import { Capacitor } from "@capacitor/core";
+function getPortalBaseUrl() {
+  const env = String(
+    import.meta.env?.VITE_PORTAL_URL || ""
+  ).trim().replace(/\/$/, "");
+  if (typeof window === "undefined") return env || DEFAULT_PORTAL;
+  if (!Capacitor.isNativePlatform()) return "";
+  const origin = window.location.origin || "";
+  if (origin && !origin.startsWith("capacitor://") && !origin.startsWith("ionic://") && !origin.includes("localhost")) {
+    return origin.replace(/\/$/, "");
+  }
+  return env || DEFAULT_PORTAL;
+}
+function apiUrl(path) {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const base = getPortalBaseUrl();
+  return base ? `${base}${p}` : p;
+}
+var DEFAULT_PORTAL;
+var init_portalBase = __esm({
+  "src/lib/mobile/portalBase.ts"() {
+    DEFAULT_PORTAL = "https://tools-mart-latest.vercel.app";
+  }
+});
+
+// src/lib/mobile/pushClient.ts
+var pushClient_exports = {};
+__export(pushClient_exports, {
+  requestPushDispatch: () => requestPushDispatch
+});
+async function requestPushDispatch(rows) {
+  if (!rows.length) return;
+  try {
+    const { supabase: supabase2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    const { data } = await supabase2.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return;
+    await fetch(apiUrl("/api/mobile/push/dispatch"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ rows })
+    });
+  } catch {
+  }
+}
+var init_pushClient = __esm({
+  "src/lib/mobile/pushClient.ts"() {
+    init_portalBase();
+  }
+});
+
+// src/lib/pushEngine.ts
+var pushEngine_exports = {};
+__export(pushEngine_exports, {
+  pushConfigured: () => pushConfigured,
+  registerPushToken: () => registerPushToken,
+  sendPushForNoteRows: () => sendPushForNoteRows,
+  sendPushToAccounts: () => sendPushToAccounts,
+  unregisterPushToken: () => unregisterPushToken
+});
+import { createClient as createClient3 } from "@supabase/supabase-js";
+function serviceDb() {
+  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url3 || !key) throw new Error("Supabase service role not configured");
+  return createClient3(url3, key, { auth: { persistSession: false } });
+}
+async function getMessaging() {
+  if (firebaseReady === false) return null;
+  if (messaging) return messaging;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "";
+  if (!raw.trim()) {
+    firebaseReady = false;
+    return null;
+  }
+  try {
+    const admin = await import("firebase-admin");
+    if (!admin.apps.length) {
+      const cred = JSON.parse(raw);
+      admin.initializeApp({ credential: admin.credential.cert(cred) });
+    }
+    messaging = admin.messaging();
+    firebaseReady = true;
+    return messaging;
+  } catch (err) {
+    console.error("[push] Firebase init failed", err?.message || err);
+    firebaseReady = false;
+    return null;
+  }
+}
+function pushConfigured() {
+  return Boolean(String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim());
+}
+async function registerPushToken(accountId, token, platform = "android") {
+  const db2 = serviceDb();
+  const acc = String(accountId || "").trim();
+  const tok = String(token || "").trim();
+  if (!acc || !tok) throw new Error("accountId and token required");
+  const { error } = await db2.from("push_tokens").upsert(
+    {
+      account_id: acc,
+      token: tok,
+      platform: platform || "android",
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    { onConflict: "account_id,token" }
+  );
+  if (error) throw new Error(error.message);
+}
+async function unregisterPushToken(accountId, token) {
+  const db2 = serviceDb();
+  await db2.from("push_tokens").delete().eq("account_id", accountId).eq("token", token);
+}
+async function tokensForAccounts(accountIds) {
+  const ids = [...new Set(accountIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!ids.length) return [];
+  const db2 = serviceDb();
+  const { data, error } = await db2.from("push_tokens").select("token").in("account_id", ids);
+  if (error) {
+    console.error("[push] token lookup failed", error.message);
+    return [];
+  }
+  return [...new Set((data || []).map((r) => String(r.token || "").trim()).filter(Boolean))];
+}
+async function sendPushToAccounts(items) {
+  const msg = await getMessaging();
+  if (!msg) return { sent: 0, skipped: true };
+  const grouped = /* @__PURE__ */ new Map();
+  for (const item of items) {
+    const id = String(item.accountId || "").trim();
+    if (!id) continue;
+    grouped.set(id, {
+      accountId: id,
+      title: String(item.title || "AI Toolz Mart").trim() || "AI Toolz Mart",
+      message: String(item.message || "").trim()
+    });
+  }
+  if (!grouped.size) return { sent: 0, skipped: false };
+  let sent = 0;
+  for (const item of grouped.values()) {
+    const tokens = await tokensForAccounts([item.accountId]);
+    if (!tokens.length) continue;
+    const body = item.message.slice(0, 500);
+    try {
+      const res = await msg.sendEachForMulticast({
+        tokens,
+        notification: { title: item.title, body },
+        data: { accountId: item.accountId, type: "notification" },
+        android: {
+          priority: "high",
+          notification: {
+            channelId: "aitoolzmart_alerts",
+            sound: "default",
+            defaultVibrateTimings: true,
+            priority: "high",
+            visibility: "public"
+          }
+        }
+      });
+      sent += res.successCount;
+      if (res.failureCount) {
+        console.warn("[push] partial failure", item.accountId, res.failureCount);
+      }
+    } catch (err) {
+      console.error("[push] send failed", item.accountId, err?.message || err);
+    }
+  }
+  return { sent, skipped: false };
+}
+async function sendPushForNoteRows(rows) {
+  const items = [];
+  for (const row of rows) {
+    const accountId = String(row.recipient_id || "").trim();
+    if (!accountId) continue;
+    if (row.read === true) continue;
+    items.push({
+      accountId,
+      title: String(row.title || "AI Toolz Mart"),
+      message: String(row.message || "")
+    });
+  }
+  if (!items.length) return { sent: 0, skipped: false };
+  return sendPushToAccounts(items);
+}
+var firebaseReady, messaging;
+var init_pushEngine = __esm({
+  "src/lib/pushEngine.ts"() {
+    firebaseReady = null;
+    messaging = null;
+  }
+});
+
+// src/lib/pushDispatchServer.ts
+var pushDispatchServer_exports = {};
+__export(pushDispatchServer_exports, {
+  dispatchPushOnServer: () => dispatchPushOnServer
+});
+async function dispatchPushOnServer(rows) {
+  if (typeof window !== "undefined") return;
+  try {
+    const { sendPushForNoteRows: sendPushForNoteRows2 } = await Promise.resolve().then(() => (init_pushEngine(), pushEngine_exports));
+    await sendPushForNoteRows2(rows);
+  } catch (err) {
+    console.error("[push] server dispatch failed", err?.message || err);
+  }
+}
+var init_pushDispatchServer = __esm({
+  "src/lib/pushDispatchServer.ts"() {
+  }
+});
+
+// api/handler.ts
+import express2 from "express";
+
+// src/lib/createApiApp.ts
+import express from "express";
+
+// src/lib/adminRoutes.ts
+import { Router } from "express";
+import { createClient as createClient4 } from "@supabase/supabase-js";
+
+// src/lib/auth.ts
+import { createClient } from "@supabase/supabase-js";
+function client(token) {
+  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url3 || !anon) throw new Error("Supabase authentication is not configured");
+  return createClient(url3, anon, {
+    auth: { persistSession: false },
+    global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
+  });
+}
+async function authenticateAdmin(email, password) {
+  const supabase2 = client();
+  const { data, error } = await supabase2.auth.signInWithPassword({ email, password });
+  if (error || !data.user || !data.session) return null;
+  const { data: profile } = await supabase2.from("customers").select("id,role,status").eq("auth_user_id", data.user.id).single();
+  if (profile?.role !== "admin" || profile.status === "blocked") return null;
+  return data.session.access_token;
+}
+async function requireAuth(req, res, next) {
+  try {
+    const header = req.headers.authorization;
+    if (!header?.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized \u2014 no token" });
+    }
+    const token = header.slice(7);
+    const supabase2 = client(token);
+    const { data, error } = await supabase2.auth.getUser(token);
+    if (error || !data.user) return res.status(401).json({ error: "Unauthorized \u2014 invalid or expired token" });
+    const { data: profile } = await supabase2.from("customers").select("id,email,role,status").eq("auth_user_id", data.user.id).single();
+    if (profile?.role !== "admin" || profile.status === "blocked") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    req.admin = profile;
+    next();
+  } catch {
+    return res.status(401).json({ error: "Unauthorized \u2014 invalid or expired token" });
+  }
+}
+
+// src/lib/adminRoutes.ts
+init_db();
 
 // src/lib/notifications.ts
+init_db();
 function noteVisible(note, account) {
   const type = String(note.type || "");
   if (account.role === "admin") {
@@ -233,6 +565,23 @@ async function ownerOfCustomer(hint) {
 async function pushNotes(rows) {
   try {
     await insertNoteRows(rows);
+  } catch {
+  }
+  void dispatchPushAfterNotes(rows);
+}
+async function dispatchPushAfterNotes(rows) {
+  if (!rows.length) return;
+  if (typeof window !== "undefined") {
+    try {
+      const { requestPushDispatch: requestPushDispatch2 } = await Promise.resolve().then(() => (init_pushClient(), pushClient_exports));
+      await requestPushDispatch2(rows);
+    } catch {
+    }
+    return;
+  }
+  try {
+    const mod = await Promise.resolve().then(() => (init_pushDispatchServer(), pushDispatchServer_exports));
+    await mod.dispatchPushOnServer(rows);
   } catch {
   }
 }
@@ -310,7 +659,7 @@ function toolsAdminDb() {
       "SUPABASE_SERVICE_ROLE_KEY is missing on Vercel. Add it under Project \u2192 Settings \u2192 Environment Variables (Production + Preview), then Redeploy. Cookie Save needs the service role key."
     );
   }
-  return createClient3(url3, serviceKey3, {
+  return createClient4(url3, serviceKey3, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
 }
@@ -600,6 +949,24 @@ router.patch("/tools/:id", requireAuth, async (req, res) => {
       const force = await sb.from("tools").update({ access_method: wantMethod, extra }).eq("id", toolId).select().single();
       if (!force.error && force.data) data = force.data;
       else if (force.error && COLUMN_MISSING.test(force.error.message || "")) {
+        const extraOnly = await sb.from("tools").update({ extra }).eq("id", toolId).select().single();
+        if (!extraOnly.error && extraOnly.data) data = extraOnly.data;
+      }
+    }
+    const wantUrl = req.body?.toolUrl !== void 0 ? String(req.body.toolUrl || "") : null;
+    const wantCookies = req.body?.cookiesJson !== void 0 ? req.body.cookiesJson : null;
+    const wantRef = req.body?.panelReferrer !== void 0 ? String(req.body.panelReferrer || "") : null;
+    const urlLag = wantUrl !== null && String(data.tool_url || "") !== wantUrl;
+    const cookiesLag = wantCookies !== null && String(data.cookies_json ?? "") !== String(wantCookies ?? "");
+    const refLag = wantRef !== null && String(data.panel_referrer || "") !== wantRef;
+    if (urlLag || cookiesLag || refLag) {
+      const sync = { extra };
+      if (wantUrl !== null) sync.tool_url = wantUrl;
+      if (wantCookies !== null) sync.cookies_json = wantCookies;
+      if (wantRef !== null) sync.panel_referrer = wantRef;
+      const synced = await sb.from("tools").update(sync).eq("id", toolId).select().single();
+      if (!synced.error && synced.data) data = synced.data;
+      else if (synced.error && COLUMN_MISSING.test(synced.error.message || "")) {
         const extraOnly = await sb.from("tools").update({ extra }).eq("id", toolId).select().single();
         if (!extraOnly.error && extraOnly.data) data = extraOnly.data;
       }
@@ -1068,8 +1435,8 @@ function snakeToCamelTool(t) {
     isPrivate: t.is_private,
     isSemiPrivate: t.is_semi_private,
     showOnHome: t.show_on_home === false || t.show_on_home === 0 || extra.showOnHome === false ? false : true,
-    // Prefer extra.accessMethod: when access_method column is missing from schema,
-    // cookie saves land in extra while the column default stays "extension".
+    // Prefer extra.* for cookie admin fields: Cookies saves always write into extra, while
+    // tool_url / cookies_json columns can stay on an older value when schema dual-write lags.
     accessMethod: (() => {
       const candidates = [
         extra.accessMethod,
@@ -1080,9 +1447,9 @@ function snakeToCamelTool(t) {
       if (candidates.some((v) => v === "one_click" || v === "one-click")) return "one_click";
       return "extension";
     })(),
-    toolUrl: t.tool_url || extra.toolUrl || extra.tool_url || "",
-    cookiesJson: t.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? "",
-    panelReferrer: t.panel_referrer || extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || ""
+    toolUrl: "toolUrl" in extra ? String(extra.toolUrl || "") : "tool_url" in extra ? String(extra.tool_url || "") : String(t.tool_url || ""),
+    cookiesJson: "cookiesJson" in extra ? extra.cookiesJson ?? "" : "cookies_json" in extra ? extra.cookies_json ?? "" : t.cookies_json ?? "",
+    panelReferrer: "panelReferrer" in extra || "unlockReferrer" in extra || "panel_referrer" in extra ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "") : String(t.panel_referrer || "")
   };
 }
 function camelToSnakeTool(t) {
@@ -1240,7 +1607,7 @@ router.get("/orders/:id/invoice", requireAuth, async (req, res) => {
 
 // src/lib/accountRoutes.ts
 import { Router as Router2 } from "express";
-import { createClient as createClient4 } from "@supabase/supabase-js";
+import { createClient as createClient5 } from "@supabase/supabase-js";
 var router2 = Router2();
 var url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 var anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -1252,8 +1619,8 @@ function clients() {
     );
   }
   return {
-    auth: createClient4(url, anonKey, { auth: { persistSession: false } }),
-    admin: createClient4(url, serviceKey, { auth: { persistSession: false } })
+    auth: createClient5(url, anonKey, { auth: { persistSession: false } }),
+    admin: createClient5(url, serviceKey, { auth: { persistSession: false } })
   };
 }
 async function actor(req) {
@@ -1457,7 +1824,7 @@ var accountRoutes_default = router2;
 
 // src/lib/extensionRoutes.ts
 import { Router as Router3 } from "express";
-import { createClient as createClient6 } from "@supabase/supabase-js";
+import { createClient as createClient7 } from "@supabase/supabase-js";
 
 // src/lib/accountStore.ts
 var PLAN_OPTIONS = [
@@ -1487,7 +1854,7 @@ function planIsActive(plan, expiry) {
 }
 
 // src/lib/deviceSessions.ts
-import { createClient as createClient5 } from "@supabase/supabase-js";
+import { createClient as createClient6 } from "@supabase/supabase-js";
 var DEVICE_LIMIT_MESSAGE = "Device limit reached. Ask admin/reseller to manage devices or remove an old device.";
 var DEVICE_LIMITS_SETTING_KEY = "device_limits_enabled";
 function serviceClient() {
@@ -1496,7 +1863,7 @@ function serviceClient() {
   if (!url3 || !serviceKey3) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env and restart the server.");
   }
-  return createClient5(url3, serviceKey3, { auth: { persistSession: false } });
+  return createClient6(url3, serviceKey3, { auth: { persistSession: false } });
 }
 function isAdminRole(role) {
   return String(role || "").trim().toLowerCase() === "admin";
@@ -1817,7 +2184,7 @@ function config() {
 }
 function client2(token) {
   const { url: url3, anon } = config();
-  return createClient6(url3, anon, {
+  return createClient7(url3, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
   });
@@ -1827,7 +2194,7 @@ function toolsDb() {
   const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!url3 || !(serviceKey3 || anon)) throw new Error("Supabase authentication is not configured");
-  return createClient6(url3, serviceKey3 || anon, {
+  return createClient7(url3, serviceKey3 || anon, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
 }
@@ -2041,10 +2408,10 @@ function resolveToolAccessMethod(tool, extra) {
   return "extension";
 }
 function cookieFields(tool) {
-  const extra = parseExtraBag(tool?.extra);
-  const url3 = tool?.tool_url || extra.toolUrl || extra.tool_url || "";
-  const cookiesRaw = tool?.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? "";
-  const panelReferrer = tool?.panel_referrer || extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "";
+  const extra = parseExtraJson(tool?.extra);
+  const url3 = "toolUrl" in extra || "tool_url" in extra ? String(extra.toolUrl || extra.tool_url || "") : String(tool?.tool_url || "");
+  const cookiesRaw = "cookiesJson" in extra || "cookies_json" in extra ? String(extra.cookiesJson ?? extra.cookies_json ?? "") : String(tool?.cookies_json ?? "");
+  const panelReferrer = "panelReferrer" in extra || "unlockReferrer" in extra || "panel_referrer" in extra ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "") : String(tool?.panel_referrer || "");
   return {
     accessMethod: resolveToolAccessMethod(tool, extra),
     url: String(url3 || "").trim(),
@@ -2101,7 +2468,7 @@ var extensionRoutes_default = router3;
 
 // src/lib/notificationRoutes.ts
 import { Router as Router4 } from "express";
-import { createClient as createClient7 } from "@supabase/supabase-js";
+import { createClient as createClient8 } from "@supabase/supabase-js";
 var router4 = Router4();
 var url2 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 var anonKey2 = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -2113,8 +2480,8 @@ function clients2() {
     );
   }
   return {
-    auth: createClient7(url2, anonKey2, { auth: { persistSession: false } }),
-    admin: createClient7(url2, serviceKey2, { auth: { persistSession: false } })
+    auth: createClient8(url2, anonKey2, { auth: { persistSession: false } }),
+    admin: createClient8(url2, serviceKey2, { auth: { persistSession: false } })
   };
 }
 async function actor2(req) {
@@ -2155,7 +2522,7 @@ var notificationRoutes_default = router4;
 
 // src/lib/deviceRoutes.ts
 import { Router as Router5 } from "express";
-import { createClient as createClient8 } from "@supabase/supabase-js";
+import { createClient as createClient9 } from "@supabase/supabase-js";
 var router5 = Router5();
 function clients3() {
   const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -2167,8 +2534,8 @@ function clients3() {
     );
   }
   return {
-    auth: createClient8(url3, anonKey3, { auth: { persistSession: false } }),
-    admin: createClient8(url3, serviceKey3, { auth: { persistSession: false } })
+    auth: createClient9(url3, anonKey3, { auth: { persistSession: false } }),
+    admin: createClient9(url3, serviceKey3, { auth: { persistSession: false } })
   };
 }
 async function actor3(req) {
@@ -2384,11 +2751,11 @@ var deviceRoutes_default = router5;
 
 // src/lib/toolProxyRoutes.ts
 import { Router as Router6 } from "express";
-import { createClient as createClient11 } from "@supabase/supabase-js";
+import { createClient as createClient12 } from "@supabase/supabase-js";
 import { createHash as createHash2, randomBytes as randomBytes2 } from "crypto";
 
 // src/lib/globalProxySettings.ts
-import { createClient as createClient9 } from "@supabase/supabase-js";
+import { createClient as createClient10 } from "@supabase/supabase-js";
 var GLOBAL_PROXY_SETTING_KEY = "global_proxy_engine";
 var GLOBAL_PROXY_SQL_HINT = "Run supabase_global_proxy_engine.sql (or supabase_device_limits_toggle.sql) in the Supabase SQL Editor so app_settings exists, then try again.";
 var CACHE_MS = 8e3;
@@ -2399,7 +2766,7 @@ function serviceClient2() {
   if (!url3 || !serviceKey3) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for proxy settings");
   }
-  return createClient9(url3, serviceKey3, { auth: { persistSession: false } });
+  return createClient10(url3, serviceKey3, { auth: { persistSession: false } });
 }
 function isAppSettingsMissing2(message) {
   return /app_settings|does not exist|schema cache|Could not find the table/i.test(
@@ -3700,13 +4067,13 @@ The <code>proxy_token</code> cookie is expired or was copied before the panel wa
 
 // src/lib/proxySessionStore.ts
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
-import { createClient as createClient10 } from "@supabase/supabase-js";
+import { createClient as createClient11 } from "@supabase/supabase-js";
 function db() {
   const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!url3 || !(serviceKey3 || anon)) throw new Error("Supabase authentication is not configured");
-  return createClient10(url3, serviceKey3 || anon, {
+  return createClient11(url3, serviceKey3 || anon, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
 }
@@ -3797,7 +4164,7 @@ function config2() {
 }
 function client3(token) {
   const { url: url3, anon } = config2();
-  return createClient11(url3, anon, {
+  return createClient12(url3, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
   });
@@ -3807,7 +4174,7 @@ function toolsDb2() {
   const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!url3 || !(serviceKey3 || anon)) throw new Error("Supabase authentication is not configured");
-  return createClient11(url3, serviceKey3 || anon, {
+  return createClient12(url3, serviceKey3 || anon, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
 }
@@ -4031,9 +4398,9 @@ function resolveToolAccessMethod2(tool, extra) {
 }
 function cookieFields2(tool) {
   const extra = parseExtraJson(tool?.extra);
-  const url3 = tool?.tool_url || extra.toolUrl || extra.tool_url || "";
-  const cookiesRaw = tool?.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? "";
-  const panelReferrer = tool?.panel_referrer || extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "";
+  const url3 = "toolUrl" in extra || "tool_url" in extra ? String(extra.toolUrl || extra.tool_url || "") : String(tool?.tool_url || "");
+  const cookiesRaw = "cookiesJson" in extra || "cookies_json" in extra ? String(extra.cookiesJson ?? extra.cookies_json ?? "") : String(tool?.cookies_json ?? "");
+  const panelReferrer = "panelReferrer" in extra || "unlockReferrer" in extra || "panel_referrer" in extra ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "") : String(tool?.panel_referrer || "");
   return {
     accessMethod: resolveToolAccessMethod2(tool, extra),
     url: String(url3 || "").trim(),
@@ -4501,7 +4868,85 @@ var toolProxyRoutes_default = router6;
 
 // src/lib/settingsRoutes.ts
 import { Router as Router7 } from "express";
-import { createClient as createClient12 } from "@supabase/supabase-js";
+import { createClient as createClient14 } from "@supabase/supabase-js";
+
+// src/lib/toolAccessLabels.ts
+import { createClient as createClient13 } from "@supabase/supabase-js";
+var TOOL_ACCESS_LABELS_KEY = "show_tool_access_labels";
+var CACHE_MS2 = 15e3;
+var cache2 = null;
+function serviceClient3() {
+  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url3 || !key) throw new Error("Supabase service role not configured");
+  return createClient13(url3, key, { auth: { persistSession: false } });
+}
+function isAppSettingsMissing3(message) {
+  return /app_settings|does not exist|schema cache|Could not find the table/i.test(String(message || ""));
+}
+function parseBool(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (v === "true" || v === "1" || v === "yes" || v === "on") return true;
+    if (v === "false" || v === "0" || v === "no" || v === "off") return false;
+  }
+  if (value && typeof value === "object" && "enabled" in value) {
+    return Boolean(value.enabled);
+  }
+  return false;
+}
+async function getShowToolAccessLabels(admin) {
+  const now = Date.now();
+  if (cache2 && now - cache2.at < CACHE_MS2 && !cache2.setupRequired) {
+    return { enabled: cache2.value };
+  }
+  try {
+    const db2 = admin || serviceClient3();
+    const { data, error } = await db2.from("app_settings").select("value").eq("key", TOOL_ACCESS_LABELS_KEY).maybeSingle();
+    if (error) {
+      const setupRequired = isAppSettingsMissing3(error.message);
+      cache2 = { value: false, at: now, setupRequired };
+      return { enabled: false, setupRequired: setupRequired || void 0 };
+    }
+    if (!data) {
+      cache2 = { value: false, at: now };
+      return { enabled: false };
+    }
+    const enabled = parseBool(data.value);
+    cache2 = { value: enabled, at: now };
+    return { enabled };
+  } catch (err) {
+    const setupRequired = isAppSettingsMissing3(err?.message);
+    cache2 = { value: false, at: now, setupRequired };
+    return { enabled: false, setupRequired: setupRequired || void 0 };
+  }
+}
+async function setShowToolAccessLabels(enabled, admin) {
+  const db2 = admin || serviceClient3();
+  const value = Boolean(enabled);
+  const { error } = await db2.from("app_settings").upsert(
+    {
+      key: TOOL_ACCESS_LABELS_KEY,
+      value,
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    { onConflict: "key" }
+  );
+  if (error) {
+    if (isAppSettingsMissing3(error.message)) {
+      throw new Error(
+        "Run supabase_device_limits_toggle.sql (creates app_settings) in Supabase, then try again."
+      );
+    }
+    throw new Error(error.message);
+  }
+  cache2 = { value, at: Date.now() };
+  return value;
+}
+
+// src/lib/settingsRoutes.ts
 var router7 = Router7();
 function clients4() {
   const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -4513,8 +4958,8 @@ function clients4() {
     );
   }
   return {
-    auth: createClient12(url3, anonKey3, { auth: { persistSession: false } }),
-    admin: createClient12(url3, serviceKey3, { auth: { persistSession: false } })
+    auth: createClient14(url3, anonKey3, { auth: { persistSession: false } }),
+    admin: createClient14(url3, serviceKey3, { auth: { persistSession: false } })
   };
 }
 async function actor4(req) {
@@ -4639,11 +5084,76 @@ router7.post("/global-proxy/test", async (req, res) => {
     return res.status(500).json({ ok: false, error: error?.message || "Proxy test failed" });
   }
 });
+router7.get("/tool-access-labels", async (req, res) => {
+  try {
+    const current = await actor4(req);
+    if (!current) return res.status(401).json({ error: "Not authorized" });
+    const { admin } = clients4();
+    const setting = await getShowToolAccessLabels(admin);
+    return res.json({
+      enabled: Boolean(setting.enabled),
+      ...setting.setupRequired ? { setupRequired: true } : {}
+    });
+  } catch {
+    return res.json({ enabled: false });
+  }
+});
+router7.patch("/tool-access-labels", async (req, res) => {
+  try {
+    const current = await actor4(req);
+    if (!current) return res.status(401).json({ error: "Not authorized" });
+    if (current.role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const raw = req.body?.enabled ?? req.body?.show_tool_access_labels;
+    if (typeof raw !== "boolean") {
+      return res.status(400).json({ error: "enabled must be a boolean" });
+    }
+    const { admin } = clients4();
+    const enabled = await setShowToolAccessLabels(raw, admin);
+    return res.json({ enabled });
+  } catch (error) {
+    const message = error?.message || "Could not update setting";
+    const setup = /app_settings|supabase_device_limits/i.test(message);
+    return res.status(setup ? 503 : 500).json({ error: message, enabled: false });
+  }
+});
 var settingsRoutes_default = router7;
 
 // src/lib/mobileRoutes.ts
+init_pushEngine();
 import { Router as Router8 } from "express";
+import { createClient as createClient15 } from "@supabase/supabase-js";
 var router8 = Router8();
+function config3() {
+  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url3 || !anon) throw new Error("Supabase authentication is not configured");
+  return { url: url3, anon };
+}
+function authClient(token) {
+  const { url: url3, anon } = config3();
+  return createClient15(url3, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
+  });
+}
+async function profileForToken3(token) {
+  const client4 = authClient(token);
+  const { data: userData, error } = await client4.auth.getUser(token);
+  if (error || !userData.user) return null;
+  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const db2 = createClient15(url3, serviceKey3 || anon, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+  const { data: profile } = await db2.from("customers").select("id,role,status").eq("auth_user_id", userData.user.id).maybeSingle();
+  if (!profile || profile.status === "blocked") return null;
+  return profile;
+}
+function canDispatch(profile, items) {
+  if (profile.role === "admin") return true;
+  return items.every((item) => item.accountId === profile.id);
+}
 router8.get("/info", (_req, res) => {
   const apkUrl = String(process.env.MOBILE_APK_URL || "/downloads/aitoolzmart.apk").trim();
   const version = String(process.env.MOBILE_APK_VERSION || "1.0.0").trim();
@@ -4654,8 +5164,68 @@ router8.get("/info", (_req, res) => {
     version,
     minAndroid: 24,
     appName: "AI Toolz Mart",
+    pushEnabled: pushConfigured(),
     note: "Install once. Tools and cookies update automatically when you open them \u2014 no reinstall needed."
   });
+});
+router8.post("/push/register", async (req, res) => {
+  try {
+    const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    if (!token) return res.status(401).json({ error: "Authentication required" });
+    const profile = await profileForToken3(token);
+    if (!profile) return res.status(401).json({ error: "Session expired" });
+    const fcmToken = String(req.body?.token || "").trim();
+    const platform = String(req.body?.platform || "android").trim();
+    if (!fcmToken) return res.status(400).json({ error: "token is required" });
+    await registerPushToken(String(profile.id), fcmToken, platform);
+    return res.json({ ok: true, pushEnabled: pushConfigured() });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Could not register push token" });
+  }
+});
+router8.post("/push/unregister", async (req, res) => {
+  try {
+    const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    if (!token) return res.status(401).json({ error: "Authentication required" });
+    const profile = await profileForToken3(token);
+    if (!profile) return res.status(401).json({ error: "Session expired" });
+    const fcmToken = String(req.body?.token || "").trim();
+    if (fcmToken) await unregisterPushToken(String(profile.id), fcmToken);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Could not unregister push token" });
+  }
+});
+router8.post("/push/dispatch", async (req, res) => {
+  try {
+    const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    if (!token) return res.status(401).json({ error: "Authentication required" });
+    const profile = await profileForToken3(token);
+    if (!profile) return res.status(401).json({ error: "Session expired" });
+    const items = Array.isArray(req.body?.items) ? req.body.items.map((row) => ({
+      accountId: String(row.accountId || row.account_id || "").trim(),
+      title: String(row.title || "AI Toolz Mart"),
+      message: String(row.message || "")
+    })).filter((row) => row.accountId) : [];
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    for (const row of rows) {
+      const accountId = String(row.recipient_id || row.accountId || "").trim();
+      if (!accountId || row.read === true) continue;
+      items.push({
+        accountId,
+        title: String(row.title || "AI Toolz Mart"),
+        message: String(row.message || "")
+      });
+    }
+    if (!items.length) return res.json({ ok: true, sent: 0 });
+    if (!canDispatch(profile, items)) {
+      return res.status(403).json({ error: "Not allowed to push to these recipients" });
+    }
+    const result = await sendPushToAccounts(items);
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Push dispatch failed" });
+  }
 });
 var mobileRoutes_default = router8;
 

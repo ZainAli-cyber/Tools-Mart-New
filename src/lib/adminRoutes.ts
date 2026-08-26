@@ -389,6 +389,27 @@ router.patch('/tools/:id', requireAuth, async (req, res) => {
       }
     }
 
+    // Force-sync cookie columns when they lag behind the just-saved extra payload.
+    const wantUrl = req.body?.toolUrl !== undefined ? String(req.body.toolUrl || '') : null;
+    const wantCookies = req.body?.cookiesJson !== undefined ? req.body.cookiesJson : null;
+    const wantRef = req.body?.panelReferrer !== undefined ? String(req.body.panelReferrer || '') : null;
+    const urlLag = wantUrl !== null && String(data.tool_url || '') !== wantUrl;
+    const cookiesLag =
+      wantCookies !== null && String(data.cookies_json ?? '') !== String(wantCookies ?? '');
+    const refLag = wantRef !== null && String(data.panel_referrer || '') !== wantRef;
+    if (urlLag || cookiesLag || refLag) {
+      const sync: any = { extra };
+      if (wantUrl !== null) sync.tool_url = wantUrl;
+      if (wantCookies !== null) sync.cookies_json = wantCookies;
+      if (wantRef !== null) sync.panel_referrer = wantRef;
+      const synced = await sb.from('tools').update(sync).eq('id', toolId).select().single();
+      if (!synced.error && synced.data) data = synced.data;
+      else if (synced.error && COLUMN_MISSING.test(synced.error.message || '')) {
+        const extraOnly = await sb.from('tools').update({ extra }).eq('id', toolId).select().single();
+        if (!extraOnly.error && extraOnly.data) data = extraOnly.data;
+      }
+    }
+
     logActivity('Tool Updated', `Updated tool: ${data.name}`);
     const mapped = snakeToCamelTool(data);
     const usedFallback =
@@ -942,8 +963,8 @@ function snakeToCamelTool(t: any) {
     showOnHome:    t.show_on_home === false || t.show_on_home === 0 || extra.showOnHome === false
       ? false
       : true,
-    // Prefer extra.accessMethod: when access_method column is missing from schema,
-    // cookie saves land in extra while the column default stays "extension".
+    // Prefer extra.* for cookie admin fields: Cookies saves always write into extra, while
+    // tool_url / cookies_json columns can stay on an older value when schema dual-write lags.
     accessMethod: (() => {
       const candidates = [
         extra.accessMethod,
@@ -956,14 +977,22 @@ function snakeToCamelTool(t: any) {
       if (candidates.some(v => v === 'one_click' || v === 'one-click')) return 'one_click';
       return 'extension';
     })(),
-    toolUrl:       t.tool_url || extra.toolUrl || extra.tool_url || '',
-    cookiesJson:   t.cookies_json ?? extra.cookiesJson ?? extra.cookies_json ?? '',
+    toolUrl:
+      'toolUrl' in extra
+        ? String(extra.toolUrl || '')
+        : 'tool_url' in extra
+          ? String(extra.tool_url || '')
+          : String(t.tool_url || ''),
+    cookiesJson:
+      'cookiesJson' in extra
+        ? (extra.cookiesJson ?? '')
+        : 'cookies_json' in extra
+          ? (extra.cookies_json ?? '')
+          : (t.cookies_json ?? ''),
     panelReferrer:
-      t.panel_referrer ||
-      extra.panelReferrer ||
-      extra.unlockReferrer ||
-      extra.panel_referrer ||
-      '',
+      'panelReferrer' in extra || 'unlockReferrer' in extra || 'panel_referrer' in extra
+        ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || '')
+        : String(t.panel_referrer || ''),
   };
 }
 
