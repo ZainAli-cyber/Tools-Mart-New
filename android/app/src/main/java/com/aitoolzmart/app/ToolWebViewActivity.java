@@ -175,8 +175,12 @@ public class ToolWebViewActivity extends AppCompatActivity {
     private boolean needsUnlockReferrer(String url) {
         if (referrerUrl.isEmpty()) return false;
         String host = hostFromUrl(url);
+        String destHost = hostFromUrl(destinationUrl);
         if (host == null) return false;
-        return isPanelHost(host) || isPanelHost(hostFromUrl(destinationUrl));
+        // Known panels OR any custom panel domain when admin set unlock referrer
+        // (e.g. testingg.one Grammarly panels — keep Referer across redirects).
+        if (isPanelHost(host) || isPanelHost(destHost)) return true;
+        return sameRegistrableDomain(host, destHost);
     }
 
     private boolean isPanelHost(String host) {
@@ -185,7 +189,34 @@ public class ToolWebViewActivity extends AppCompatActivity {
         return h.equals("toolaccess.click")
             || h.endsWith(".toolaccess.click")
             || h.equals("xemrush.site")
-            || h.endsWith(".xemrush.site");
+            || h.endsWith(".xemrush.site")
+            || h.equals("semrush.site")
+            || h.endsWith(".semrush.site")
+            || h.endsWith(".groupbuy.tools")
+            || h.contains("toolpanel")
+            || h.contains("sharedpanel")
+            || h.contains("panelhub");
+    }
+
+    /** True when admin configured a panel unlock Referer (custom domains like testingg.one). */
+    private boolean panelUnlockMode(String destHost) {
+        return isPanelHost(destHost) || !referrerUrl.isEmpty();
+    }
+
+    private boolean sameRegistrableDomain(String a, String b) {
+        if (a == null || b == null) return false;
+        if (a.equals(b)) return true;
+        if (a.endsWith("." + b) || b.endsWith("." + a)) return true;
+        String ra = registrableDomain(a);
+        String rb = registrableDomain(b);
+        return ra != null && ra.equals(rb);
+    }
+
+    private String registrableDomain(String host) {
+        if (host == null || host.isEmpty()) return null;
+        String[] parts = host.toLowerCase(Locale.US).split("\\.");
+        if (parts.length < 2) return host;
+        return parts[parts.length - 2] + "." + parts[parts.length - 1];
     }
 
     private void applyCookies(CookieManager cm, String cookiesJson, String destUrl) {
@@ -194,7 +225,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
             JSONArray list = new JSONArray(cookiesJson);
             String destHost = hostFromUrl(destUrl);
             boolean destHttps = destUrl.toLowerCase(Locale.US).startsWith("https://");
-            boolean panelDest = isPanelHost(destHost);
+            boolean panelDest = panelUnlockMode(destHost);
             Set<String> clearedUrls = new HashSet<>();
 
             for (int i = 0; i < list.length(); i++) {
@@ -228,7 +259,11 @@ public class ToolWebViewActivity extends AppCompatActivity {
                 // Host-only / __Host- cookies must NOT include Domain=
                 boolean omitDomain = hostOnly || name.startsWith("__Host-");
 
-                String cookieUrl = urlForDomain(domain, path, secure);
+                // CookieManager URL scheme must match the page. Grammarly-style exports often
+                // have secure:false — still use https://… when the tool URL is https, or the
+                // cookie never reaches the WebView request (desktop Chrome handles this differently).
+                boolean urlHttps = destHttps || secure;
+                String cookieUrl = urlForDomain(domain, path, urlHttps);
                 if (cookieUrl == null) continue;
 
                 // Clear any previous value for this cookie name on this host URL.
@@ -242,17 +277,32 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
                 writeCookie(cm, cookieUrl, name, value, path, omitDomain ? null : domain, secure, sameSite, c);
 
-                // Panel dual-write (matches Chrome extension): host-only on exact host + parent .toolaccess.click
-                if (panelDest && destHost != null) {
-                    String destCookieUrl = urlForDomain(destHost, path, true);
+                // Also host-only on exact destination host (matches extension fallback).
+                if (destHost != null && !destHost.equalsIgnoreCase(domain)) {
+                    String destCookieUrl = urlForDomain(destHost, path, urlHttps);
                     if (destCookieUrl != null) {
-                        writeCookie(cm, destCookieUrl, name, value, path, null, true, sameSite.isEmpty() ? "Lax" : sameSite, c);
+                        writeCookie(cm, destCookieUrl, name, value, path, null, secure, sameSite.isEmpty() ? "Lax" : sameSite, c);
                     }
+                }
+
+                // Panel dual-write: parent apex when known (toolaccess / xemrush / …)
+                if (panelDest && destHost != null) {
                     String apex = panelApex(destHost);
+                    if (apex == null) apex = registrableDomain(destHost);
                     if (apex != null && !apex.equalsIgnoreCase(domain) && !apex.equalsIgnoreCase(destHost)) {
-                        String apexUrl = urlForDomain(apex, path, true);
+                        String apexUrl = urlForDomain(apex, path, urlHttps);
                         if (apexUrl != null) {
-                            writeCookie(cm, apexUrl, name, value, path, apex, true, sameSite.isEmpty() ? "None" : sameSite, c);
+                            writeCookie(
+                                cm,
+                                apexUrl,
+                                name,
+                                value,
+                                path,
+                                apex,
+                                secure || destHttps,
+                                sameSite.isEmpty() ? "Lax" : sameSite,
+                                c
+                            );
                         }
                     }
                 }
@@ -304,8 +354,9 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private String normalizeSameSite(String raw) {
         String s = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.US);
-        if (s.isEmpty()) return "";
-        if (s.equals("no_restriction") || s.equals("none") || s.equals("unspecified")) return "None";
+        // Match Chrome extension: "unspecified" means omit SameSite (do NOT force None).
+        if (s.isEmpty() || s.equals("unspecified")) return "";
+        if (s.equals("no_restriction") || s.equals("none")) return "None";
         if (s.equals("lax")) return "Lax";
         if (s.equals("strict")) return "Strict";
         return "";
@@ -316,6 +367,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
         String h = host.toLowerCase(Locale.US);
         if (h.equals("toolaccess.click") || h.endsWith(".toolaccess.click")) return "toolaccess.click";
         if (h.equals("xemrush.site") || h.endsWith(".xemrush.site")) return "xemrush.site";
+        if (h.equals("semrush.site") || h.endsWith(".semrush.site")) return "semrush.site";
         return null;
     }
 
