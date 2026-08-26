@@ -55,8 +55,7 @@ export const MobileAppPage: React.FC<{ customerId: string }> = ({ customerId }) 
             <h2 className="mt-3 text-2xl font-black text-white">AI Toolz Mart for Mobile</h2>
             <p className="mt-1 max-w-xl text-xs leading-5 text-slate-400">
               One tap opens every tool inside the app — <strong className="text-slate-300">no extension</strong>.
-              Fresh cookies from admin on every launch. Built-in <strong className="text-red-300">live chat</strong> and{' '}
-              <strong className="text-red-300">support tickets</strong>.
+              Fresh cookies from admin on every launch. Built-in <strong className="text-red-300">support tickets</strong> and WhatsApp help.
             </p>
             <div className="mt-3 inline-flex rounded-xl border border-red-500/25 bg-black/20 px-3 py-2 text-xs">
               <span className="text-slate-500">Customer ID:</span>
