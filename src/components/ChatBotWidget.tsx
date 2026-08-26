@@ -478,9 +478,9 @@ export const ChatBotWidget: React.FC = () => {
   };
 
   const bubbleClass = (role: ChatRole) => {
-    if (role === 'user') return 'bg-red-600/25 text-red-50 rounded-br-md';
-    if (role === 'staff') return 'bg-emerald-950/50 text-emerald-100 border border-emerald-800/40 rounded-bl-md';
-    return 'bg-[#1a1210] text-slate-300 border border-[#2a1e1c] rounded-bl-md';
+    if (role === 'user') return 'bg-red-600 text-white rounded-br-md';
+    if (role === 'staff') return 'bg-emerald-600 text-white rounded-bl-md';
+    return 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-bl-md';
   };
 
   const chatBottom = isMobileApp() ? 'bottom-24' : 'bottom-6';

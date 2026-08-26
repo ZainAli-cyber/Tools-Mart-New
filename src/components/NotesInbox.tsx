@@ -48,7 +48,7 @@ export const NotesInbox: React.FC<{
             <button type="button" onClick={() => setOpenId(null)}
               className="text-[11px] font-bold text-slate-500 hover:text-white cursor-pointer">Close</button>
           </div>
-          <p className="text-sm text-slate-300 whitespace-pre-wrap">{open.message}</p>
+          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap">{open.message}</p>
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-slate-600">{open.time || ''}</span>
             <div className="flex gap-2">

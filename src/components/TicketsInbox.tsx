@@ -593,15 +593,21 @@ export const TicketsInbox: React.FC<{
 const Bubble: React.FC<{ mine: boolean; name: string; at: string; text: string; avatar?: string; code?: string }> = ({ mine, name, at, text, avatar, code }) => (
   <div className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
     {!mine && <AvatarCircle name={name} src={avatar} size="sm" />}
-    <div className={`max-w-[80%] p-3 rounded-2xl ${mine ? 'bg-red-600/20 text-red-100 rounded-tr-sm' : 'bg-[#1a1210] text-slate-300 rounded-tl-sm'}`}>
+    <div
+      className={`max-w-[80%] p-3 rounded-2xl ${
+        mine
+          ? 'bg-red-600 text-white rounded-tr-sm'
+          : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-tl-sm'
+      }`}
+    >
       <div className="flex items-baseline justify-between gap-3 mb-1">
-        <span className="text-[10px] font-bold text-slate-400">
+        <span className={`text-[10px] font-bold ${mine ? 'text-white/80' : 'text-[var(--text-muted)]'}`}>
           {name}
-          {code ? <span className="ml-1.5 text-red-400">ID: {code}</span> : null}
+          {code ? <span className={`ml-1.5 ${mine ? 'text-white' : 'text-red-500'}`}>ID: {code}</span> : null}
         </span>
-        <span className="text-[9px] text-slate-600">{formatTicketTime(at)}</span>
+        <span className={`text-[9px] ${mine ? 'text-white/60' : 'text-[var(--text-faint)]'}`}>{formatTicketTime(at)}</span>
       </div>
-      <div className="text-xs whitespace-pre-wrap">{text}</div>
+      <div className="text-xs whitespace-pre-wrap leading-relaxed">{text}</div>
     </div>
     {mine && <AvatarCircle name={name} src={avatar} size="sm" />}
   </div>
