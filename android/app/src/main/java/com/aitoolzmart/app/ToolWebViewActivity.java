@@ -113,8 +113,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        // Desktop Chrome UA keeps panel cookie sessions (mobile UA makes many panels
-        // drop the session). Layout is forced to phone width via viewport below.
+        // Desktop Chrome UA keeps panel cookie sessions (mobile UA drops them).
         settings.setUserAgentString(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         );
@@ -123,7 +122,13 @@ public class ToolWebViewActivity extends AppCompatActivity {
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
-        settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
+        settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NORMAL);
+
+        // Shrink the fixed desktop layout (~1280px) so the full page fits the phone width.
+        int screenPx = getResources().getDisplayMetrics().widthPixels;
+        int desktopLayoutPx = 1280;
+        int initialScalePct = Math.max(28, Math.min(100, (screenPx * 100) / desktopLayoutPx));
+        webView.setInitialScale(initialScalePct);
 
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
@@ -131,11 +136,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
         applyCookies(cm, cookiesJson, destinationUrl);
 
-        final int phoneWidthPx = Math.max(
-            360,
-            Math.round(getResources().getDisplayMetrics().widthPixels
-                / Math.max(0.01f, getResources().getDisplayMetrics().density))
-        );
+        final float density = Math.max(0.01f, getResources().getDisplayMetrics().density);
+        final int phoneCssPx = Math.max(320, Math.round(screenPx / density));
 
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
@@ -163,32 +165,36 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                // Keep desktop UA (cookies), but emulate a phone viewport so responsive
-                // CSS can show mobile UI. If the panel still ships a fixed desktop page,
-                // fall back to scaling the full layout into the screen.
+                // Do NOT switch viewport to phone width — that clips desktop panel UIs.
+                // Keep a desktop layout width and scale it down so sidebar + content both show.
                 view.evaluateJavascript(
                     "(function(){"
                         + "try{"
-                        + "var phone=" + phoneWidthPx + ";"
+                        + "var phone=" + phoneCssPx + ";"
+                        + "var desktop=1280;"
                         + "var m=document.querySelector('meta[name=\"viewport\"]');"
                         + "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');"
                         + "(document.head||document.documentElement).appendChild(m);}"
-                        + "function applyMobile(){"
-                        + "  m.setAttribute('content','width='+phone+', initial-scale=1, minimum-scale=0.5,"
-                        + " maximum-scale=5, user-scalable=yes');"
-                        + "  try{window.dispatchEvent(new Event('resize'));}catch(e){}"
-                        + "}"
-                        + "function fitDesktop(){"
-                        + "  var w=Math.max(document.documentElement.scrollWidth||0,"
-                        + "    document.body&&document.body.scrollWidth||0,phone);"
-                        + "  if(w<=phone*1.25)return;"
+                        + "function fit(){"
+                        + "  var w=Math.max("
+                        + "    document.documentElement.scrollWidth||0,"
+                        + "    document.body&&document.body.scrollWidth||0,"
+                        + "    desktop);"
+                        + "  if(w<desktop)w=desktop;"
                         + "  var scale=Math.min(1,phone/w);"
                         + "  m.setAttribute('content','width='+Math.round(w)+', initial-scale='+scale.toFixed(4)"
-                        + "    +', minimum-scale=0.1, maximum-scale=5, user-scalable=yes');"
+                        + "    +', minimum-scale=0.15, maximum-scale=5, user-scalable=yes');"
+                        + "  document.documentElement.style.width='100%';"
+                        + "  document.documentElement.style.minHeight='100%';"
+                        + "  if(document.body){"
+                        + "    document.body.style.minHeight='100%';"
+                        + "    document.body.style.margin='0';"
+                        + "  }"
                         + "}"
-                        + "applyMobile();"
-                        + "setTimeout(fitDesktop,400);"
-                        + "setTimeout(fitDesktop,1200);"
+                        + "fit();"
+                        + "setTimeout(fit,300);"
+                        + "setTimeout(fit,1000);"
+                        + "setTimeout(fit,2000);"
                         + "}catch(e){}"
                         + "})();",
                     null
@@ -199,7 +205,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
         root.addView(bar);
         root.addView(webView, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.MATCH_PARENT
+            0,
+            1f
         ));
         setContentView(root);
 
