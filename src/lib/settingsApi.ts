@@ -84,3 +84,17 @@ export function testGlobalProxySettings(url?: string) {
     error?: string;
   }>;
 }
+
+export function getToolAccessLabelsSetting() {
+  return authorizedFetch('/api/settings/tool-access-labels') as Promise<{
+    enabled: boolean;
+    setupRequired?: boolean;
+  }>;
+}
+
+export function setToolAccessLabelsSetting(enabled: boolean) {
+  return authorizedFetch('/api/settings/tool-access-labels', {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  }) as Promise<{ enabled: boolean }>;
+}

@@ -34,7 +34,6 @@ import { ChatBotWidget } from '../components/ChatBotWidget';
 import { isMobileApp } from '../lib/mobile/toolLauncher';
 import { MobileAppNav, mobileAppContentClass, type MobileRole } from './components/MobileAppNav';
 import { SupportPage } from './pages/SupportPage';
-import { openSupportChat } from '../lib/supportChat';
 import { MobileProfilePage } from './pages/MobileProfilePage';
 import { OrdersPage as AdminOrdersPage } from '../admin/pages/OrdersPage';
 import { CustomersPage as AdminCustomersPage, SupportPage as AdminSupportPage, SettingsPage as AdminSettingsPage } from '../admin/pages/OtherPages';
@@ -456,7 +455,7 @@ export const ResellerApp: React.FC = () => {
               <ExtensionsPage customerId={self.customer_code || session.customerCode || session.id} />
             ) : userPage === 'mobile-app' ? (
               <MobileAppPage customerId={self.customer_code || session.customerCode || session.id} />
-            ) : userPage === 'support' ? (
+            ) : userPage === 'support' || (userPage === 'inbox' && !isReseller && !isAdmin) ? (
               <SupportPage
                 account={ticketAccount}
                 adminWaLink={adminWa}
@@ -534,8 +533,8 @@ export const ResellerApp: React.FC = () => {
         </RModal>
       )}
 
-      {/* Support chat — web floating; mobile opens full-screen from Support tab */}
-      {(!nativeApp || userPage === 'support') && !isAdmin && <ChatBotWidget />}
+      {/* Support chat — always mounted for members so Live chat never misses the open event */}
+      {!isAdmin && <ChatBotWidget />}
 
       {!nativeApp && (
       <a href={adminWa} target="_blank" rel="noopener noreferrer" title="Contact Admin on WhatsApp"
@@ -552,10 +551,9 @@ export const ResellerApp: React.FC = () => {
       {nativeApp && (
         <MobileAppNav
           role={mobileRole}
-          current={userPage}
+          current={userPage === 'inbox' && mobileRole === 'user' ? 'support' : userPage}
           onChange={page => {
             setUserPage(page);
-            if (page === 'support') openSupportChat();
           }}
         />
       )}

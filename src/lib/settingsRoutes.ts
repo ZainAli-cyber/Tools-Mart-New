@@ -9,6 +9,7 @@ import {
   setGlobalProxyConfig,
 } from './globalProxySettings';
 import { invalidateProxyAgentCache, testProxyUrl } from './proxyFetch';
+import { getShowToolAccessLabels, setShowToolAccessLabels } from './toolAccessLabels';
 
 const router = Router();
 
@@ -165,6 +166,42 @@ router.post('/global-proxy/test', async (req, res) => {
     });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error?.message || 'Proxy test failed' });
+  }
+});
+
+/** GET /api/settings/tool-access-labels — public-ish (any signed-in member) */
+router.get('/tool-access-labels', async (req, res) => {
+  try {
+    const current = await actor(req);
+    if (!current) return res.status(401).json({ error: 'Not authorized' });
+    const { admin } = clients();
+    const setting = await getShowToolAccessLabels(admin);
+    return res.json({
+      enabled: Boolean(setting.enabled),
+      ...(setting.setupRequired ? { setupRequired: true } : {}),
+    });
+  } catch {
+    return res.json({ enabled: false });
+  }
+});
+
+/** PATCH /api/settings/tool-access-labels — admin only */
+router.patch('/tool-access-labels', async (req, res) => {
+  try {
+    const current = await actor(req);
+    if (!current) return res.status(401).json({ error: 'Not authorized' });
+    if (current.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const raw = req.body?.enabled ?? req.body?.show_tool_access_labels;
+    if (typeof raw !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+    const { admin } = clients();
+    const enabled = await setShowToolAccessLabels(raw, admin);
+    return res.json({ enabled });
+  } catch (error: any) {
+    const message = error?.message || 'Could not update setting';
+    const setup = /app_settings|supabase_device_limits/i.test(message);
+    return res.status(setup ? 503 : 500).json({ error: message, enabled: false });
   }
 });
 

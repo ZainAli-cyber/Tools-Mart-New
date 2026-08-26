@@ -61,6 +61,8 @@ export const CookiesPage: React.FC = () => {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showLabels, setShowLabels] = useState(false);
+  const [labelsBusy, setLabelsBusy] = useState(false);
 
   const load = async () => {
     const list = await loadCatalogTools({ includeCookies: true });
@@ -68,6 +70,32 @@ export const CookiesPage: React.FC = () => {
   };
 
   useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { getToolAccessLabelsSetting } = await import('../../lib/settingsApi');
+        const data = await getToolAccessLabelsSetting();
+        setShowLabels(Boolean(data.enabled));
+      } catch {
+        setShowLabels(false);
+      }
+    })();
+  }, []);
+
+  const toggleLabels = async () => {
+    setLabelsBusy(true);
+    try {
+      const { setToolAccessLabelsSetting } = await import('../../lib/settingsApi');
+      const data = await setToolAccessLabelsSetting(!showLabels);
+      setShowLabels(Boolean(data.enabled));
+      showToast(data.enabled ? 'Tool access labels are now visible on member dashboards' : 'Tool access labels are now hidden');
+    } catch (err: any) {
+      showToast(err?.message || 'Could not update label setting');
+    } finally {
+      setLabelsBusy(false);
+    }
+  };
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -176,6 +204,29 @@ export const CookiesPage: React.FC = () => {
             <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">{label}</div>
           </div>
         ))}
+      </div>
+
+      <div className="bg-[#130d0d] border border-[#2a1e1c] rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-extrabold text-white">Show access labels on tools</h3>
+          <p className="text-xs text-slate-400 mt-1">
+            When ON, members see <strong className="text-slate-300">EXTENSION</strong> / <strong className="text-slate-300">ONE CLICK</strong> badges on each tool.
+            Turn OFF to hide those labels on the dashboard.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={labelsBusy}
+          onClick={() => void toggleLabels()}
+          className="cursor-pointer text-xs font-bold px-4 py-2 rounded-xl border transition shrink-0 disabled:opacity-50"
+          style={
+            showLabels
+              ? { background: '#dc262622', color: '#f87171', borderColor: '#dc262644' }
+              : { background: '#1a1210', color: '#666', borderColor: '#2a1e1c' }
+          }
+        >
+          {labelsBusy ? '…' : showLabels ? 'ON' : 'OFF'}
+        </button>
       </div>
 
       <div className="bg-[#130d0d] border border-[#2a1e1c] rounded-2xl p-4 flex items-start gap-3">

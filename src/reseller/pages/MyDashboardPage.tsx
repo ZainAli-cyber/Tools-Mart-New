@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { LayoutGrid, Search, Lock, Check, ArrowUpRight, MessageCircle, ShoppingBag, Video, User, Copy, IdCard } from 'lucide-react';
 import { Pill } from '../components/ResellerUI';
 import { useToolLaunch } from '../components/ToolLaunchFlow';
@@ -37,7 +37,20 @@ export const MyDashboardPage: React.FC<Props> = ({
   const [tab, setTab] = useState<ToolTab>('all');
   const [search, setSearch] = useState('');
   const [copied, setCopied] = useState(false);
+  const [showAccessLabels, setShowAccessLabels] = useState(false);
   const { launch, ui: launchUi } = useToolLaunch({ onOpenExtensionsPage: onExtensions });
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { getToolAccessLabelsSetting } = await import('../../lib/settingsApi');
+        const data = await getToolAccessLabelsSetting();
+        setShowAccessLabels(Boolean(data.enabled));
+      } catch {
+        setShowAccessLabels(false);
+      }
+    })();
+  }, []);
 
   const now = new Date();
   const owned = useMemo(() => new Set(ownedTools.map(t => t.toLowerCase())), [ownedTools]);
@@ -180,7 +193,7 @@ export const MyDashboardPage: React.FC<Props> = ({
           {visible.map(({ tool, unlocked }) => {
             // A tool the member owns is only usable while their plan is live.
             const usable = unlocked && planActive;
-            const methodLabel = accessMethodLabel(tool.accessMethod);
+            const methodLabel = showAccessLabels ? accessMethodLabel(tool.accessMethod) : null;
             return (
               <div key={tool.id}
                 className={`bg-[#130d0d] border rounded-2xl overflow-hidden flex flex-col transition ${

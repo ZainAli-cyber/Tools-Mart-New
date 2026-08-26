@@ -147,6 +147,22 @@ export const ChatBotWidget: React.FC = () => {
     return () => window.removeEventListener(SUPPORT_CHAT_EVENT, handler);
   }, []);
 
+  // Logged-in members: skip guest identity form and open straight into the assistant.
+  useEffect(() => {
+    if (!open || !account) return;
+    if (identity) return;
+    const name = String(account.name || nameInput || '').trim();
+    const phone = String(phoneInput || '').trim();
+    if (!name) return;
+    const guest = { name, phone: phone || '—' };
+    saveGuest(guest);
+    setIdentity(guest);
+    setPhase('menu');
+    setMessages([
+      msg('bot', `Hi ${guest.name}! How can we help today? Pick a suggestion or ask about pricing, plans, or support.`),
+    ]);
+  }, [open, account, identity, nameInput, phoneInput]);
+
   useEffect(() => {
     const session = readPortalSession();
     if (!session || session.role === 'admin') return;
@@ -474,7 +490,7 @@ export const ChatBotWidget: React.FC = () => {
   return (
     <>
       {toast && (
-        <div className={`fixed ${panelBottom} right-6 z-[60] max-w-xs bg-[#130d0d] border border-red-500/40 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-2xl`}>
+        <div className={`fixed ${panelBottom} right-6 z-[90] max-w-xs bg-[#130d0d] border border-red-500/40 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-2xl`}>
           {toast}
         </div>
       )}
@@ -483,10 +499,10 @@ export const ChatBotWidget: React.FC = () => {
         <div
           className={
             native
-              ? 'fixed inset-0 z-[60] flex flex-col bg-[var(--bg-input)]'
-              : `fixed ${panelBottom} right-4 sm:right-6 z-[60] w-[min(100vw-2rem,380px)] h-[min(62vh,480px)] flex flex-col bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden`
+              ? 'fixed inset-0 z-[90] flex flex-col bg-[#0d0908]'
+              : `fixed ${panelBottom} right-4 sm:right-6 z-[90] w-[min(100vw-2rem,380px)] h-[min(62vh,480px)] flex flex-col bg-[#130d0d] border border-[#2a1e1c] rounded-2xl shadow-2xl overflow-hidden`
           }
-          style={native ? { paddingBottom: 'max(env(safe-area-inset-bottom), 0px)' } : undefined}
+          style={native ? { paddingTop: 'max(env(safe-area-inset-top), 0px)', paddingBottom: 'max(env(safe-area-inset-bottom), 0px)' } : undefined}
         >
           <div className="px-4 py-3 border-b border-red-800/40 bg-red-700 flex items-center justify-between gap-2">
             <div className="min-w-0">

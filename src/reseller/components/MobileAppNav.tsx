@@ -31,12 +31,13 @@ function tabsForRole(role: MobileRole): TabDef[] {
     { id: 'home', page: 'dashboard', label: 'Home', icon: LayoutDashboard },
     { id: 'shop', page: 'shop', label: 'Shop', icon: ShoppingBag },
     { id: 'support', page: 'support', label: 'Support', icon: Headphones },
-    { id: 'tickets', page: 'inbox', label: 'Tickets', icon: Inbox },
   ];
 }
 
 function activeTab(page: UserPage, role: MobileRole): string {
   const tabs = tabsForRole(role);
+  // Customers: Support + Tickets are the same screen
+  if (role === 'user' && page === 'inbox') return 'support';
   const hit = tabs.find(t => t.page === page);
   if (hit) return hit.id;
   if (page === 'notifications' || page === 'profile' || page === 'settings') return '';
