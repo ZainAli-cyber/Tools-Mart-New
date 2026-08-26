@@ -311,7 +311,7 @@ function resolveToolAccessMethod(tool: any, extra: Record<string, any>): 'one_cl
 }
 
 function cookieFields(tool: any) {
-  const extra = parseExtraJson(tool?.extra);
+  const extra = parseExtraBag(tool?.extra);
   const url =
     'toolUrl' in extra || 'tool_url' in extra
       ? String(extra.toolUrl || extra.tool_url || '')

@@ -2408,7 +2408,7 @@ function resolveToolAccessMethod(tool, extra) {
   return "extension";
 }
 function cookieFields(tool) {
-  const extra = parseExtraJson(tool?.extra);
+  const extra = parseExtraBag(tool?.extra);
   const url3 = "toolUrl" in extra || "tool_url" in extra ? String(extra.toolUrl || extra.tool_url || "") : String(tool?.tool_url || "");
   const cookiesRaw = "cookiesJson" in extra || "cookies_json" in extra ? String(extra.cookiesJson ?? extra.cookies_json ?? "") : String(tool?.cookies_json ?? "");
   const panelReferrer = "panelReferrer" in extra || "unlockReferrer" in extra || "panel_referrer" in extra ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "") : String(tool?.panel_referrer || "");
