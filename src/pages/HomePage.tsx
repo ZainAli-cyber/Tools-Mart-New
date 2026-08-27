@@ -90,21 +90,21 @@ function useCountUp(target: number, duration = 2000) {
 const StatsSection: React.FC = () => {
   const c1=useCountUp(10); const c2=useCountUp(100); const c3=useCountUp(99); const c4=useCountUp(24);
   return (
-    <section className="py-12 px-4 sm:px-6 lg:px-8" style={{ background: 'var(--bg-page)' }}>
+    <section className="py-12 px-4 sm:px-6 lg:px-8 overflow-x-hidden" style={{ background: 'var(--bg-page)' }}>
       <div className="max-w-5xl mx-auto">
         <div className="rounded-3xl border border-red-900/30 overflow-hidden glow-card" style={{ background: 'var(--glow-card-bg)' }}>
           <div className="grid grid-cols-1 lg:grid-cols-2 lg:divide-x divide-red-900/20">
-            <div className="p-8 sm:p-10 space-y-3 border-b lg:border-b-0 border-red-900/20">
+            <div className="p-8 sm:p-10 space-y-3 border-b lg:border-b-0 border-red-900/20 min-w-0">
               <span className="text-xs font-bold uppercase tracking-widest text-red-500">Our Journey</span>
-              <h2 className="text-2xl sm:text-3xl font-black text-white">Our Success</h2>
-              <p className="text-sm leading-relaxed">
+              <h2 className="text-2xl sm:text-3xl font-black text-white break-words">Our Success</h2>
+              <p className="text-sm leading-relaxed break-words">
                 <span className="text-red-400">From the beginning,</span>{' '}
                 <span className="text-slate-400">we've worked hard to bring valuable digital products, tools, and solutions to everyone. Our journey is filled with milestones that inspire us to aim higher every day.</span>
               </p>
             </div>
             <div className="grid grid-cols-2 divide-x divide-y divide-red-900/20">
               {[{r:c1,s:'K+',l:'HAPPY CLIENTS'},{r:c2,s:'+',l:'PREMIUM TOOLS'},{r:c3,s:'%',l:'UPTIME'},{r:c4,s:'/7',l:'LIVE SUPPORT'}].map((s,i)=>(
-                <div key={i} ref={s.r.ref} className="p-6 sm:p-8 flex flex-col justify-center">
+                <div key={i} ref={s.r.ref} className="p-6 sm:p-8 flex flex-col justify-center min-w-0">
                   <div className="text-3xl sm:text-4xl font-black text-white">{s.r.count}<span className="text-red-500">{s.s}</span></div>
                   <div className="text-[10px] font-bold tracking-widest mt-1 text-slate-500">{s.l}</div>
                 </div>
@@ -413,38 +413,38 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
       </section>
 
       {/* ══ PRIVATE TOOLS ══ */}
-      <section className="border-y border-red-900/20 py-16 px-4 sm:px-6 lg:px-8">
+      <section className="border-y border-red-900/20 py-16 px-4 sm:px-6 lg:px-8 overflow-x-hidden">
         <div className="max-w-7xl mx-auto space-y-10">
-          <div className="text-center space-y-3">
+          <div className="text-center space-y-3 px-1">
             <span className="text-xs font-bold uppercase tracking-widest text-red-500">Private &amp; Semi-Private</span>
-            <h2 className="text-2xl sm:text-4xl font-extrabold text-white">Private Tools — Your own dedicated seat</h2>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-2xl mx-auto">For creators & agencies who need dedicated logins instead of shared group access. Faster, safer & no session conflicts.</p>
+            <h2 className="text-2xl sm:text-4xl font-extrabold text-white break-words">Private Tools — Your own dedicated seat</h2>
+            <p className="text-xs sm:text-sm text-slate-400 max-w-2xl mx-auto break-words">For creators & agencies who need dedicated logins instead of shared group access. Faster, safer & no session conflicts.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {livePrivateTools.map((tool) => (
-              <div key={tool.id} className="glow-card rounded-3xl p-5 flex flex-col gap-4  transition">
-                <div className="flex items-start gap-3">
-                  <img src={tool.favicon} alt={tool.name} className="w-10 h-10 rounded-xl bg-white p-0.5" />
-                  <div>
+              <div key={tool.id} className="glow-card rounded-3xl p-5 flex flex-col gap-4 transition min-w-0">
+                <div className="flex items-start gap-3 min-w-0">
+                  <img src={tool.favicon} alt={tool.name} className="w-10 h-10 rounded-xl bg-white p-0.5 shrink-0" />
+                  <div className="min-w-0">
                     <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${tool.isSemiPrivate ? 'bg-red-600/20 text-red-400 border-red-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'}`}>
                       {tool.isSemiPrivate ? 'Semi-Private' : 'Private'}
                     </span>
-                    <h3 className="text-sm font-bold text-white mt-1">{tool.name}</h3>
+                    <h3 className="text-sm font-bold text-white mt-1 break-words">{tool.name}</h3>
                   </div>
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed flex-1">{tool.desc}</p>
-                <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-400 leading-relaxed flex-1 break-words">{tool.desc}</p>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-base font-black text-white">Rs {tool.price.toLocaleString()}<span className="text-xs font-medium text-slate-500">/mo</span></span>
                   <a href={waLink(tool.waText || tool.name)} target="_blank" rel="noopener noreferrer"
-                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5">
+                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0">
                     <MessageCircle className="w-3 h-3" /> Order
                   </a>
                 </div>
               </div>
             ))}
           </div>
-          <div className="text-center">
-            <p className="text-xs text-slate-400 mb-3">Need a private seat for another tool? We can arrange Ahrefs, Netflix Pro, Adobe CC and more.</p>
+          <div className="text-center px-1">
+            <p className="text-xs text-slate-400 mb-3 break-words">Need a private seat for another tool? We can arrange Ahrefs, Netflix Pro, Adobe CC and more.</p>
             <a href={`${WA_BASE}?text=${encodeURIComponent('Hi, I need a private/dedicated seat for a specific tool.')}`} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-5 py-2.5 btn-secondary-red text-xs font-bold rounded-xl transition">
               <MessageCircle className="w-4 h-4 text-emerald-500" /> Request a private tool

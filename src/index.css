@@ -291,10 +291,18 @@ body {
 /* ── Gradient glow card effect ── */
 .glow-card {
   position: relative;
+  isolation: isolate;
   background: var(--glow-card-bg);
   border: 1px solid rgba(180, 40, 20, 0.25);
   border-radius: 1rem;
-  overflow: visible;
+  overflow: hidden;
+  /* Keep real content above decorative layers */
+  z-index: 0;
+}
+
+.glow-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 [data-theme="light"] .glow-card {
@@ -340,6 +348,7 @@ body {
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
+  padding: 1px;
   pointer-events: none;
   z-index: 0;
   transition: opacity 0.3s ease;
@@ -391,6 +400,64 @@ body {
   background:
     radial-gradient(ellipse at 0% 0%, rgba(220, 60, 20, 0.16) 0%, transparent 55%),
     radial-gradient(ellipse at 100% 100%, rgba(180, 20, 0, 0.08) 0%, transparent 50%);
+}
+
+/*
+ * Android / mobile Safari: -webkit-mask + mask-composite on rounded cards
+ * often paints as red/white static and stacked ghost layers. Use a simple
+ * border card on small screens and coarse pointers.
+ */
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+  .glow-card {
+    background: var(--bg-card) !important;
+    border: 1px solid rgba(180, 40, 20, 0.35) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    transform: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  [data-theme="light"] .glow-card {
+    background: var(--bg-secondary) !important;
+    border-color: rgba(196, 23, 23, 0.28) !important;
+    box-shadow: 0 4px 16px rgba(28, 20, 18, 0.08);
+  }
+
+  .glow-card::before,
+  .glow-card::after,
+  .glow-card:hover::before,
+  .glow-card:hover::after {
+    content: none !important;
+    display: none !important;
+    background: none !important;
+    -webkit-mask: none !important;
+    mask: none !important;
+  }
+
+  .hero-glow-tl,
+  .hero-glow-tr {
+    opacity: 0.35;
+    filter: none !important;
+  }
+
+  html, body {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  /* Prevent long tool descriptions from blowing out card width */
+  .glow-card p,
+  .glow-card h2,
+  .glow-card h3 {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee { animation: none !important; }
 }
 
 /* ── Force border-radius on ALL rounded-* elements (Tailwind + custom) ── */
