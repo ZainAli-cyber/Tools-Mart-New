@@ -3,14 +3,18 @@ package com.aitoolzmart.app;
 import android.annotation.SuppressLint;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.CookieManager;
+import android.webkit.ServiceWorkerClient;
+import android.webkit.ServiceWorkerController;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -37,10 +41,10 @@ import java.util.TimeZone;
  * In-app tool browser.
  * <ul>
  *   <li>Always uses desktop Chrome UA so panel + ChatGPT cookies stick.</li>
- *   <li>Panel / unlock-referrer tools default to desktop layout (scaled to fit).</li>
- *   <li>Direct legal URLs (ChatGPT, Canva, …) default to mobile viewport.</li>
- *   <li>Top-bar Desktop / Mobile toggles switch layout without breaking cookies.</li>
- *   <li>Viewport is locked once — no scrollWidth refit while typing (stops layout jump).</li>
+ *   <li>Panel tools default to scaled desktop layout.</li>
+ *   <li>ChatGPT / OpenAI: desktop layout and NO viewport MutationObserver
+ *       (mobile viewport + meta lock breaks streaming replies in WebView).</li>
+ *   <li>Top-bar Desktop / Mobile toggles for panels / other tools.</li>
  * </ul>
  */
 public class ToolWebViewActivity extends AppCompatActivity {
@@ -65,6 +69,10 @@ public class ToolWebViewActivity extends AppCompatActivity {
     private float density;
     private int phoneCssPx;
     private boolean pageReady;
+    /** Only inject panel viewport once per main document — never on iframe finishes. */
+    private boolean viewportApplied;
+    private String lastMainUrl = "";
+    private boolean chatGptMode;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -88,8 +96,14 @@ public class ToolWebViewActivity extends AppCompatActivity {
         screenPx = getResources().getDisplayMetrics().widthPixels;
         phoneCssPx = Math.max(320, Math.round(screenPx / density));
 
-        // Panels need desktop chrome; direct legal sites (ChatGPT etc.) start in mobile view.
-        viewMode = prefersPanelDesktop() ? ViewMode.DESKTOP : ViewMode.MOBILE;
+        // ChatGPT must use desktop layout without meta-viewport locking (streaming UI breaks otherwise).
+        // Panel tools use scaled desktop. Other direct sites can use mobile.
+        chatGptMode = isChatGptHost(hostFromUrl(destinationUrl));
+        if (chatGptMode || prefersPanelDesktop()) {
+            viewMode = ViewMode.DESKTOP;
+        } else {
+            viewMode = ViewMode.MOBILE;
+        }
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -99,12 +113,15 @@ public class ToolWebViewActivity extends AppCompatActivity {
         root.addView(bar);
 
         webView = new WebView(this);
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(false);
         // Never switch to mobile UA — panel + ChatGPT sessions drop with mobile UA.
         settings.setUserAgentString(UA_DESKTOP);
         settings.setUseWideViewPort(true);
@@ -114,6 +131,27 @@ public class ToolWebViewActivity extends AppCompatActivity {
         settings.setDisplayZoomControls(false);
         settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NORMAL);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            settings.setSafeBrowsingEnabled(true);
+        }
+
+        // Let ChatGPT service workers see the same cookies (needed for stream/session).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                ServiceWorkerController sw = ServiceWorkerController.getInstance();
+                sw.getServiceWorkerWebSettings().setAllowContentAccess(true);
+                sw.getServiceWorkerWebSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+                sw.setServiceWorkerClient(new ServiceWorkerClient() {
+                    @Override
+                    public WebResourceResponse shouldInterceptRequest(WebResourceRequest request) {
+                        // Do not intercept — returning a response here can break SSE/WebSocket streaming.
+                        return null;
+                    }
+                });
+            } catch (Exception ignored) {
+                /* older WebView */
+            }
+        }
 
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
@@ -127,6 +165,10 @@ public class ToolWebViewActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 if (request == null || request.getUrl() == null) return false;
+                // Only handle main-frame navigations for panel Referer; never touch XHR/fetch.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && !request.isForMainFrame()) {
+                    return false;
+                }
                 String next = request.getUrl().toString();
                 if (needsUnlockReferrer(next) && !referrerUrl.isEmpty()) {
                     view.loadUrl(next, unlockHeaders());
@@ -146,10 +188,26 @@ public class ToolWebViewActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                String u = url != null ? url : "";
+                if (!u.equals(lastMainUrl)) {
+                    lastMainUrl = u;
+                    viewportApplied = false;
+                }
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 pageReady = true;
-                // Apply fixed viewport once per load — do not remeasure scrollWidth (typing shift).
-                injectLockedViewport();
+                // ChatGPT: never mutate viewport / install MutationObserver — that kills stream UI.
+                if (chatGptMode) {
+                    injectChatGptStreamAssist();
+                    return;
+                }
+                if (!viewportApplied) {
+                    viewportApplied = true;
+                    injectLockedViewport();
+                }
             }
         });
 
@@ -161,7 +219,12 @@ public class ToolWebViewActivity extends AppCompatActivity {
         setContentView(root);
         refreshToggleStyles();
 
-        webView.loadUrl(destinationUrl, unlockHeaders());
+        // ChatGPT: load without custom headers so fetch/WebSocket auth is clean.
+        if (chatGptMode || referrerUrl.isEmpty()) {
+            webView.loadUrl(destinationUrl);
+        } else {
+            webView.loadUrl(destinationUrl, unlockHeaders());
+        }
     }
 
     private LinearLayout buildTopBar(String title) {
@@ -223,14 +286,22 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private void setViewMode(ViewMode mode) {
         if (viewMode == mode) {
-            // Re-apply locked viewport if user taps active mode after a site mutated meta.
-            if (pageReady) injectLockedViewport();
+            if (pageReady && !chatGptMode) injectLockedViewport();
             return;
         }
         viewMode = mode;
         refreshToggleStyles();
         applyNativeScale();
-        if (pageReady) injectLockedViewport();
+        viewportApplied = false;
+        if (pageReady) {
+            if (chatGptMode) {
+                // Soft reload keeps cookies; clears a stuck ChatGPT stream renderer.
+                webView.reload();
+            } else {
+                injectLockedViewport();
+                viewportApplied = true;
+            }
+        }
     }
 
     private void refreshToggleStyles() {
@@ -252,8 +323,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
     private void applyNativeScale() {
         if (webView == null) return;
         if (viewMode == ViewMode.DESKTOP) {
-            int desktopLayoutPx = 1280;
-            int initialScalePct = Math.max(28, Math.min(100, (screenPx * 100) / desktopLayoutPx));
+            int desktopLayoutPx = chatGptMode ? 1100 : 1280;
+            int initialScalePct = Math.max(30, Math.min(100, (screenPx * 100) / desktopLayoutPx));
             webView.setInitialScale(initialScalePct);
         } else {
             webView.setInitialScale(100);
@@ -261,11 +332,12 @@ public class ToolWebViewActivity extends AppCompatActivity {
     }
 
     /**
-     * Fixed viewport for current mode. Never derives width from scrollWidth —
-     * that caused ChatGPT / panel layouts to jump while the keyboard or DOM updated.
+     * Fixed viewport for panel / non-ChatGPT tools.
+     * Never derives width from scrollWidth (typing shift).
+     * No MutationObserver loop — that can thrash React apps mid-render.
      */
     private void injectLockedViewport() {
-        if (webView == null) return;
+        if (webView == null || chatGptMode) return;
         final String content;
         if (viewMode == ViewMode.DESKTOP) {
             double scale = Math.min(1.0, (double) phoneCssPx / 1280.0);
@@ -273,7 +345,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
             content = "width=1280, initial-scale=" + String.format(Locale.US, "%.4f", scale)
                 + ", minimum-scale=0.15, maximum-scale=5, user-scalable=yes";
         } else {
-            content = "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, user-scalable=yes";
+            content = "width=device-width, initial-scale=1, minimum-scale=0.5, maximum-scale=5, user-scalable=yes";
         }
 
         String js = "(function(){"
@@ -282,18 +354,37 @@ public class ToolWebViewActivity extends AppCompatActivity {
             + "var m=document.querySelector('meta[name=\"viewport\"]');"
             + "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');"
             + "(document.head||document.documentElement).appendChild(m);}"
-            + "function lock(){m.setAttribute('content',CONTENT);}"
-            + "lock();"
-            + "if(!window.__zynexVpLock){"
-            + "  window.__zynexVpLock=true;"
+            + "m.setAttribute('content',CONTENT);"
+            + "}catch(e){}"
+            + "})();";
+        webView.evaluateJavascript(js, null);
+    }
+
+    /**
+     * Light assist for ChatGPT in WebView: keep conversation scrolled into view when
+     * the DOM grows (stream tokens). Does not touch viewport or network.
+     */
+    private void injectChatGptStreamAssist() {
+        if (webView == null) return;
+        String js = "(function(){"
+            + "try{"
+            + "if(window.__zynexGptAssist)return;"
+            + "window.__zynexGptAssist=true;"
+            + "function scrollChat(){"
             + "  try{"
-            + "    new MutationObserver(function(){"
-            + "      if(m.getAttribute('content')!==CONTENT)lock();"
-            + "    }).observe(m,{attributes:true,attributeFilter:['content']});"
+            + "    var nodes=document.querySelectorAll('[data-message-author-role], main [class*=\"markdown\"], main');"
+            + "    var el=nodes&&nodes.length?nodes[nodes.length-1]:null;"
+            + "    if(el&&el.scrollIntoView)el.scrollIntoView({block:'end',behavior:'smooth'});"
             + "  }catch(e){}"
             + "}"
-            + "document.documentElement.style.width='100%';"
-            + "if(document.body){document.body.style.margin=document.body.style.margin||'0';}"
+            + "var t=null;"
+            + "var obs=new MutationObserver(function(){"
+            + "  if(t)clearTimeout(t);"
+            + "  t=setTimeout(scrollChat,120);"
+            + "});"
+            + "var root=document.body||document.documentElement;"
+            + "obs.observe(root,{childList:true,subtree:true});"
+            + "setTimeout(scrollChat,800);"
             + "}catch(e){}"
             + "})();";
         webView.evaluateJavascript(js, null);
@@ -316,13 +407,19 @@ public class ToolWebViewActivity extends AppCompatActivity {
         return false;
     }
 
-    private boolean isDirectLegalHost(String host) {
+    private boolean isChatGptHost(String host) {
         if (host == null) return false;
         String h = host.toLowerCase(Locale.US);
         return h.equals("chatgpt.com")
             || h.endsWith(".chatgpt.com")
             || h.equals("chat.openai.com")
-            || h.endsWith(".openai.com")
+            || h.endsWith(".openai.com");
+    }
+
+    private boolean isDirectLegalHost(String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(Locale.US);
+        return isChatGptHost(h)
             || h.equals("canva.com")
             || h.endsWith(".canva.com")
             || h.equals("www.canva.com")
