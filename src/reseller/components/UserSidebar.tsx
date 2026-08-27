@@ -61,7 +61,7 @@ export const UserSidebar: React.FC<Props> = ({
         <img
           src="/logo.png"
           alt="ZynexTools"
-          className={`${collapsed ? 'h-9 w-9 object-cover object-left rounded-md' : 'h-10 w-auto max-w-[160px] object-contain object-left'} shrink-0`}
+          className={`${collapsed ? 'h-8 w-8 object-contain' : 'h-10 w-auto max-w-[160px] object-contain object-left'} shrink-0`}
         />
       </div>
 

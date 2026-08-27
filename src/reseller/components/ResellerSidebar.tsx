@@ -38,7 +38,7 @@ export const ResellerSidebar: React.FC<Props> = ({
       {!collapsed ? (
         <img src="/logo.png" alt="ZynexTools" className="h-9 w-auto max-w-[140px] object-contain object-left" />
       ) : (
-        <img src="/logo.png" alt="ZynexTools" className="h-9 w-9 object-cover object-left rounded-md" />
+        <img src="/logo.png" alt="ZynexTools" className="h-8 w-8 object-contain" />
       )}
       <button onClick={onToggle} className="p-1.5 hover:bg-[#1a1210] rounded-xl transition cursor-pointer text-slate-400 hover:text-white">
         {collapsed ? <Menu className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}

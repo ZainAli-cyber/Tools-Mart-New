@@ -337,11 +337,15 @@ export const ResellerApp: React.FC = () => {
         {/* Topbar */}
         <header className="sticky top-0 z-20 bg-[#0d0908]/95 backdrop-blur border-b border-[#2a1e1c] flex items-center justify-between gap-3 px-5 py-3">
           {nativeApp ? (
-            <div className="flex items-center gap-3 min-w-0">
-              <img src="/logo.png" alt="ZynexTools" className="h-10 w-auto max-w-[140px] shrink-0 object-contain object-left" />
-              <div className="min-w-0">
-                <p className="text-[10px] text-slate-500 truncate">Hi, {session.name}</p>
-              </div>
+            <div className="flex flex-col items-start justify-center min-w-0 gap-0.5">
+              <img
+                src="/logo.png"
+                alt="ZynexTools"
+                className="h-9 w-auto max-w-[160px] object-contain object-left"
+              />
+              <p className="text-[10px] text-slate-400 truncate max-w-[180px] leading-tight">
+                Hi, {session.name}
+              </p>
             </div>
           ) : (
           <div>

@@ -211,10 +211,10 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
             </div>
 
             {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-tight tracking-tight">
-              Best Group Buy<br />
-              <span className="text-red-500">SEO Tools</span><br />
-              <span className="text-slate-300">Provider Worldwide.</span>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-tight tracking-tight uppercase">
+              Pakistan<br />
+              <span className="text-red-500"># 01</span><br />
+              <span className="text-slate-300">Tools Provider</span>
             </h1>
 
             {/* Subtext */}
