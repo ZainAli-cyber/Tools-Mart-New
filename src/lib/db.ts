@@ -219,7 +219,7 @@ export function seedIfEmpty(): void {
 
 // ── DEFAULT_SETTINGS export (still used by some UI components) ────────────
 export const DEFAULT_SETTINGS = {
-  siteName:        'AI TOOLZ MART',
+  siteName:        'ZynexTools',
   contactEmail:    'emaan@aitoolsmart.com',
   whatsapp:        '+923275855578',
   currency:        'PKR',
@@ -228,7 +228,7 @@ export const DEFAULT_SETTINGS = {
   maintenanceMode: false,
   easypaisa:       '03XX-XXXXXXX',
   jazzcash:        '03XX-XXXXXXX',
-  paypalEmail:     'payments@aitoolzmart.com',
+  paypalEmail:     'payments@zynextools.com',
   bankName:        'Meezan Bank',
   bankAccount:     '0123456789',
 };

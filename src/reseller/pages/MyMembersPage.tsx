@@ -507,7 +507,7 @@ export const MyMembersPage: React.FC<Props> = ({ ownerId, ownerName, ownerMaxDev
                     onTools={() => setToolsTarget(m)}
                     onDevices={() => setDevicesTarget(m)}
                     onInvoice={() => openInvoice(m)}
-                    whatsappHref={m.phone ? waLink(m.phone, `Hi ${m.name}, regarding your AI TOOLZ MART subscription.`) : undefined}
+                    whatsappHref={m.phone ? waLink(m.phone, `Hi ${m.name}, regarding your ZynexTools subscription.`) : undefined}
                     onSuspend={() => suspend(m)}
                     onDelete={() => del(m)}
                   />

@@ -69,7 +69,7 @@ const SLIDER_ITEMS: SliderItem[] = [
     badge: 'User Testimonial',
     title: '"Saved Our Agency $15,000 Annually"',
     subtitle: 'Trusted by over 100,000 Marketers and Webmasters Worldwide',
-    desc: 'AI TOOLZ MART gives us instant, accurate keyword density counts, schema JSON-LD markups, and meta tag generators without monthly subscription fees. It is our daily go-to tool suite.',
+    desc: 'ZynexTools gives us instant, accurate keyword density counts, schema JSON-LD markups, and meta tag generators without monthly subscription fees. It is our daily go-to tool suite.',
     icon: <Star className="w-8 h-8 text-amber-400 fill-amber-400" />,
     category: 'Verified Review',
     quoteAuthor: 'Marcus Vance',
@@ -101,7 +101,7 @@ const SLIDER_ITEMS: SliderItem[] = [
     badge: 'User Testimonial',
     title: '"The Best Free SEO Platform Available"',
     subtitle: 'Seamless Performance with Zero Ads or Registration Paywalls',
-    desc: 'Finding a completely free, fast, and secure suite of webmaster tools that respects user privacy is rare. AI TOOLZ MART delivers exceptional speed and precision every single time.',
+    desc: 'Finding a completely free, fast, and secure suite of webmaster tools that respects user privacy is rare. ZynexTools delivers exceptional speed and precision every single time.',
     icon: <Heart className="w-8 h-8 text-red-500 fill-red-500" />,
     category: 'Verified Review',
     quoteAuthor: 'Elena Rostova',
@@ -148,7 +148,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
         <div className="inline-flex items-center gap-2 bg-slate-900 rounded-full px-4 py-1.5 shadow-lg">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs font-bold text-slate-300">
-            AI TOOLZ MART Cloud &bull; About Our Platform
+            ZynexTools Cloud &bull; About Our Platform
           </span>
           <span className="bg-red-600/20 text-red-400 border border-red-500/30 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase">
             100% Free Suite
@@ -163,7 +163,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
         </h1>
 
         <p className="text-slate-400 text-xs sm:text-sm max-w-3xl mx-auto leading-relaxed">
-          AI TOOLZ MART was founded on a simple, uncompromising vision: to provide bloggers, digital agencies, web developers, and students with unlimited access to high-precision, enterprise-grade search engine optimization utilities — completely free, without credit cards, paywalls, or mandatory account registration.
+          ZynexTools was founded on a simple, uncompromising vision: to provide bloggers, digital agencies, web developers, and students with unlimited access to high-precision, enterprise-grade search engine optimization utilities — completely free, without credit cards, paywalls, or mandatory account registration.
         </p>
 
         {/* Action Buttons */}
@@ -348,7 +348,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
             For years, small business owners, bloggers, and aspiring digital marketers faced a major hurdle: standard webmaster and SEO software suites were locked behind expensive monthly subscriptions, capping usage with strict daily quotas and artificial waiting queues.
           </p>
           <p className="text-xs text-slate-300 leading-relaxed">
-            AI TOOLZ MART was created to eliminate those barriers. We engineered a ultra-fast, serverless tool suite that handles article rewriting, plagiarism verification, keyword density calculations, meta tag generation, and schema markup directly in your browser with zero subscription charges.
+            ZynexTools was created to eliminate those barriers. We engineered a ultra-fast, serverless tool suite that handles article rewriting, plagiarism verification, keyword density calculations, meta tag generation, and schema markup directly in your browser with zero subscription charges.
           </p>
         </div>
 
@@ -432,13 +432,13 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
           </div>
           <div>
             <h2 className="text-xl font-bold text-white">About Page - Frequently Asked Questions</h2>
-            <p className="text-xs text-slate-400">Everything you need to know about AI TOOLZ MART Cloud</p>
+            <p className="text-xs text-slate-400">Everything you need to know about ZynexTools Cloud</p>
           </div>
         </div>
 
         <div className="space-y-4">
           <div className="glow-card rounded-2xl p-5 space-y-2">
-            <h3 className="text-sm font-bold text-white">Is AI TOOLZ MART truly 100% free with no hidden limits?</h3>
+            <h3 className="text-sm font-bold text-white">Is ZynexTools truly 100% free with no hidden limits?</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
               Yes, absolutely. All 80+ tools on our platform are completely free to use without mandatory sign-ups, credit cards, or daily usage caps.
             </p>
@@ -464,7 +464,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
       <div className="bg-gradient-to-r from-red-950/60 via-slate-900 to-slate-950 rounded-3xl p-8 text-center space-y-4 shadow-2xl">
         <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Ready to Optimize Your Search Engine Rankings?</h2>
         <p className="text-xs sm:text-sm text-slate-400 max-w-2xl mx-auto">
-          Join thousands of bloggers, SEO experts, and web developers who rely on AI TOOLZ MART every single day.
+          Join thousands of bloggers, SEO experts, and web developers who rely on ZynexTools every single day.
         </p>
         <div className="pt-2">
           <button

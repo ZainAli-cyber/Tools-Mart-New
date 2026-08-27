@@ -11,7 +11,7 @@ interface AllToolsPageProps {
 }
 
 const WA_BASE = 'https://wa.me/923275855578';
-const waLink = (text: string) => `${WA_BASE}?text=${encodeURIComponent(`Hi AI TOOLZ MART, I want to buy ${text}.`)}`;
+const waLink = (text: string) => `${WA_BASE}?text=${encodeURIComponent(`Hi ZynexTools, I want to buy ${text}.`)}`;
 const CATEGORIES = ['All', 'SEO', 'Design', 'AI', 'Learning', 'Video', 'Audio', 'YouTube', 'AI Dev'];
 
 export const AllToolsPage: React.FC<AllToolsPageProps> = ({ onNavigate }) => {
@@ -113,7 +113,7 @@ export const AllToolsPage: React.FC<AllToolsPageProps> = ({ onNavigate }) => {
         <h2 className="text-xl font-extrabold text-white">Ready to get started?</h2>
         <p className="text-sm text-slate-400">Choose a plan and get all these tools in one subscription from just $5/mo</p>
         <div className="flex flex-wrap gap-3 justify-center">
-          <a href="https://app.aitoolzmart.com/signup" target="_blank" rel="noopener noreferrer"
+          <a href="https://zynextools.com/signup" target="_blank" rel="noopener noreferrer"
             className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-sm rounded-xl flex items-center gap-2 transition">
             Sign Up Now <ArrowRight className="w-4 h-4" />
           </a>

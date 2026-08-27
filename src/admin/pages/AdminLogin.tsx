@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, Mail, Shield, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, AlertCircle } from 'lucide-react';
 import { authStore } from '../store/authStore';
 import { ThemeToggle } from '../../components/ThemeToggle';
 
@@ -32,12 +32,10 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
         <div className="bg-[#130d0d]/90 border border-[#3a2a26] rounded-3xl p-8 shadow-2xl"
           style={{ boxShadow: '0 0 60px rgba(204,26,26,0.15)' }}>
           <div className="text-center mb-8 space-y-3">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center shadow-lg shadow-red-900/40">
-              <Shield className="w-8 h-8 text-white" />
-            </div>
+            <img src="/logo.png" alt="ZynexTools" className="h-14 w-auto mx-auto object-contain" />
             <div>
               <h1 className="text-2xl font-black text-white">Admin Panel</h1>
-              <p className="text-sm text-slate-400 mt-1">AI TOOLZ MART · Secure Access</p>
+              <p className="text-sm text-slate-400 mt-1">ZynexTools · Secure Access</p>
             </div>
           </div>
           {error && (

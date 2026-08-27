@@ -42,7 +42,7 @@ const PLANS_COPY = `Here are our current group-buy plans (PKR / month):
 
 Reseller panels start at Lite Rs 5,560 / mo. Visit /plans for full details, or tap Contact support if you want help choosing.`;
 
-const INFO_COPY = `AI TOOLZ MART gives you shared access to 80+ premium SEO, AI, design & learning tools — Semrush, Ahrefs, Canva Pro, ChatGPT Plus, Envato and more — in one affordable plan.
+const INFO_COPY = `ZynexTools gives you shared access to 80+ premium SEO, AI, design & learning tools — Semrush, Ahrefs, Canva Pro, ChatGPT Plus, Envato and more — in one affordable plan.
 
 • Activation usually within ~5 minutes after payment confirmation
 • Use from your member dashboard (/reseller after login)
@@ -505,12 +505,15 @@ export const ChatBotWidget: React.FC = () => {
           style={native ? { paddingTop: 'max(env(safe-area-inset-top), 0px)', paddingBottom: 'max(env(safe-area-inset-bottom), 0px)' } : undefined}
         >
           <div className="px-4 py-3 border-b border-red-800/40 bg-red-700 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-sm font-black truncate" style={{ color: '#ffffff' }}>AI TOOLZ MART</div>
-              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.9)' }}>
-                {activeTicket && isTicketOpen(activeTicket.status)
-                  ? `Ticket ${activeTicket.id}`
-                  : 'Live chat assistant'}
+            <div className="flex items-center gap-2 min-w-0">
+              <img src="/logo.png" alt="" className="h-8 w-auto object-contain shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-black truncate" style={{ color: '#ffffff' }}>ZynexTools</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                  {activeTicket && isTicketOpen(activeTicket.status)
+                    ? `Ticket ${activeTicket.id}`
+                    : 'Live chat assistant'}
+                </div>
               </div>
             </div>
             <button

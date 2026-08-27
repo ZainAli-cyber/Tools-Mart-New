@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">AI Toolz Mart</string>
-    <string name="title_activity_main">AI Toolz Mart</string>
+    <string name="app_name">ZynexTools</string>
+    <string name="title_activity_main">ZynexTools</string>
     <string name="package_name">com.aitoolzmart.app</string>
     <string name="custom_url_scheme">com.aitoolzmart.app</string>
 </resources>

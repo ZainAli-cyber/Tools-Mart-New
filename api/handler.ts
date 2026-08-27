@@ -15,7 +15,7 @@ type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
 const healthPayload = () => ({
   status: 'ok' as const,
-  service: 'AI TOOLZ MART',
+  service: 'ZynexTools',
   timestamp: new Date().toISOString(),
 });
 

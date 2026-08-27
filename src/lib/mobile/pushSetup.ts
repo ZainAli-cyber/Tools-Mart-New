@@ -11,7 +11,7 @@ export async function initMobilePush() {
     await LocalNotifications.requestPermissions();
     await LocalNotifications.createChannel({
       id: 'aitoolzmart_alerts',
-      name: 'AI Toolz Mart Alerts',
+      name: 'ZynexTools Alerts',
       description: 'Admin updates, support replies, and ticket alerts',
       importance: 5,
       sound: 'default',
@@ -57,7 +57,7 @@ export async function initMobilePush() {
         notifications: [
           {
             id: Date.now() % 2147483647,
-            title: notification.title || 'AI Toolz Mart',
+            title: notification.title || 'ZynexTools',
             body: notification.body || '',
             channelId: 'aitoolzmart_alerts',
             sound: 'default',

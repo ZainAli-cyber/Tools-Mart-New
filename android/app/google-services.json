@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "895645538490",
+    "project_id": "aitoolzmart-app",
+    "storage_bucket": "aitoolzmart-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:895645538490:android:3c7fb0d857e74c2efc0a83",
+        "android_client_info": {
+          "package_name": "com.aitoolzmart.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBNwZqT0XRAwCbvRTsTEijJW5puiZE4Mm0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

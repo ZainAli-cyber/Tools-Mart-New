@@ -24,7 +24,7 @@ export const PromoPopup: React.FC = () => {
   if (!visible) return null;
 
   const handleClaim = () => {
-    const msg = encodeURIComponent('Hi AI TOOLZ MART! I want to claim the Premium Plan at 30% OFF. Coupon: PREMIUM30');
+    const msg = encodeURIComponent('Hi ZynexTools! I want to claim the Premium Plan at 30% OFF. Coupon: PREMIUM30');
     window.open(`${WA_BASE}?text=${msg}`, '_blank');
     setVisible(false);
   };

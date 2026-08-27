@@ -1,4 +1,4 @@
-# AI Toolz Mart — Android Mobile App
+# ZynexTools — Android Mobile App
 
 One-tap tool access for mobile users (no Chrome extension).
 
@@ -7,7 +7,8 @@ One-tap tool access for mobile users (no Chrome extension).
 When you see this checklist complete, open Android Studio and build:
 
 - [x] Website logo on splash + app icon + dashboard header
-- [x] Brand colors (#0d0908 background, #DC2626 red accents)
+- [x] App launcher icon (maroon-gold ZYNEX square) in all mipmap densities + adaptive icon
+- [x] Brand colors (#090303 background, maroon #5D0808 / gold accents)
 - [x] Live support chat (same ChatBotWidget as website)
 - [x] Support tickets inbox in app
 - [x] Bottom navigation by role (user / reseller / admin)
@@ -57,7 +58,7 @@ npm run build:mobile
 npm run cap:open:android
 ```
 
-Build APK in Android Studio, copy to `public/downloads/aitoolzmart.apk`, deploy.
+Build APK in Android Studio, copy to `public/downloads/zynextools.apk`, deploy.
 
 ### 5. Test
 
@@ -88,7 +89,7 @@ npm run cap:open:android
 In Android Studio:
 1. Wait for Gradle sync
 2. **Build → Build Bundle(s) / APK(s) → Build APK(s)**
-3. Copy `android/app/build/outputs/apk/debug/app-debug.apk` to `public/downloads/aitoolzmart.apk`
+3. Copy `android/app/build/outputs/apk/debug/app-debug.apk` to `public/downloads/zynextools.apk`
 4. Deploy to Vercel (or set `MOBILE_APK_URL` env var)
 
 Command line (if Gradle works):
@@ -100,10 +101,10 @@ npm run android:apk
 
 | Env | Purpose |
 |-----|---------|
-| `VITE_PORTAL_URL` | Portal origin for bundled APK API calls (default: tools-mart-latest.vercel.app) |
+| `VITE_PORTAL_URL` | Portal origin for bundled APK API calls (default: zynextools.com) |
 | `CAPACITOR_SERVER_URL` | Override portal URL in Capacitor config |
 | `CAPACITOR_USE_BUNDLED=1` | Ship dashboard inside APK instead of loading remote portal |
-| `MOBILE_APK_URL` | Download link shown on dashboard (default: `/downloads/aitoolzmart.apk`) |
+| `MOBILE_APK_URL` | Download link shown on dashboard (default: `/downloads/zynextools.apk`) |
 | `MOBILE_APK_VERSION` | Version label on download button |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase service account JSON for FCM push (Vercel server) |
 

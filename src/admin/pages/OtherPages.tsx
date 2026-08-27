@@ -537,7 +537,7 @@ export const CustomersPage: React.FC = () => {
       onPlan={() => setPlanTarget(c)}
       onTools={() => setToolsTarget(c)}
       onDevices={() => setDevicesTarget(c)}
-      whatsappHref={c.phone ? waLink(c.phone, `Hi ${c.name}, regarding your AI TOOLZ MART subscription.`) : undefined}
+      whatsappHref={c.phone ? waLink(c.phone, `Hi ${c.name}, regarding your ZynexTools subscription.`) : undefined}
       onSuspend={() => suspend(c)}
       onDelete={() => del(c)}
     />

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AI Toolz Mart Access",
+  "name": "ZynexTools Access",
   "version": "1.3.5",
-  "description": "Applies AI Toolz Mart admin cookies (clears personal ChatGPT session first) and unlocks toolaccess panels.",
+  "description": "Applies ZynexTools admin cookies (clears personal ChatGPT session first) and unlocks toolaccess panels.",
   "permissions": [
     "storage",
     "cookies",
@@ -36,7 +36,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "AI Toolz Mart Access",
+    "default_title": "ZynexTools Access",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

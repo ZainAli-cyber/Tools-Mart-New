@@ -688,7 +688,7 @@ router.post('/launch', async (req, res) => {
     if (fields.accessMethod !== 'one_click') {
       return res.status(403).json({
         error:
-          'This tool requires the AI Toolz Mart Access browser extension. Install it from the Installation Guide, then open again.',
+          'This tool requires the ZynexTools Access browser extension. Install it from the Installation Guide, then open again.',
         accessMethod: 'extension',
       });
     }

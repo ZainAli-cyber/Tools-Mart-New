@@ -92,7 +92,7 @@ export async function sendPushToAccounts(items: PushItem[]) {
     if (!id) continue;
     grouped.set(id, {
       accountId: id,
-      title: String(item.title || 'AI Toolz Mart').trim() || 'AI Toolz Mart',
+      title: String(item.title || 'ZynexTools').trim() || 'ZynexTools',
       message: String(item.message || '').trim(),
     });
   }
@@ -139,7 +139,7 @@ export async function sendPushForNoteRows(rows: Record<string, any>[]) {
     if (row.read === true) continue;
     items.push({
       accountId,
-      title: String(row.title || 'AI Toolz Mart'),
+      title: String(row.title || 'ZynexTools'),
       message: String(row.message || ''),
     });
   }

@@ -52,7 +52,7 @@ function canDispatch(profile: { id: string; role: string }, items: PushItem[]) {
 
 /** Public mobile app metadata — APK download link for dashboard. */
 router.get('/info', (_req, res) => {
-  const apkUrl = String(process.env.MOBILE_APK_URL || '/downloads/aitoolzmart.apk').trim();
+  const apkUrl = String(process.env.MOBILE_APK_URL || '/downloads/zynextools.apk').trim();
   const version = String(process.env.MOBILE_APK_VERSION || '1.1.0').trim();
   res.json({
     ok: true,
@@ -60,7 +60,7 @@ router.get('/info', (_req, res) => {
     apkUrl,
     version,
     minAndroid: 24,
-    appName: 'AI Toolz Mart',
+    appName: 'ZynexTools',
     pushEnabled: pushConfigured(),
     note: 'Install once. Tools and cookies update automatically when you open them — no reinstall needed.',
   });
@@ -112,7 +112,7 @@ router.post('/push/dispatch', async (req, res) => {
       ? req.body.items
           .map((row: any) => ({
             accountId: String(row.accountId || row.account_id || '').trim(),
-            title: String(row.title || 'AI Toolz Mart'),
+            title: String(row.title || 'ZynexTools'),
             message: String(row.message || ''),
           }))
           .filter((row: PushItem) => row.accountId)
@@ -124,7 +124,7 @@ router.post('/push/dispatch', async (req, res) => {
       if (!accountId || row.read === true) continue;
       items.push({
         accountId,
-        title: String(row.title || 'AI Toolz Mart'),
+        title: String(row.title || 'ZynexTools'),
         message: String(row.message || ''),
       });
     }

@@ -33,7 +33,7 @@ const NAV_LINKS = [
   { label: 'About', path: '/about' },
 ];
 
-const WA_LINK = 'https://wa.me/923275855578?text=Hi%20AI%20TOOLZ%20MART%2C%20I%20am%20messaging%20you%20from%20your%20website.%20I%20need%20help%20please';
+const WA_LINK = 'https://wa.me/923275855578?text=Hi%20ZynexTools%2C%20I%20am%20messaging%20you%20from%20your%20website.%20I%20need%20help%20please';
 
 export const Header: React.FC<HeaderProps> = ({
   currentPath,
@@ -115,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <img
               src="/logo.png"
-              alt="AI TOOLZ MART"
+              alt="ZynexTools"
               className="h-20 w-auto object-contain group-hover:scale-105 transition-transform duration-200"
             />
           </button>

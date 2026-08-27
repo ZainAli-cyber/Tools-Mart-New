@@ -24,7 +24,7 @@ export const TOOLS: ToolItem[] = [
       { title: 'Privacy Guaranteed', desc: 'Your uploaded text is never saved or indexed in public repositories.' }
     ],
     faqs: [
-      { question: 'Is this Plagiarism Checker completely free?', answer: 'Yes! AI TOOLZ MART provides unlimited plagiarism scans at zero cost without mandatory sign-ups.' },
+      { question: 'Is this Plagiarism Checker completely free?', answer: 'Yes! ZynexTools provides unlimited plagiarism scans at zero cost without mandatory sign-ups.' },
       { question: 'What is the maximum word limit per check?', answer: 'You can analyze up to 2,500 words per single check.' }
     ]
   },
@@ -375,7 +375,7 @@ export const TOOLS: ToolItem[] = [
       { title: 'Complete Network Overview', desc: 'Displays IP, ISP, country, browser, screen dimensions, and HTTP headers.' }
     ],
     faqs: [
-      { question: 'Is my IP address saved on AI TOOLZ MART?', answer: 'No, IP information is queried on-demand and never stored in server databases.' }
+      { question: 'Is my IP address saved on ZynexTools?', answer: 'No, IP information is queried on-demand and never stored in server databases.' }
     ]
   },
   {

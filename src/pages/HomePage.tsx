@@ -135,7 +135,7 @@ interface HomePageProps {
 
 const WA_BASE = 'https://wa.me/923275855578';
 const waLink = (text: string) =>
-  `${WA_BASE}?text=${encodeURIComponent(`Hi AI TOOLZ MART, I want to buy ${text}.`)}`;
+  `${WA_BASE}?text=${encodeURIComponent(`Hi ZynexTools, I want to buy ${text}.`)}`;
 
 
 const FAQS = [
@@ -195,8 +195,8 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
       <section className="relative overflow-hidden pt-10 pb-28 px-4 sm:px-6 lg:px-8 border-b border-red-900/30" style={{ background: 'var(--hero-bg)' }}>
         {/* Theme-aware red glows */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="hero-glow-tl" style={{position:'absolute',top:'-10%',left:'-5%',width:'55%',height:'80%',background:'radial-gradient(ellipse at 30% 40%, rgba(180,0,0,0.28) 0%, rgba(120,0,0,0.12) 40%, transparent 70%)'}} />
-          <div className="hero-glow-tr" style={{position:'absolute',top:'0%',right:'-5%',width:'50%',height:'70%',background:'radial-gradient(ellipse at 70% 30%, rgba(160,0,0,0.18) 0%, rgba(80,0,0,0.08) 45%, transparent 70%)'}} />
+          <div className="hero-glow-tl" style={{position:'absolute',top:'-10%',left:'-5%',width:'55%',height:'80%',background:'radial-gradient(ellipse at 30% 40%, rgba(93,8,8,0.45) 0%, rgba(54,16,18,0.2) 40%, transparent 70%)'}} />
+          <div className="hero-glow-tr" style={{position:'absolute',top:'0%',right:'-5%',width:'50%',height:'70%',background:'radial-gradient(ellipse at 70% 30%, rgba(246,216,144,0.12) 0%, rgba(93,8,8,0.18) 45%, transparent 70%)'}} />
           <div style={{position:'absolute',bottom:0,left:0,right:0,height:'30%',background:'var(--hero-fade)'}} />
         </div>
 
@@ -210,7 +210,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               <span className="text-xs font-extrabold text-red-400 uppercase tracking-widest">Trusted by 10,000+ Clients</span>
             </div>
 
-            {/* Headline — matches reference exactly */}
+            {/* Headline */}
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-tight tracking-tight">
               Best Group Buy<br />
               <span className="text-red-500">SEO Tools</span><br />
@@ -219,7 +219,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
 
             {/* Subtext */}
             <p className="text-sm text-slate-400 leading-relaxed max-w-lg">
-              AI TOOLZ MART is the <strong className="text-white">best group buy SEO tools provider</strong> — get Semrush, Ahrefs, Canva Pro, ChatGPT Plus, Envato & 80+ premium tools in one affordable plan. Trusted by freelancers, agencies & resellers worldwide.
+              ZynexTools is the <strong className="text-white">best group buy SEO tools provider</strong> — get Semrush, Ahrefs, Canva Pro, ChatGPT Plus, Envato & 80+ premium tools in one affordable plan. Trusted by freelancers, agencies & resellers worldwide.
             </p>
 
             {/* Stars */}
@@ -232,7 +232,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
             {/* CTAs */}
             <div className="flex flex-wrap gap-3">
               <a
-                href="https://app.aitoolzmart.com/signup"
+                href="https://zynextools.com/signup"
                 target="_blank" rel="noopener noreferrer"
                 className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-sm rounded-xl shadow-lg shadow-red-900/30 transition flex items-center gap-2"
               >
@@ -354,7 +354,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                   <div className="text-[10px] font-bold text-emerald-400">Save 99% today</div>
                 </div>
                 <a
-                  href="https://app.aitoolzmart.com/signup"
+                  href="https://zynextools.com/signup"
                   target="_blank" rel="noopener noreferrer"
                   className="px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-xs rounded-xl transition whitespace-nowrap shadow-lg shadow-red-900/30"
                 >
@@ -539,7 +539,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                     </li>
                   ))}
                 </ul>
-                <a href="https://app.aitoolzmart.com/signup" target="_blank" rel="noopener noreferrer"
+                <a href="https://zynextools.com/signup" target="_blank" rel="noopener noreferrer"
                   className={`w-full py-3 rounded-xl text-sm font-black text-center transition block ${plan.highlight ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-900/30 border border-transparent' : 'btn-secondary-red'}`}>
                   {plan.cta}
                 </a>
@@ -656,7 +656,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               ))}
             </div>
             <div className="flex flex-wrap gap-3 pt-2">
-              <a href={`${WA_BASE}?text=${encodeURIComponent('Hi AI TOOLZ MART, I want to join the Reseller Program ($20).')}`} target="_blank" rel="noopener noreferrer"
+              <a href={`${WA_BASE}?text=${encodeURIComponent('Hi ZynexTools, I want to join the Reseller Program ($20).')}`} target="_blank" rel="noopener noreferrer"
                 className="px-5 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-sm rounded-xl transition flex items-center gap-2">
                 <MessageCircle className="w-4 h-4" /> Join the Program
               </a>
@@ -687,7 +687,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
       {/* ══ COMPARISON ══ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-8">
         <div className="text-center space-y-3">
-          <span className="text-xs font-bold uppercase tracking-widest text-red-500">📊 Why Choose AI TOOLZ MART?</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-red-500">📊 Why Choose ZynexTools?</span>
           <h2 className="text-2xl sm:text-4xl font-extrabold text-white">See How We Stack Up Against the Competition</h2>
           <p className="text-xs sm:text-sm text-slate-400 max-w-2xl mx-auto">The most feature-packed group buy platform — at the lowest price you'll find anywhere.</p>
         </div>
@@ -697,7 +697,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               <thead>
                 <tr className="border-b border-slate-800">
                   <th className="text-left p-4 text-slate-400 font-semibold">Feature</th>
-                  <th className="p-4 text-red-400 font-extrabold">AI TOOLZ MART ⭐ Best Choice</th>
+                  <th className="p-4 text-red-400 font-extrabold">ZynexTools ⭐ Best Choice</th>
                   <th className="p-4 text-slate-400 font-semibold">Others</th>
                 </tr>
               </thead>
@@ -785,11 +785,11 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
       {/* ══ SEO CONTENT ══ */}
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-12 space-y-5">
         <div className="text-center mb-6">
-          <span className="text-xs font-bold uppercase tracking-widest text-red-500">Why AI TOOLZ MART</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-red-500">Why ZynexTools</span>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-2">The Best Group Buy SEO Tools Provider in 2026</h2>
         </div>
         <div className="text-sm text-slate-400 leading-relaxed space-y-4">
-          <p>Looking for the <strong className="text-white">best group buy SEO tools provider</strong>? AI TOOLZ MART gives you instant access to 80+ premium SEO, AI, design and learning tools — Semrush, Ahrefs, Moz, Canva Pro, ChatGPT Plus, Envato Elements, Grammarly, SpyFu, Helium 10 and more — in one affordable group buy plan starting at just <strong className="text-white">$5/month</strong>.</p>
+          <p>Looking for the <strong className="text-white">best group buy SEO tools provider</strong>? ZynexTools gives you instant access to 80+ premium SEO, AI, design and learning tools — Semrush, Ahrefs, Moz, Canva Pro, ChatGPT Plus, Envato Elements, Grammarly, SpyFu, Helium 10 and more — in one affordable group buy plan starting at just <strong className="text-white">$5/month</strong>.</p>
           <p>Our group buy SEO tools service is trusted by 20,000+ freelancers, agencies, bloggers and resellers worldwide. Every account is verified, secure and activated within 5 minutes. Whether you need a <strong className="text-white">cheap Semrush group buy</strong>, <strong className="text-white">Ahrefs group buy</strong> access, or a complete <strong className="text-white">group buy SEO tools website</strong> for your own clients, we've got you covered — with 24/7 WhatsApp support and a money-back guarantee.</p>
           <p>Stop paying $4,000+ per month for individual subscriptions. Join the best group buy SEO tools provider today and save up to 99% on premium SEO tools.</p>
         </div>

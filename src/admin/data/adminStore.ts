@@ -21,9 +21,9 @@ const SEED_TOOLS: Tool[] = [
 ];
 
 const DEFAULT_SETTINGS: Settings = {
-  siteName:'AI TOOLZ MART', contactEmail:'emaan@aitoolsmart.com', whatsapp:'+923275855578',
+  siteName:'ZynexTools', contactEmail:'emaan@aitoolsmart.com', whatsapp:'+923275855578',
   currency:'PKR', invoicePrefix:'INV', taxPercent:'0', maintenanceMode:false,
-  easypaisa:'03XX-XXXXXXX', jazzcash:'03XX-XXXXXXX', paypalEmail:'payments@aitoolzmart.com',
+  easypaisa:'03XX-XXXXXXX', jazzcash:'03XX-XXXXXXX', paypalEmail:'payments@zynextools.com',
   bankName:'Meezan Bank', bankAccount:'0123456789',
 };
 

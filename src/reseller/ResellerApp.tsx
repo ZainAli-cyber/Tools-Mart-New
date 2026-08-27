@@ -300,7 +300,7 @@ export const ResellerApp: React.FC = () => {
           <main className="flex-1 p-5 lg:p-6">{renderPanel()}</main>
 
           <footer className="border-t border-[#1a1210] px-6 py-3 flex items-center justify-between text-xs text-slate-700">
-            <span>AI TOOLZ MART Reseller Panel · v1.0</span>
+            <span>ZynexTools Reseller Panel · v1.0</span>
             <span>{new Date().getFullYear()} · Secure Session</span>
           </footer>
         </div>
@@ -338,9 +338,8 @@ export const ResellerApp: React.FC = () => {
         <header className="sticky top-0 z-20 bg-[#0d0908]/95 backdrop-blur border-b border-[#2a1e1c] flex items-center justify-between gap-3 px-5 py-3">
           {nativeApp ? (
             <div className="flex items-center gap-3 min-w-0">
-              <img src="/logo.png" alt="AI Toolz Mart" className="h-10 w-auto shrink-0 object-contain" />
+              <img src="/logo.png" alt="ZynexTools" className="h-10 w-auto max-w-[140px] shrink-0 object-contain object-left" />
               <div className="min-w-0">
-                <h1 className="text-sm font-black text-white truncate">AI Toolz Mart</h1>
                 <p className="text-[10px] text-slate-500 truncate">Hi, {session.name}</p>
               </div>
             </div>
@@ -496,7 +495,7 @@ export const ResellerApp: React.FC = () => {
 
         {!nativeApp && (
         <footer className="border-t border-[#1a1210] px-6 py-3 flex items-center justify-between text-xs text-slate-700">
-          <span>AI TOOLZ MART · Digital Tools Suite</span>
+          <span>ZynexTools · Digital Tools Suite</span>
           <span>{new Date().getFullYear()} · Secure Session</span>
         </footer>
         )}

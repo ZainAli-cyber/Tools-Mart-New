@@ -57,18 +57,12 @@ export const UserSidebar: React.FC<Props> = ({
       style={{ boxShadow: 'var(--shadow-panel)' }}>
 
       {/* Brand */}
-      <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-2'} p-4 border-b border-[#2a1e1c] h-16`}>
+      <div className={`flex items-center ${collapsed ? 'justify-center' : ''} p-3 border-b border-[#2a1e1c] h-16`}>
         <img
           src="/logo.png"
-          alt="AI Toolz Mart"
-          className={`${collapsed ? 'h-8 w-8 object-contain' : 'h-9 w-auto object-contain'} shrink-0`}
+          alt="ZynexTools"
+          className={`${collapsed ? 'h-9 w-9 object-cover object-left rounded-md' : 'h-10 w-auto max-w-[160px] object-contain object-left'} shrink-0`}
         />
-        {!collapsed && (
-          <div className="leading-tight min-w-0">
-            <div className="text-sm font-extrabold text-white truncate">Ai Toolz Mart</div>
-            <div className="text-[9px] text-slate-500 truncate">Digital Tools Suite</div>
-          </div>
-        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 pb-2">

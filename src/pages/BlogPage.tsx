@@ -16,7 +16,7 @@ export const BlogPage: React.FC<BlogPageProps> = ({ onNavigate }) => {
           <BookOpen className="w-3.5 h-3.5" /> SEO Insights & Guides
         </div>
         <h1 className="text-3xl sm:text-5xl font-black text-white">
-          AI TOOLZ MART Knowledge Base
+          ZynexTools Knowledge Base
         </h1>
         <p className="text-xs sm:text-sm text-slate-400">
           In-depth tutorials, ranking strategies, and webmaster guides to help you master search engine optimization.

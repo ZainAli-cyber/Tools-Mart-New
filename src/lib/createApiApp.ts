@@ -75,7 +75,7 @@ export function createApiApp() {
   });
 
   app.get(['/api/health', '/health'], (_req, res) => {
-    res.json({ status: 'ok', service: 'AI TOOLZ MART', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', service: 'ZynexTools', timestamp: new Date().toISOString() });
   });
 
   app.use('/api/admin', adminRouter);

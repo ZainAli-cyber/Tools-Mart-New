@@ -229,7 +229,7 @@ export const MyDashboardPage: React.FC<Props> = ({
                       title={
                         methodLabel === 'ONE CLICK'
                           ? 'One click from dashboard. Cookie auto-login still needs Access extension when admin saved cookies.'
-                          : 'Requires AI Toolz Mart Access extension for cookie auto-login'
+                          : 'Requires ZynexTools Access extension for cookie auto-login'
                       }
                     >
                       {methodLabel}

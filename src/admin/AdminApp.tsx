@@ -107,7 +107,7 @@ export const AdminApp: React.FC = () => {
           <div className="flex items-center gap-3">
             <h1 className="text-sm font-extrabold text-white">{page === 'notifications' ? 'Notifications Center' : page === 'cookies' ? 'Cookies' : page.charAt(0).toUpperCase() + page.slice(1)}</h1>
             <span className="text-slate-500 hidden sm:block">·</span>
-            <span className="text-xs text-slate-500 hidden sm:block">AI TOOLZ MART Admin</span>
+            <span className="text-xs text-slate-500 hidden sm:block">ZynexTools Admin</span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -142,7 +142,7 @@ export const AdminApp: React.FC = () => {
         </main>
 
         <footer className="border-t border-[var(--border-subtle)] px-6 py-3 flex items-center justify-between text-xs text-slate-500">
-          <span>AI TOOLZ MART Admin Panel · v1.0</span>
+          <span>ZynexTools Admin Panel · v1.0</span>
           <span>{new Date().getFullYear()} · Secure Session</span>
         </footer>
       </div>

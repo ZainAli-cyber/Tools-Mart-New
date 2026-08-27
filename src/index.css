@@ -1,84 +1,105 @@
 @import "tailwindcss";
 
-/* ── Dark theme (designed default) ── */
+/* ── ZynexTools dark theme ── */
 :root,
 [data-theme="dark"] {
-  --bg-primary:   #0f0c0c;
-  --bg-secondary: #1a1412;
-  --bg-card:      #231a18;
-  --bg-card-alt:  #2a1f1c;
-  --bg-surface:   #130d0d;
-  --bg-input:     #0d0908;
-  --bg-elevated:  #1a1210;
-  --bg-page:      #0a0808;
-  --border:       #3a2a26;
-  --border-light: #4a3530;
-  --border-subtle:#2a1e1c;
-  --text-primary: #f0ebe8;
-  --text-muted:   #a89890;
-  --text-faint:   #6b5c56;
-  --red:          #cc1a1a;
-  --red-dark:     #a31414;
-  --red-light:    #e83030;
-  --red-glow:     rgba(204,26,26,0.15);
-  --shadow-panel: 4px 0 24px rgba(0,0,0,0.4);
-  --glow-card-bg: linear-gradient(145deg, #1e0a0a 0%, #180b0b 35%, #110808 65%, #1a0d0d 100%);
-  --glow-card-bg-hover: linear-gradient(145deg, #250e0e 0%, #1c0a0a 35%, #130909 65%, #200e0e 100%);
-  --hero-bg:           #000000;
-  --hero-card-bg:      #0d0808;
-  --hero-chip-bg:      rgba(15, 23, 42, 0.8);
-  --hero-tile-bg:      #1a0a0a;
-  --hero-panel-bg:     #130808;
-  --hero-fade:         linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
-  --hero-ticker-bg:    rgba(0, 0, 0, 0.6);
-  --alert-danger-bg:   rgba(127, 29, 29, 0.3);
-  --alert-danger-border: rgba(239, 68, 68, 0.4);
-  --alert-danger-text: #fca5a5;
-  --btn-secondary-bg:  rgba(220, 38, 38, 0.2);
-  --btn-secondary-bg-hover: rgba(220, 38, 38, 0.3);
-  --btn-secondary-border: rgba(239, 68, 68, 0.4);
-  --btn-secondary-text: #fca5a5;
-  --tip-amber: #fde68a;
+  --bg-primary:   #120405;
+  --bg-secondary: #090303;
+  --bg-card:      #24090B;
+  --bg-card-alt:  #351012;
+  --bg-surface:   #090303;
+  --bg-input:     #090303;
+  --bg-elevated:  #24090B;
+  --bg-page:      #120405;
+  --border:       #6F2626;
+  --border-light: #C69B47;
+  --border-subtle:#351012;
+  --text-primary: #FFF8EE;
+  --text-muted:   #D6CDD0;
+  --text-faint:   #95898B;
+  /* Legacy --red* tokens now map to maroon (brand primary) */
+  --red:          #5D0808;
+  --red-dark:     #351012;
+  --red-light:    #6F2626;
+  --red-glow:     rgba(93, 8, 8, 0.28);
+  --gold:         #F6D890;
+  --gold-strong:  #D9B85F;
+  --gold-dark:    #B98A35;
+  --gold-hover:   #E2BF6B;
+  --premium-border: #C69B47;
+  --shadow-panel: 4px 0 24px rgba(0,0,0,0.55);
+  --glow-card-bg: linear-gradient(145deg, #24090B 0%, #1a0608 40%, #120405 70%, #24090B 100%);
+  --glow-card-bg-hover: linear-gradient(145deg, #351012 0%, #24090B 40%, #1a0608 70%, #351012 100%);
+  --hero-bg:           #090303;
+  --hero-card-bg:      #24090B;
+  --hero-chip-bg:      rgba(36, 9, 11, 0.92);
+  --hero-tile-bg:      #351012;
+  --hero-panel-bg:     #120405;
+  --hero-fade:         linear-gradient(to top, rgba(18, 4, 5, 0.92), transparent);
+  --hero-ticker-bg:    rgba(9, 3, 3, 0.72);
+  --alert-danger-bg:   rgba(93, 8, 8, 0.35);
+  --alert-danger-border: rgba(111, 38, 38, 0.7);
+  --alert-danger-text: #F6D890;
+  --btn-secondary-bg:  #24090B;
+  --btn-secondary-bg-hover: #351012;
+  --btn-secondary-border: #6F2626;
+  --btn-secondary-text: #F6D890;
+  --btn-primary-bg: #F6D890;
+  --btn-primary-text: #5D0808;
+  --btn-primary-hover: #E2BF6B;
+  --tip-amber: #F6D890;
+  --success: #19B978;
+  --warning: #F4C542;
 }
 
-/* ── Light theme — warm paper surfaces + Tools-Mart red accents ── */
+/* ── Light theme — cream surfaces + maroon (not bright red) ── */
 [data-theme="light"] {
-  --bg-primary:   #f6f3f2;
+  --bg-primary:   #FFF8EE;
   --bg-secondary: #ffffff;
   --bg-card:      #ffffff;
-  --bg-card-alt:  #f0ebe9;
+  --bg-card-alt:  #F7EFE6;
   --bg-surface:   #ffffff;
-  --bg-input:     #faf8f7;
-  --bg-elevated:  #f3efed;
-  --bg-page:      #f6f3f2;
-  --border:       #cbb8b1;
-  --border-light: #b9a49c;
-  --border-subtle:#ddd0cb;
-  --text-primary: #1c1412;
-  --text-muted:   #3f3531;
-  --text-faint:   #5c4f4a;
-  --red:          #c41717;
-  --red-dark:     #9e1212;
-  --red-light:    #e02525;
-  --red-glow:     rgba(196,23,23,0.12);
-  --shadow-panel: 4px 0 24px rgba(28,20,18,0.08);
-  --glow-card-bg: linear-gradient(145deg, #fff8f6 0%, #ffffff 40%, #faf6f4 100%);
-  --glow-card-bg-hover: linear-gradient(145deg, #fff2ef 0%, #ffffff 40%, #faf0ed 100%);
-  --hero-bg:           #f3eeec;
+  --bg-input:     #FFF8EE;
+  --bg-elevated:  #F7EFE6;
+  --bg-page:      #FFF8EE;
+  --border:       #D6CDD0;
+  --border-light: #B98A35;
+  --border-subtle:#E8DFD6;
+  --text-primary: #120405;
+  --text-muted:   #5D0808;
+  --text-faint:   #95898B;
+  --red:          #5D0808;
+  --red-dark:     #351012;
+  --red-light:    #6F2626;
+  --red-glow:     rgba(93, 8, 8, 0.12);
+  --gold:         #D9B85F;
+  --gold-strong:  #B98A35;
+  --gold-dark:    #B98A35;
+  --gold-hover:   #C69B47;
+  --premium-border: #C69B47;
+  --shadow-panel: 4px 0 24px rgba(18, 4, 5, 0.08);
+  --glow-card-bg: linear-gradient(145deg, #FFF8EE 0%, #ffffff 45%, #F7EFE6 100%);
+  --glow-card-bg-hover: linear-gradient(145deg, #F7EFE6 0%, #ffffff 45%, #FFF8EE 100%);
+  --hero-bg:           #FFF8EE;
   --hero-card-bg:      #ffffff;
-  --hero-chip-bg:      #ebe4e1;
-  --hero-tile-bg:      #f7f1ef;
-  --hero-panel-bg:     #faf6f4;
-  --hero-fade:         linear-gradient(to top, rgba(246, 243, 242, 0.95), transparent);
-  --hero-ticker-bg:    rgba(255, 255, 255, 0.85);
-  --alert-danger-bg:   #fde8e8;
-  --alert-danger-border: #e11d1d;
-  --alert-danger-text: #8b1212;
-  --btn-secondary-bg:  rgba(196, 23, 23, 0.12);
-  --btn-secondary-bg-hover: rgba(196, 23, 23, 0.2);
-  --btn-secondary-border: rgba(158, 18, 18, 0.55);
-  --btn-secondary-text: #9e1212;
-  --tip-amber: #92400e;
+  --hero-chip-bg:      #F7EFE6;
+  --hero-tile-bg:      #FFF8EE;
+  --hero-panel-bg:     #F7EFE6;
+  --hero-fade:         linear-gradient(to top, rgba(255, 248, 238, 0.95), transparent);
+  --hero-ticker-bg:    rgba(255, 255, 255, 0.9);
+  --alert-danger-bg:   #F7EFE6;
+  --alert-danger-border: #5D0808;
+  --alert-danger-text: #5D0808;
+  --btn-secondary-bg:  rgba(93, 8, 8, 0.08);
+  --btn-secondary-bg-hover: rgba(93, 8, 8, 0.14);
+  --btn-secondary-border: rgba(93, 8, 8, 0.45);
+  --btn-secondary-text: #5D0808;
+  --btn-primary-bg: #5D0808;
+  --btn-primary-text: #FFF8EE;
+  --btn-primary-hover: #351012;
+  --tip-amber: #B98A35;
+  --success: #19B978;
+  --warning: #F4C542;
 }
 
 /* Apply base colours */
@@ -92,6 +113,80 @@ html[data-theme="light"] {
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
+}
+
+/* ── Brand remaps: Tailwind red utilities → Zynex maroon / gold ── */
+.text-red-300,
+.text-red-400,
+.text-red-500 {
+  color: var(--gold-strong) !important;
+}
+[data-theme="light"] .text-red-300,
+[data-theme="light"] .text-red-400,
+[data-theme="light"] .text-red-500 {
+  color: var(--red) !important;
+}
+
+.bg-red-600,
+.bg-red-700,
+.bg-red-800,
+.bg-red-600\/90 {
+  background-color: var(--btn-primary-bg) !important;
+  color: var(--btn-primary-text) !important;
+}
+.hover\:bg-red-600:hover,
+.hover\:bg-red-700:hover {
+  background-color: var(--btn-primary-hover) !important;
+  color: var(--btn-primary-text) !important;
+}
+.bg-red-600 .text-white,
+.bg-red-700 .text-white,
+.bg-red-600.text-white,
+.bg-red-700.text-white,
+a.bg-red-600,
+button.bg-red-600 {
+  color: var(--btn-primary-text) !important;
+}
+
+.bg-red-600\/10 { background-color: var(--red-glow) !important; }
+.bg-red-600\/20 {
+  background-color: var(--btn-secondary-bg) !important;
+  color: var(--btn-secondary-text) !important;
+  border-color: var(--btn-secondary-border) !important;
+}
+.hover\:bg-red-600\/30:hover {
+  background-color: var(--btn-secondary-bg-hover) !important;
+}
+
+.border-red-500\/20,
+.border-red-500\/30,
+.border-red-500\/40,
+.border-red-900\/20,
+.border-red-900\/30 {
+  border-color: var(--border) !important;
+}
+.border-red-500\/50 {
+  border-color: var(--premium-border) !important;
+}
+.focus-within\:border-red-500\/50:focus-within {
+  border-color: var(--gold-dark) !important;
+}
+.shadow-red-900\/30 { --tw-shadow-color: rgba(93, 8, 8, 0.35) !important; }
+.shadow-red-900\/20 { --tw-shadow-color: rgba(93, 8, 8, 0.22) !important; }
+
+.fill-amber-400,
+.text-amber-400 {
+  color: var(--warning) !important;
+}
+.fill-amber-400 { fill: var(--warning) !important; }
+
+.btn-secondary-red {
+  background: var(--btn-secondary-bg) !important;
+  border: 1px solid var(--btn-secondary-border) !important;
+  color: var(--btn-secondary-text) !important;
+}
+.btn-secondary-red:hover {
+  background: var(--btn-secondary-bg-hover) !important;
 }
 
 /* Override Tailwind slate-950 / slate-900 / slate-800 with warm palette tokens */
@@ -293,7 +388,7 @@ body {
   position: relative;
   isolation: isolate;
   background: var(--glow-card-bg);
-  border: 1px solid rgba(180, 40, 20, 0.25);
+  border: 1px solid var(--border);
   border-radius: 1rem;
   overflow: hidden;
   /* Keep real content above decorative layers */
@@ -306,8 +401,8 @@ body {
 }
 
 [data-theme="light"] .glow-card {
-  border-color: rgba(196, 23, 23, 0.32);
-  box-shadow: 0 8px 28px rgba(28, 20, 18, 0.08);
+  border-color: color-mix(in srgb, var(--red) 35%, var(--border));
+  box-shadow: 0 8px 28px rgba(18, 4, 5, 0.08);
 }
 
 .glow-card.overflow-hidden { overflow: hidden; }
@@ -321,8 +416,8 @@ body {
   inset: 0;
   border-radius: inherit;
   background:
-    radial-gradient(ellipse at 0% 0%, rgba(220, 60, 20, 0.22) 0%, transparent 55%),
-    radial-gradient(ellipse at 100% 100%, rgba(180, 20, 0, 0.10) 0%, transparent 50%);
+    radial-gradient(ellipse at 0% 0%, rgba(246, 216, 144, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(93, 8, 8, 0.28) 0%, transparent 50%);
   pointer-events: none;
   z-index: 0;
   transition: opacity 0.3s ease;
@@ -330,8 +425,8 @@ body {
 
 [data-theme="light"] .glow-card::after {
   background:
-    radial-gradient(ellipse at 0% 0%, rgba(220, 60, 20, 0.10) 0%, transparent 55%),
-    radial-gradient(ellipse at 100% 100%, rgba(180, 20, 0, 0.05) 0%, transparent 50%);
+    radial-gradient(ellipse at 0% 0%, rgba(93, 8, 8, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(185, 138, 53, 0.08) 0%, transparent 50%);
 }
 
 .glow-card::before {
@@ -340,10 +435,10 @@ body {
   inset: -1px;
   border-radius: inherit;
   background: linear-gradient(135deg,
-    rgba(220, 60, 20, 0.55) 0%,
-    rgba(180, 30, 10, 0.25) 35%,
-    rgba(60, 10, 5, 0.15) 65%,
-    rgba(200, 40, 20, 0.35) 100%
+    rgba(246, 216, 144, 0.55) 0%,
+    rgba(185, 138, 53, 0.25) 35%,
+    rgba(93, 8, 8, 0.2) 65%,
+    rgba(198, 155, 71, 0.4) 100%
   );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -356,50 +451,50 @@ body {
 
 [data-theme="light"] .glow-card::before {
   background: linear-gradient(135deg,
-    rgba(196, 23, 23, 0.45) 0%,
-    rgba(180, 30, 10, 0.18) 35%,
-    rgba(200, 160, 150, 0.2) 65%,
-    rgba(196, 23, 23, 0.28) 100%
+    rgba(93, 8, 8, 0.45) 0%,
+    rgba(185, 138, 53, 0.22) 35%,
+    rgba(214, 205, 208, 0.25) 65%,
+    rgba(93, 8, 8, 0.3) 100%
   );
 }
 
 .glow-card:hover {
   background: var(--glow-card-bg-hover);
-  border-color: rgba(210, 50, 20, 0.45);
+  border-color: var(--premium-border);
 }
 
 [data-theme="light"] .glow-card:hover {
-  border-color: rgba(196, 23, 23, 0.35);
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
 }
 
 .glow-card:hover::before {
   background: linear-gradient(135deg,
-    rgba(240, 70, 20, 0.85) 0%,
-    rgba(200, 40, 10, 0.50) 35%,
-    rgba(100, 20, 5, 0.25) 65%,
-    rgba(230, 50, 20, 0.65) 100%
+    rgba(246, 216, 144, 0.75) 0%,
+    rgba(185, 138, 53, 0.45) 35%,
+    rgba(93, 8, 8, 0.3) 65%,
+    rgba(198, 155, 71, 0.55) 100%
   );
 }
 
 [data-theme="light"] .glow-card:hover::before {
   background: linear-gradient(135deg,
-    rgba(196, 23, 23, 0.7) 0%,
-    rgba(200, 40, 10, 0.35) 35%,
-    rgba(200, 160, 150, 0.25) 65%,
-    rgba(196, 23, 23, 0.5) 100%
+    rgba(93, 8, 8, 0.55) 0%,
+    rgba(185, 138, 53, 0.3) 35%,
+    rgba(214, 205, 208, 0.25) 65%,
+    rgba(93, 8, 8, 0.4) 100%
   );
 }
 
 .glow-card:hover::after {
   background:
-    radial-gradient(ellipse at 0% 0%, rgba(240, 70, 20, 0.32) 0%, transparent 55%),
-    radial-gradient(ellipse at 100% 100%, rgba(200, 30, 0, 0.16) 0%, transparent 50%);
+    radial-gradient(ellipse at 0% 0%, rgba(246, 216, 144, 0.2) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(93, 8, 8, 0.35) 0%, transparent 50%);
 }
 
 [data-theme="light"] .glow-card:hover::after {
   background:
-    radial-gradient(ellipse at 0% 0%, rgba(220, 60, 20, 0.16) 0%, transparent 55%),
-    radial-gradient(ellipse at 100% 100%, rgba(180, 20, 0, 0.08) 0%, transparent 50%);
+    radial-gradient(ellipse at 0% 0%, rgba(93, 8, 8, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(185, 138, 53, 0.1) 0%, transparent 50%);
 }
 
 /*
@@ -491,7 +586,7 @@ a.rounded-xl, a.rounded-2xl, a.rounded-3xl { border-radius: inherit; }
   opacity: 0.45;
 }
 
-/* Theme-aware secondary red CTA (replaces pale red-600/20 + red-300) */
+/* Theme-aware secondary CTA */
 .btn-secondary-red {
   background: var(--btn-secondary-bg) !important;
   border: 1px solid var(--btn-secondary-border) !important;
@@ -562,7 +657,7 @@ a.rounded-xl, a.rounded-2xl, a.rounded-3xl { border-radius: inherit; }
 /* Keep brand CTA on white buttons inside red channel banner */
 [data-theme="light"] .from-red-600 a.bg-white,
 [data-theme="light"] .from-red-600 .bg-white {
-  color: #c41717 !important;
+  color: #5D0808 !important;
   background-color: #ffffff !important;
 }
 

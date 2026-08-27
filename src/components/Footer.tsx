@@ -35,7 +35,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           <button onClick={() => onNavigate('/')} className="cursor-pointer text-left">
             <img
               src="/logo.png"
-              alt="AI TOOLZ MART"
+              alt="ZynexTools"
               className="h-24 w-auto object-contain"
             />
           </button>
@@ -92,8 +92,8 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               </a>
             </li>
             <li>
-              <a href="mailto:support@aitoolzmart.com" className="flex items-center gap-2 text-slate-400 hover:text-red-400 transition">
-                <Mail className="w-4 h-4 text-red-500" /> support@aitoolzmart.com
+              <a href="mailto:support@zynextools.com" className="flex items-center gap-2 text-slate-400 hover:text-red-400 transition">
+                <Mail className="w-4 h-4 text-red-500" /> support@zynextools.com
               </a>
             </li>
             <li>
@@ -116,7 +116,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
       </div>
 
       <div className="border-t border-red-900/20 py-4 px-4 text-center text-xs text-slate-500">
-        &copy; {new Date().getFullYear()} AI TOOLZ MART. Powered By Sales Bouncer
+        &copy; {new Date().getFullYear()} ZynexTools. Powered By Sales Bouncer
       </div>
     </footer>
   );

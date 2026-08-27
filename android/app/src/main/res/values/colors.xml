@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- AI Toolz Mart brand (matches web dashboard) -->
-    <color name="colorPrimary">#DC2626</color>
-    <color name="colorPrimaryDark">#991B1B</color>
-    <color name="colorAccent">#EF4444</color>
-    <color name="brand_bg">#0D0908</color>
-    <color name="brand_card">#130D0D</color>
-    <color name="brand_border">#2A1E1C</color>
-    <color name="brand_red">#DC2626</color>
-    <color name="brand_red_dark">#B91C1C</color>
-    <color name="splash_background">#0D0908</color>
+    <!-- ZynexTools brand -->
+    <color name="colorPrimary">#5D0808</color>
+    <color name="colorPrimaryDark">#120405</color>
+    <color name="colorAccent">#F6D890</color>
+    <color name="brand_bg">#120405</color>
+    <color name="brand_card">#24090B</color>
+    <color name="brand_border">#6F2626</color>
+    <color name="brand_red">#5D0808</color>
+    <color name="brand_red_dark">#351012</color>
+    <color name="splash_background">#090303</color>
 </resources>

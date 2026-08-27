@@ -1,4 +1,4 @@
-# Deploy: GitHub → Vercel (AI TOOLZ MART)
+# Deploy: GitHub → Vercel (ZynexTools)
 
 ## One-time: Supabase SQL
 Run all `supabase_*.sql` files on your Supabase project (see project README).

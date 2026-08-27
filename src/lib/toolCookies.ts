@@ -6,10 +6,10 @@ export type ToolAccessMethod = 'extension' | 'one_click';
 
 export const FALLBACK_COOKIE_KEY = 'atm_tool_cookie_fallback';
 export const EXTENSION_DOWNLOAD_URL = '/downloads/ai-toolz-mart-extension.zip';
-export const EXTENSION_DISPLAY_NAME = 'AI Toolz Mart Access';
+export const EXTENSION_DISPLAY_NAME = 'ZynexTools Access';
 
 const NEED_EXTENSION_MSG =
-  'Install the AI Toolz Mart Access browser extension to open this tool. Download it from the Installation Guide, then try again.';
+  'Install the ZynexTools Access browser extension to open this tool. Download it from the Installation Guide, then try again.';
 
 export type LaunchProgressStep =
   | 'check'
@@ -261,7 +261,7 @@ export const TOOLACCESS_NEED_EXTENSION_MSG =
 
 /** One-click auto-login needs the Access extension to write admin cookies into the browser. */
 export const COOKIES_NEED_EXTENSION_MSG =
-  'Install AI Toolz Mart Access once so one-click can apply saved cookies and open the tool logged in. Without the extension, ChatGPT only shows the login page (browsers cannot set those cookies from the dashboard).';
+  'Install ZynexTools Access once so one-click can apply saved cookies and open the tool logged in. Without the extension, ChatGPT only shows the login page (browsers cannot set those cookies from the dashboard).';
 
 export function cookiesAreSet(raw?: string | null): boolean {
   const text = String(raw || '').trim();
@@ -472,7 +472,7 @@ async function readAdminJson(res: Response): Promise<any> {
   const text = await res.text();
   if (looksLikeHtmlResponse(text)) {
     throw new Error(
-      'API is not available on this URL (got website HTML instead of JSON). Open the Production domain https://tools-mart-latest.vercel.app — not a preview link like *-uplaps.vercel.app — then sign in and Save again.',
+      'API is not available on this URL (got website HTML instead of JSON). Open the Production domain https://zynextools.com — not a preview link like *-uplaps.vercel.app — then sign in and Save again.',
     );
   }
   if (!text) return {};
@@ -868,7 +868,7 @@ function waitForExtensionMessage<T extends { action?: string; requestId?: string
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => {
       window.removeEventListener('message', onMessage);
-      reject(new Error('AI Toolz Mart extension did not respond in time.'));
+      reject(new Error('ZynexTools extension did not respond in time.'));
     }, timeoutMs);
 
     function onMessage(event: MessageEvent) {
@@ -1148,7 +1148,7 @@ async function openOneClick(
       if (err instanceof NeedExtensionError) throw err;
       throw new Error(
         err?.message ||
-          'Could not apply admin cookies. Enable Global Proxy Engine in Admin, or install AI Toolz Mart Access v1.3.5+.',
+          'Could not apply admin cookies. Enable Global Proxy Engine in Admin, or install ZynexTools Access v1.3.5+.',
       );
     }
     await reportProgress(opts, 'launching');

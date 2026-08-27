@@ -9,7 +9,7 @@ import { isMobileApp } from '../lib/mobile/toolLauncher';
 
 type Tab = 'login' | 'signup';
 
-const WA_LINK = 'https://wa.me/923275855578?text=Hi%20AI%20TOOLZ%20MART%2C%20I%20just%20created%20an%20account%20and%20want%20to%20activate%20a%20plan.';
+const WA_LINK = 'https://wa.me/923275855578?text=Hi%20ZynexTools%2C%20I%20just%20created%20an%20account%20and%20want%20to%20activate%20a%20plan.';
 
 const inputCls =
   'w-full bg-slate-900 border border-slate-700 focus:border-red-500 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none transition';
@@ -85,7 +85,7 @@ export const LoginPage: React.FC<Props> = ({ onNavigate, onSuccess, embedded = f
       <div className="w-full max-w-md mx-auto">
         <div className="text-center mb-6 space-y-2">
           {native && (
-            <img src="/logo.png" alt="AI Toolz Mart" className="h-14 w-auto mx-auto object-contain mb-2" />
+            <img src="/logo.png" alt="ZynexTools" className="h-14 w-auto mx-auto object-contain mb-2" />
           )}
           <h1 className="text-2xl sm:text-3xl font-black text-white">
             {tab === 'login' ? 'Sign in to your account' : 'Create your account'}

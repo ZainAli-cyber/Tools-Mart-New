@@ -60,7 +60,7 @@ const OrderModal: React.FC<{
     // WhatsApp — open WA directly, no admin save needed
     if (paymentMethod === 'whatsapp') {
       const msg = encodeURIComponent(
-        `Hi AI TOOLZ MART!\n\n📦 *Order Details*\n• Tool: ${tool.name}\n• Duration: ${durationLabel}\n• Qty: ${quantity}\n• Total: Rs ${totalPrice.toLocaleString()}\n\n👤 *My Details*\n• Name: ${form.name}\n• Phone: ${form.phone}${form.email ? `\n• Email: ${form.email}` : ''}${form.note ? `\n• Note: ${form.note}` : ''}\n\nPlease confirm my order!`
+        `Hi ZynexTools!\n\n📦 *Order Details*\n• Tool: ${tool.name}\n• Duration: ${durationLabel}\n• Qty: ${quantity}\n• Total: Rs ${totalPrice.toLocaleString()}\n\n👤 *My Details*\n• Name: ${form.name}\n• Phone: ${form.phone}${form.email ? `\n• Email: ${form.email}` : ''}${form.note ? `\n• Note: ${form.note}` : ''}\n\nPlease confirm my order!`
       );
       window.open(`${WA_BASE}?text=${msg}`, '_blank');
       setStep('success');
@@ -355,7 +355,7 @@ const OrderModal: React.FC<{
               </div>
             </div>
             <div className="flex gap-3">
-              <a href={`${WA_BASE}?text=${encodeURIComponent(`Hi AI TOOLZ MART! I just placed an order for ${tool.name}. My name is ${form.name}, number ${form.phone}.`)}`}
+              <a href={`${WA_BASE}?text=${encodeURIComponent(`Hi ZynexTools! I just placed an order for ${tool.name}. My name is ${form.name}, number ${form.phone}.`)}`}
                 target="_blank" rel="noopener noreferrer"
                 className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2">
                 <MessageCircle className="w-4 h-4" /> Follow up on WA
@@ -401,7 +401,7 @@ export const ToolDetailPage: React.FC<ToolDetailPageProps> = ({ slug, onNavigate
   const discount = durOpt.save ? 1 - durOpt.save / 100 : 1;
   const unitPrice = Math.round(tool.price * selectedDuration * discount);
   const totalPrice = unitPrice * quantity;
-  const waLink = `${WA_BASE}?text=${encodeURIComponent(`Hi AI TOOLZ MART, I want to buy ${tool.waText || tool.name}.`)}`;
+  const waLink = `${WA_BASE}?text=${encodeURIComponent(`Hi ZynexTools, I want to buy ${tool.waText || tool.name}.`)}`;
   const suggested = [...allTools.filter(t => t.id !== tool.id && t.category === tool.category), ...allTools.filter(t => t.id !== tool.id && t.category !== tool.category)].slice(0, 4);
 
   return (

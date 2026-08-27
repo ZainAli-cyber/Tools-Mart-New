@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Adaptive icon safe zone: inset so the logo is not cropped/zoomed -->
+    <!-- Inset keeps Z mark + ZYNEX wordmark inside the adaptive safe zone -->
     <item
-        android:top="22dp"
-        android:bottom="22dp"
-        android:left="22dp"
-        android:right="22dp">
+        android:top="16dp"
+        android:bottom="16dp"
+        android:left="16dp"
+        android:right="16dp">
         <bitmap
             android:gravity="fill"
-            android:src="@drawable/logo" />
+            android:src="@drawable/ic_launcher_foreground_full" />
     </item>
 </layer-list>

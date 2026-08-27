@@ -155,7 +155,7 @@ export const ConnectingToToolModal: React.FC<{
   );
 };
 
-/** In-dashboard installation guide when the AI Toolz Mart extension is missing. */
+/** In-dashboard installation guide when the ZynexTools extension is missing. */
 export const ExtensionInstallGuide: React.FC<{
   toolName?: string;
   onClose: () => void;
@@ -196,7 +196,7 @@ export const ExtensionInstallGuide: React.FC<{
               <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/35 bg-red-600/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-red-300">
                 <Puzzle className="h-3 w-3" /> Installation Guide
               </span>
-              <h2 className="mt-3 text-2xl font-black text-white">AI Toolz Mart</h2>
+              <h2 className="mt-3 text-2xl font-black text-white">ZynexTools</h2>
               <p className="mt-1 text-xs text-slate-400">
                 Install <strong className="text-slate-200">{EXTENSION_DISPLAY_NAME}</strong>
                 {toolName ? (

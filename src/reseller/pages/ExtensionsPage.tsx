@@ -47,7 +47,7 @@ export const ExtensionsPage: React.FC<{ customerId: string }> = ({ customerId })
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-400">
             <ShieldCheck className="h-3 w-3" /> Official Extension
           </span>
-          <h2 className="mt-3 text-2xl font-black text-white">AI Toolz Mart Secure Access</h2>
+          <h2 className="mt-3 text-2xl font-black text-white">ZynexTools Secure Access</h2>
           <p className="mt-1 max-w-xl text-xs leading-5 text-slate-400">
             Sign in with your Tools‑Mart account and verify the tools assigned to your active package.
             Opening an entitled tool from the dashboard requires <strong className="text-slate-300">{EXTENSION_DISPLAY_NAME}</strong>.

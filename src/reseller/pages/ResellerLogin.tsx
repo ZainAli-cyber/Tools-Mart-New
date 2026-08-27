@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, Mail, Store, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, AlertCircle } from 'lucide-react';
 import { resellerAuth } from '../store/resellerAuth';
 import { ThemeToggle } from '../../components/ThemeToggle';
 
@@ -31,12 +31,10 @@ export const ResellerLogin: React.FC<{ onLogin: () => void }> = ({ onLogin }) =>
           style={{ boxShadow: '0 0 60px rgba(204,26,26,0.15)' }}>
 
           <div className="text-center mb-8 space-y-3">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center shadow-lg shadow-red-900/40">
-              <Store className="w-8 h-8 text-white" />
-            </div>
+            <img src="/logo.png" alt="ZynexTools" className="h-14 w-auto mx-auto object-contain" />
             <div>
               <h1 className="text-2xl font-black text-white">Reseller Panel</h1>
-              <p className="text-sm text-slate-400 mt-1">AI TOOLZ MART · Partner Access</p>
+              <p className="text-sm text-slate-400 mt-1">ZynexTools · Partner Access</p>
             </div>
           </div>
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard, ShoppingCart, Users, Wrench, BarChart2, Bell,
-  MessageCircle, Tag, Settings, LogOut, ChevronRight, Shield,
+  MessageCircle, Tag, Settings, LogOut, ChevronRight,
   CreditCard, Receipt, Menu, X, Cookie,
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ThemeToggle';
@@ -40,14 +40,11 @@ export const AdminSidebar: React.FC<SidebarProps> = ({ current, onChange, unread
       style={{ boxShadow: 'var(--shadow-panel)' }}>
 
       {/* Header */}
-      <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} p-4 border-b border-[var(--border-subtle)] h-16`}>
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-xl bg-red-600 flex items-center justify-center">
-              <Shield className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-xs font-extrabold text-white uppercase tracking-wider">Admin</span>
-          </div>
+      <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} p-3 border-b border-[var(--border-subtle)] h-16`}>
+        {!collapsed ? (
+          <img src="/logo.png" alt="ZynexTools" className="h-9 w-auto max-w-[140px] object-contain object-left" />
+        ) : (
+          <img src="/logo.png" alt="ZynexTools" className="h-9 w-9 object-cover object-left rounded-md" />
         )}
         <button onClick={onToggle} className="p-1.5 hover:bg-[var(--bg-elevated)] rounded-xl transition cursor-pointer text-slate-400 hover:text-white">
           {collapsed ? <Menu className="w-4 h-4" /> : <X className="w-4 h-4" />}

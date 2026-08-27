@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 
-const BRAND = 'AI TOOLZ MART';
+const BRAND = 'ZynexTools';
 const BRAND_SUBTITLE = 'Client Receipt Management Software';
 
 function loadScript(src: string): Promise<void> {

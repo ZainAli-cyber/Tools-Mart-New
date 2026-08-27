@@ -16,7 +16,7 @@ export const LegalPage: React.FC<LegalPageProps> = ({ type, onNavigate }) => {
           <div className="flex items-center gap-2 text-red-500 font-bold text-xs uppercase tracking-wider">
             <Network className="w-4 h-4" /> Visual Map
           </div>
-          <h1 className="text-3xl font-extrabold text-white">AI TOOLZ MART HTML Sitemap</h1>
+          <h1 className="text-3xl font-extrabold text-white">ZynexTools HTML Sitemap</h1>
           <p className="text-xs text-slate-400">Complete listing of all tools, category sections, and pages.</p>
         </div>
 
@@ -64,7 +64,7 @@ export const LegalPage: React.FC<LegalPageProps> = ({ type, onNavigate }) => {
           <>
             <h2 className="text-base font-bold text-white">1. Information Collection and Privacy Commitment</h2>
             <p>
-              At AI TOOLZ MART Cloud, accessible from https://aitoolzmart.com, one of our main priorities is the privacy of our visitors. We do not require account registration or store personal identity records.
+              At ZynexTools Cloud, accessible from https://zynextools.com, one of our main priorities is the privacy of our visitors. We do not require account registration or store personal identity records.
             </p>
 
             <h2 className="text-base font-bold text-white">2. Content Data Security</h2>
@@ -81,7 +81,7 @@ export const LegalPage: React.FC<LegalPageProps> = ({ type, onNavigate }) => {
           <>
             <h2 className="text-base font-bold text-white">1. Terms of Use</h2>
             <p>
-              By accessing and using AI TOOLZ MART, you agree to comply with all applicable copyright and fair-use laws. All tools provided on this website are 100% free for commercial and personal usage.
+              By accessing and using ZynexTools, you agree to comply with all applicable copyright and fair-use laws. All tools provided on this website are 100% free for commercial and personal usage.
             </p>
 
             <h2 className="text-base font-bold text-white">2. Disclaimer of Warranties</h2>
@@ -91,7 +91,7 @@ export const LegalPage: React.FC<LegalPageProps> = ({ type, onNavigate }) => {
 
             <h2 className="text-base font-bold text-white">3. Limitation of Liability</h2>
             <p>
-              AI TOOLZ MART shall not be liable for any direct or indirect damages resulting from web page ranking changes or service interruptions.
+              ZynexTools shall not be liable for any direct or indirect damages resulting from web page ranking changes or service interruptions.
             </p>
           </>
         )}

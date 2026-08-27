@@ -25,7 +25,7 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onNavigate }) => {
         '37+ more premium tools',
       ],
       cta: 'Purchase Now',
-      ctaHref: 'https://app.aitoolzmart.com/signup',
+      ctaHref: 'https://zynextools.com/signup',
       highlight: false,
     },
     {
@@ -43,7 +43,7 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onNavigate }) => {
         '18+ additional premium tools',
       ],
       cta: 'Purchase Now',
-      ctaHref: 'https://app.aitoolzmart.com/signup',
+      ctaHref: 'https://zynextools.com/signup',
       highlight: false,
     },
     {
@@ -61,7 +61,7 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onNavigate }) => {
         'Priority 24/7 VIP support',
       ],
       cta: 'Purchase Now',
-      ctaHref: 'https://app.aitoolzmart.com/signup',
+      ctaHref: 'https://zynextools.com/signup',
       highlight: true,
     },
     {
@@ -78,7 +78,7 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onNavigate }) => {
         'Upgrade anytime',
       ],
       cta: 'Choose Your Tools',
-      ctaHref: `${WA_BASE}?text=${encodeURIComponent('Hi AI TOOLZ MART, I want to build a custom plan.')}`,
+      ctaHref: `${WA_BASE}?text=${encodeURIComponent('Hi ZynexTools, I want to build a custom plan.')}`,
       highlight: false,
     },
   ];
@@ -90,7 +90,7 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onNavigate }) => {
       period: '1 Month',
       badge: null,
       features: ['Unlimited User Add', '100+ Tools in Panel', 'High Profit Margin', 'Video Guide Provided', 'Premium Support', '1 IP Allowed'],
-      href: 'https://app.aitoolzmart.com/signup',
+      href: 'https://zynextools.com/signup',
     },
     {
       name: 'Guru Reseller',
@@ -98,7 +98,7 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onNavigate }) => {
       period: '1 Month',
       badge: 'Popular',
       features: ['Unlimited User Add', '100+ Tools in Panel', 'High Profit Margin', 'Video Guide Provided', 'VIP Support', '2 IPs Allowed'],
-      href: 'https://app.aitoolzmart.com/signup',
+      href: 'https://zynextools.com/signup',
     },
     {
       name: 'Pro Reseller',
@@ -106,7 +106,7 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onNavigate }) => {
       period: '6 Months',
       badge: 'Best Value',
       features: ['Unlimited User Add', '100+ Tools in Panel', 'High Profit Margin', 'Video Guide Provided', 'VIP Support', '3 IPs Allowed', 'No Limitations'],
-      href: 'https://app.aitoolzmart.com/signup',
+      href: 'https://zynextools.com/signup',
     },
   ];
 
@@ -187,7 +187,7 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onNavigate }) => {
           {GROUP_BUY_TOOLS.slice(0, 8).map((tool) => (
             <a
               key={tool.id}
-              href={`${WA_BASE}?text=${encodeURIComponent(`Hi AI TOOLZ MART, I want to buy ${tool.name}.`)}`}
+              href={`${WA_BASE}?text=${encodeURIComponent(`Hi ZynexTools, I want to buy ${tool.name}.`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="glow-card rounded-2xl p-4 flex flex-col items-center gap-2 text-center transition group"

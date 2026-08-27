@@ -34,15 +34,11 @@ export const ResellerSidebar: React.FC<Props> = ({
     style={{ boxShadow: 'var(--shadow-panel)' }}>
 
     {/* Brand */}
-    <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} p-4 border-b border-[#2a1e1c] h-16`}>
-      {!collapsed && (
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-xl bg-red-600 flex items-center justify-center text-xs font-black text-white">T</div>
-          <div className="leading-tight">
-            <div className="text-xs font-extrabold text-white">Ai Toolz Mart</div>
-            <div className="text-[9px] text-slate-500 uppercase tracking-widest">Reseller Panel</div>
-          </div>
-        </div>
+    <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} p-3 border-b border-[#2a1e1c] h-16`}>
+      {!collapsed ? (
+        <img src="/logo.png" alt="ZynexTools" className="h-9 w-auto max-w-[140px] object-contain object-left" />
+      ) : (
+        <img src="/logo.png" alt="ZynexTools" className="h-9 w-9 object-cover object-left rounded-md" />
       )}
       <button onClick={onToggle} className="p-1.5 hover:bg-[#1a1210] rounded-xl transition cursor-pointer text-slate-400 hover:text-white">
         {collapsed ? <Menu className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}

@@ -205,7 +205,7 @@ var init_db = __esm({
       resellerPayments: "reseller_payments"
     };
     DEFAULT_SETTINGS = {
-      siteName: "AI TOOLZ MART",
+      siteName: "ZynexTools",
       contactEmail: "emaan@aitoolsmart.com",
       whatsapp: "+923275855578",
       currency: "PKR",
@@ -214,7 +214,7 @@ var init_db = __esm({
       maintenanceMode: false,
       easypaisa: "03XX-XXXXXXX",
       jazzcash: "03XX-XXXXXXX",
-      paypalEmail: "payments@aitoolzmart.com",
+      paypalEmail: "payments@zynextools.com",
       bankName: "Meezan Bank",
       bankAccount: "0123456789"
     };
@@ -243,7 +243,7 @@ function apiUrl(path) {
 var DEFAULT_PORTAL;
 var init_portalBase = __esm({
   "src/lib/mobile/portalBase.ts"() {
-    DEFAULT_PORTAL = "https://tools-mart-latest.vercel.app";
+    DEFAULT_PORTAL = "https://zynextools.com";
   }
 });
 
@@ -358,7 +358,7 @@ async function sendPushToAccounts(items) {
     if (!id) continue;
     grouped.set(id, {
       accountId: id,
-      title: String(item.title || "AI Toolz Mart").trim() || "AI Toolz Mart",
+      title: String(item.title || "ZynexTools").trim() || "ZynexTools",
       message: String(item.message || "").trim()
     });
   }
@@ -402,7 +402,7 @@ async function sendPushForNoteRows(rows) {
     if (row.read === true) continue;
     items.push({
       accountId,
-      title: String(row.title || "AI Toolz Mart"),
+      title: String(row.title || "ZynexTools"),
       message: String(row.message || "")
     });
   }
@@ -1601,7 +1601,7 @@ router.get("/orders/:id/invoice", requireAuth, async (req, res) => {
     paymentStatus: order.payment_status,
     status: order.status,
     subStatus: order.sub_status,
-    business: { name: s?.site_name || "AI TOOLZ MART", email: s?.contact_email || "emaan@aitoolsmart.com", whatsapp: s?.whatsapp || "+923275855578" }
+    business: { name: s?.site_name || "ZynexTools", email: s?.contact_email || "emaan@aitoolsmart.com", whatsapp: s?.whatsapp || "+923275855578" }
   });
 });
 
@@ -4635,7 +4635,7 @@ router6.post("/launch", async (req, res) => {
     }
     if (fields.accessMethod !== "one_click") {
       return res.status(403).json({
-        error: "This tool requires the AI Toolz Mart Access browser extension. Install it from the Installation Guide, then open again.",
+        error: "This tool requires the ZynexTools Access browser extension. Install it from the Installation Guide, then open again.",
         accessMethod: "extension"
       });
     }
@@ -5155,15 +5155,15 @@ function canDispatch(profile, items) {
   return items.every((item) => item.accountId === profile.id);
 }
 router8.get("/info", (_req, res) => {
-  const apkUrl = String(process.env.MOBILE_APK_URL || "/downloads/aitoolzmart.apk").trim();
-  const version = String(process.env.MOBILE_APK_VERSION || "1.0.0").trim();
+  const apkUrl = String(process.env.MOBILE_APK_URL || "/downloads/zynextools.apk").trim();
+  const version = String(process.env.MOBILE_APK_VERSION || "1.1.0").trim();
   res.json({
     ok: true,
     platform: "android",
     apkUrl,
     version,
     minAndroid: 24,
-    appName: "AI Toolz Mart",
+    appName: "ZynexTools",
     pushEnabled: pushConfigured(),
     note: "Install once. Tools and cookies update automatically when you open them \u2014 no reinstall needed."
   });
@@ -5204,7 +5204,7 @@ router8.post("/push/dispatch", async (req, res) => {
     if (!profile) return res.status(401).json({ error: "Session expired" });
     const items = Array.isArray(req.body?.items) ? req.body.items.map((row) => ({
       accountId: String(row.accountId || row.account_id || "").trim(),
-      title: String(row.title || "AI Toolz Mart"),
+      title: String(row.title || "ZynexTools"),
       message: String(row.message || "")
     })).filter((row) => row.accountId) : [];
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
@@ -5213,7 +5213,7 @@ router8.post("/push/dispatch", async (req, res) => {
       if (!accountId || row.read === true) continue;
       items.push({
         accountId,
-        title: String(row.title || "AI Toolz Mart"),
+        title: String(row.title || "ZynexTools"),
         message: String(row.message || "")
       });
     }
@@ -5273,7 +5273,7 @@ function createApiApp() {
     return next(err);
   });
   app.get(["/api/health", "/health"], (_req, res) => {
-    res.json({ status: "ok", service: "AI TOOLZ MART", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+    res.json({ status: "ok", service: "ZynexTools", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
   });
   app.use("/api/admin", adminRoutes_default);
   app.use("/api/accounts", accountRoutes_default);
@@ -5416,7 +5416,7 @@ ${text.slice(0, 5e3)}`
 // api/handler.ts
 var healthPayload = () => ({
   status: "ok",
-  service: "AI TOOLZ MART",
+  service: "ZynexTools",
   timestamp: (/* @__PURE__ */ new Date()).toISOString()
 });
 function isHealthPath(url3) {

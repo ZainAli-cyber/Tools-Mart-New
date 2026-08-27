@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-const DEFAULT_PORTAL = 'https://tools-mart-latest.vercel.app';
+const DEFAULT_PORTAL = 'https://zynextools.com';
 
 /** Production portal origin — used for API calls when the WebView has no same-origin /api. */
 export function getPortalBaseUrl(): string {

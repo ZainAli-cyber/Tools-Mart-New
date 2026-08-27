@@ -22,7 +22,7 @@ export const ContactPage: React.FC = () => {
         <span className="text-xs font-bold uppercase tracking-wider text-red-500 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-full">
           Get In Touch
         </span>
-        <h1 className="text-3xl sm:text-5xl font-black text-white">Contact AI TOOLZ MART</h1>
+        <h1 className="text-3xl sm:text-5xl font-black text-white">Contact ZynexTools</h1>
         <p className="text-xs sm:text-sm text-slate-400">
           Have feedback, feature requests, or technical inquiries? Send us a message and our support team will respond promptly.
         </p>

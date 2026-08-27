@@ -1156,6 +1156,6 @@ router.get('/orders/:id/invoice', requireAuth, async (req, res) => {
     paymentStatus: order.payment_status,
     status:        order.status,
     subStatus:     order.sub_status,
-    business: { name: s?.site_name || 'AI TOOLZ MART', email: s?.contact_email || 'emaan@aitoolsmart.com', whatsapp: s?.whatsapp || '+923275855578' },
+    business: { name: s?.site_name || 'ZynexTools', email: s?.contact_email || 'emaan@aitoolsmart.com', whatsapp: s?.whatsapp || '+923275855578' },
   });
 });

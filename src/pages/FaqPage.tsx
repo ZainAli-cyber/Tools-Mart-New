@@ -97,7 +97,7 @@ export const FaqPage: React.FC = () => {
           <h2 className="text-2xl font-extrabold text-white">Still have questions?</h2>
           <p className="text-sm text-slate-400">Our team is one message away — we reply within an hour.</p>
           <a
-            href="https://wa.me/923275855578?text=Hi%20AI%20TOOLZ%20MART%2C%20I%20have%20a%20question"
+            href="https://wa.me/923275855578?text=Hi%20ZynexTools%2C%20I%20have%20a%20question"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-sm rounded-xl transition shadow-lg"

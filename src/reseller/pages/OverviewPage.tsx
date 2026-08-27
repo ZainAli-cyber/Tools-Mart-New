@@ -169,7 +169,7 @@ export const OverviewPage: React.FC<Props> = ({
                   <Td><Pill variant={m.status === 'blocked' ? 'amber' : 'green'}>{m.status === 'blocked' ? 'Suspended' : 'Active'}</Pill></Td>
                   <Td>
                     {m.phone
-                      ? <a href={waLink(m.phone, `Hi ${m.name}, regarding your AI TOOLZ MART subscription.`)} target="_blank" rel="noopener noreferrer"
+                      ? <a href={waLink(m.phone, `Hi ${m.name}, regarding your ZynexTools subscription.`)} target="_blank" rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 text-[10px] font-bold transition">
                           <MessageCircle className="w-3 h-3" /> Chat
                         </a>

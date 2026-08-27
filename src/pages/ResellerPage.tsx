@@ -1,7 +1,7 @@
 import React from 'react';
 import { CheckCircle2, MessageCircle, TrendingUp, Users, BarChart2, PlayCircle, Zap, ShieldCheck, Clock } from 'lucide-react';
 
-const WA_JOIN = 'https://wa.me/923275855578?text=Hi%20AI%20TOOLZ%20MART%2C%20I%20want%20to%20join%20the%20Reseller%20Program%20(%2420).';
+const WA_JOIN = 'https://wa.me/923275855578?text=Hi%20ZynexTools%2C%20I%20want%20to%20join%20the%20Reseller%20Program%20(%2420).';
 
 export const ResellerPage: React.FC = () => {
   const plans = [
@@ -11,7 +11,7 @@ export const ResellerPage: React.FC = () => {
       period: '1 Month',
       badge: null,
       features: ['Unlimited User Add', '100+ Tools in Panel', 'High Profit Margin', 'Video Guide Provided', 'Premium Support', '1 IP Allowed'],
-      waText: 'Hi AI TOOLZ MART, I want to join the Lite Reseller plan.',
+      waText: 'Hi ZynexTools, I want to join the Lite Reseller plan.',
     },
     {
       name: 'Guru Reseller',
@@ -19,7 +19,7 @@ export const ResellerPage: React.FC = () => {
       period: '1 Month',
       badge: 'Popular',
       features: ['Unlimited User Add', '100+ Tools in Panel', 'High Profit Margin', 'Video Guide Provided', 'VIP Support', '2 IPs Allowed'],
-      waText: 'Hi AI TOOLZ MART, I want to join the Guru Reseller plan.',
+      waText: 'Hi ZynexTools, I want to join the Guru Reseller plan.',
     },
     {
       name: 'Pro Reseller',
@@ -27,7 +27,7 @@ export const ResellerPage: React.FC = () => {
       period: '6 Months',
       badge: 'Best Value',
       features: ['Unlimited User Add', '100+ Tools in Panel', 'High Profit Margin', 'Video Guide Provided', 'VIP Support', '3 IPs Allowed', 'No Limitations'],
-      waText: 'Hi AI TOOLZ MART, I want to join the Pro Reseller plan.',
+      waText: 'Hi ZynexTools, I want to join the Pro Reseller plan.',
     },
   ];
 
@@ -49,7 +49,7 @@ export const ResellerPage: React.FC = () => {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-64 bg-red-600/10 blur-3xl pointer-events-none rounded-full" />
         <div className="relative max-w-3xl mx-auto space-y-5">
           <span className="text-xs font-bold uppercase tracking-widest text-red-500">For Resellers</span>
-          <h1 className="text-3xl sm:text-5xl font-black text-white">🌟 AI TOOLZ MART Reseller Program</h1>
+          <h1 className="text-3xl sm:text-5xl font-black text-white">🌟 ZynexTools Reseller Program</h1>
           <p className="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto">
             Partner with us and start reselling 80+ premium digital tools at unbeatable prices. Your time to grow and earn 1 Lakh+/month.
           </p>
