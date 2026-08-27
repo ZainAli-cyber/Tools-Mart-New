@@ -40,11 +40,10 @@ import java.util.TimeZone;
 /**
  * In-app tool browser.
  * <ul>
- *   <li>Always uses desktop Chrome UA so panel + ChatGPT cookies stick.</li>
- *   <li>Panel tools default to scaled desktop layout.</li>
- *   <li>ChatGPT / OpenAI: desktop layout and NO viewport MutationObserver
- *       (mobile viewport + meta lock breaks streaming replies in WebView).</li>
- *   <li>Top-bar Desktop / Mobile toggles for panels / other tools.</li>
+ *   <li>Panel tools: desktop Chrome UA + scaled desktop layout (cookies).</li>
+ *   <li>ChatGPT: real WebView/Chrome UA (no fake Windows UA / no scale shrink) so
+ *       conversation streams work; fetch SSE is re-piped via XHR ReadableStream.</li>
+ *   <li>Top-bar Desktop / Mobile / Refresh controls.</li>
  * </ul>
  */
 public class ToolWebViewActivity extends AppCompatActivity {
@@ -73,6 +72,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
     private boolean viewportApplied;
     private String lastMainUrl = "";
     private boolean chatGptMode;
+    /** Stock WebView UA (Chrome/Android) — required for ChatGPT live streams. */
+    private String uaWebViewDefault = "";
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -96,10 +97,12 @@ public class ToolWebViewActivity extends AppCompatActivity {
         screenPx = getResources().getDisplayMetrics().widthPixels;
         phoneCssPx = Math.max(320, Math.round(screenPx / density));
 
-        // ChatGPT must use desktop layout without meta-viewport locking (streaming UI breaks otherwise).
-        // Panel tools use scaled desktop. Other direct sites can use mobile.
+        // ChatGPT: mobile WebView UA + no desktop scale (streaming breaks with Windows UA).
+        // Panels: desktop UA + scaled layout for cookies / full UI.
         chatGptMode = isChatGptHost(hostFromUrl(destinationUrl));
-        if (chatGptMode || prefersPanelDesktop()) {
+        if (chatGptMode) {
+            viewMode = ViewMode.MOBILE;
+        } else if (prefersPanelDesktop()) {
             viewMode = ViewMode.DESKTOP;
         } else {
             viewMode = ViewMode.MOBILE;
@@ -122,10 +125,10 @@ public class ToolWebViewActivity extends AppCompatActivity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setSupportMultipleWindows(false);
-        // Never switch to mobile UA — panel + ChatGPT sessions drop with mobile UA.
-        settings.setUserAgentString(UA_DESKTOP);
+        uaWebViewDefault = String.valueOf(settings.getUserAgentString());
+        applyUserAgent(settings);
         settings.setUseWideViewPort(true);
-        settings.setLoadWithOverviewMode(true);
+        settings.setLoadWithOverviewMode(!chatGptMode);
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
@@ -135,7 +138,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
             settings.setSafeBrowsingEnabled(true);
         }
 
-        // Let ChatGPT service workers see the same cookies (needed for stream/session).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             try {
                 ServiceWorkerController sw = ServiceWorkerController.getInstance();
@@ -144,7 +146,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
                 sw.setServiceWorkerClient(new ServiceWorkerClient() {
                     @Override
                     public WebResourceResponse shouldInterceptRequest(WebResourceRequest request) {
-                        // Do not intercept — returning a response here can break SSE/WebSocket streaming.
                         return null;
                     }
                 });
@@ -157,6 +158,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
         cm.setAcceptCookie(true);
         cm.setAcceptThirdPartyCookies(webView, true);
         applyCookies(cm, cookiesJson, destinationUrl);
+        cm.flush();
 
         applyNativeScale();
 
@@ -165,7 +167,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 if (request == null || request.getUrl() == null) return false;
-                // Only handle main-frame navigations for panel Referer; never touch XHR/fetch.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && !request.isForMainFrame()) {
                     return false;
                 }
@@ -194,14 +195,15 @@ public class ToolWebViewActivity extends AppCompatActivity {
                     lastMainUrl = u;
                     viewportApplied = false;
                 }
+                // Patch fetch ASAP — ChatGPT boots conversation APIs during load.
+                if (chatGptMode) injectChatGptStreamFix();
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 pageReady = true;
-                // ChatGPT: never mutate viewport / install MutationObserver — that kills stream UI.
                 if (chatGptMode) {
-                    injectChatGptStreamAssist();
+                    injectChatGptStreamFix();
                     return;
                 }
                 if (!viewportApplied) {
@@ -219,11 +221,24 @@ public class ToolWebViewActivity extends AppCompatActivity {
         setContentView(root);
         refreshToggleStyles();
 
-        // ChatGPT: load without custom headers so fetch/WebSocket auth is clean.
         if (chatGptMode || referrerUrl.isEmpty()) {
             webView.loadUrl(destinationUrl);
         } else {
             webView.loadUrl(destinationUrl, unlockHeaders());
+        }
+    }
+
+    private void applyUserAgent(WebSettings settings) {
+        if (settings == null) return;
+        if (chatGptMode) {
+            // Real WebView Chrome UA — fake Windows UA breaks ChatGPT live streams.
+            if (viewMode == ViewMode.DESKTOP) {
+                settings.setUserAgentString(UA_DESKTOP);
+            } else if (uaWebViewDefault != null && !uaWebViewDefault.isEmpty()) {
+                settings.setUserAgentString(uaWebViewDefault);
+            }
+        } else {
+            settings.setUserAgentString(UA_DESKTOP);
         }
     }
 
@@ -264,6 +279,24 @@ public class ToolWebViewActivity extends AppCompatActivity {
         btnMobile = makeViewToggle("Mobile", ViewMode.MOBILE);
         bar.addView(btnDesktop);
         bar.addView(btnMobile);
+
+        TextView btnRefresh = new TextView(this);
+        btnRefresh.setText("↻");
+        btnRefresh.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f);
+        btnRefresh.setTypeface(Typeface.DEFAULT_BOLD);
+        btnRefresh.setGravity(Gravity.CENTER);
+        btnRefresh.setTextColor(Color.parseColor("#F6D890"));
+        btnRefresh.setPadding(dp(10), dp(6), dp(10), dp(6));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        rlp.setMargins(dp(4), 0, 0, 0);
+        btnRefresh.setLayoutParams(rlp);
+        btnRefresh.setOnClickListener(v -> {
+            if (webView != null) webView.reload();
+        });
+        bar.addView(btnRefresh);
         return bar;
     }
 
@@ -291,11 +324,11 @@ public class ToolWebViewActivity extends AppCompatActivity {
         }
         viewMode = mode;
         refreshToggleStyles();
+        if (webView != null) applyUserAgent(webView.getSettings());
         applyNativeScale();
         viewportApplied = false;
         if (pageReady) {
             if (chatGptMode) {
-                // Soft reload keeps cookies; clears a stuck ChatGPT stream renderer.
                 webView.reload();
             } else {
                 injectLockedViewport();
@@ -322,8 +355,13 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private void applyNativeScale() {
         if (webView == null) return;
+        // ChatGPT: never shrink — scale hacks break the live reply renderer.
+        if (chatGptMode) {
+            webView.setInitialScale(100);
+            return;
+        }
         if (viewMode == ViewMode.DESKTOP) {
-            int desktopLayoutPx = chatGptMode ? 1100 : 1280;
+            int desktopLayoutPx = 1280;
             int initialScalePct = Math.max(30, Math.min(100, (screenPx * 100) / desktopLayoutPx));
             webView.setInitialScale(initialScalePct);
         } else {
@@ -334,7 +372,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
     /**
      * Fixed viewport for panel / non-ChatGPT tools.
      * Never derives width from scrollWidth (typing shift).
-     * No MutationObserver loop — that can thrash React apps mid-render.
      */
     private void injectLockedViewport() {
         if (webView == null || chatGptMode) return;
@@ -361,30 +398,124 @@ public class ToolWebViewActivity extends AppCompatActivity {
     }
 
     /**
-     * Light assist for ChatGPT in WebView: keep conversation scrolled into view when
-     * the DOM grows (stream tokens). Does not touch viewport or network.
+     * ChatGPT on Android WebView often fails fetch ReadableStream / SSE, so replies
+     * complete on the server but never paint. Re-pipe conversation streams through
+     * XHR (incremental responseText) into a real ReadableStream the SPA can read.
      */
-    private void injectChatGptStreamAssist() {
+    private void injectChatGptStreamFix() {
         if (webView == null) return;
         String js = "(function(){"
             + "try{"
-            + "if(window.__zynexGptAssist)return;"
-            + "window.__zynexGptAssist=true;"
+            + "if(window.__zynexGptSse)return;"
+            + "window.__zynexGptSse=true;"
+            + "var nativeFetch=window.fetch.bind(window);"
+            + "function hdrGet(h,n){"
+            + "  if(!h)return '';"
+            + "  n=String(n).toLowerCase();"
+            + "  if(typeof h.get==='function'){try{return h.get(n)||h.get(String(n))||'';}catch(e){}}"
+            + "  if(Array.isArray(h)){"
+            + "    for(var i=0;i<h.length;i++){if(String(h[i][0]).toLowerCase()===n)return h[i][1];}"
+            + "    return '';"
+            + "  }"
+            + "  for(var k in h){if(Object.prototype.hasOwnProperty.call(h,k)&&String(k).toLowerCase()===n)return h[k];}"
+            + "  return '';"
+            + "}"
+            + "function shouldPipe(url,init){"
+            + "  var u=String(url||'');"
+            + "  if(/text\\/event-stream/i.test(hdrGet(init&&init.headers,'Accept')))return true;"
+            + "  if(/text\\/event-stream/i.test(hdrGet(init&&init.headers,'accept')))return true;"
+            + "  return /\\/backend-api\\/(conversation|f\\/conversation)/i.test(u);"
+            + "}"
+            + "function applyHeaders(xhr,headers){"
+            + "  if(!headers)return;"
+            + "  if(typeof headers.forEach==='function'){"
+            + "    headers.forEach(function(v,k){try{xhr.setRequestHeader(k,v);}catch(e){}});"
+            + "    return;"
+            + "  }"
+            + "  if(Array.isArray(headers)){"
+            + "    for(var i=0;i<headers.length;i++){"
+            + "      try{xhr.setRequestHeader(headers[i][0],headers[i][1]);}catch(e){}"
+            + "    }"
+            + "    return;"
+            + "  }"
+            + "  Object.keys(headers).forEach(function(k){"
+            + "    try{xhr.setRequestHeader(k,headers[k]);}catch(e){}"
+            + "  });"
+            + "}"
+            + "function xhrStream(input,init){"
+            + "  init=init||{};"
+            + "  return new Promise(function(resolve,reject){"
+            + "    var url=typeof input==='string'?input:(input&&input.url)||'';"
+            + "    var method=(init.method||'GET').toUpperCase();"
+            + "    var xhr=new XMLHttpRequest();"
+            + "    xhr.open(method,url,true);"
+            + "    xhr.withCredentials=true;"
+            + "    xhr.responseType='text';"
+            + "    applyHeaders(xhr,init.headers);"
+            + "    try{xhr.setRequestHeader('Accept','text/event-stream');}catch(e){}"
+            + "    var encoder=new TextEncoder();"
+            + "    var controller=null;"
+            + "    var emitted=0;"
+            + "    var settled=false;"
+            + "    var stream=new ReadableStream({"
+            + "      start:function(c){controller=c;}"
+            + "    });"
+            + "    function pump(){"
+            + "      if(!controller)return;"
+            + "      var text=xhr.responseText||'';"
+            + "      if(text.length>emitted){"
+            + "        var chunk=text.slice(emitted);"
+            + "        emitted=text.length;"
+            + "        try{controller.enqueue(encoder.encode(chunk));}catch(e){}"
+            + "      }"
+            + "    }"
+            + "    xhr.onprogress=pump;"
+            + "    xhr.onreadystatechange=function(){"
+            + "      if(xhr.readyState>=2&&!settled){"
+            + "        settled=true;"
+            + "        var rh={'content-type':xhr.getResponseHeader('content-type')||'text/event-stream'};"
+            + "        resolve(new Response(stream,{status:xhr.status||200,statusText:xhr.statusText||'',headers:rh}));"
+            + "      }"
+            + "    };"
+            + "    xhr.onload=function(){"
+            + "      pump();"
+            + "      try{if(controller)controller.close();}catch(e){}"
+            + "      try{"
+            + "        setTimeout(function(){"
+            + "          var nodes=document.querySelectorAll('[data-message-author-role=\"assistant\"]');"
+            + "          var el=nodes&&nodes.length?nodes[nodes.length-1]:null;"
+            + "          if(el&&el.scrollIntoView)el.scrollIntoView({block:'end'});"
+            + "        },200);"
+            + "      }catch(e){}"
+            + "    };"
+            + "    xhr.onerror=function(){"
+            + "      try{if(controller)controller.error(new Error('stream failed'));}catch(e){}"
+            + "      if(!settled)reject(new TypeError('Failed to fetch'));"
+            + "    };"
+            + "    xhr.send(init.body!=null?init.body:null);"
+            + "  });"
+            + "}"
+            + "window.fetch=function(input,init){"
+            + "  try{"
+            + "    var url=typeof input==='string'?input:(input&&input.url)||'';"
+            + "    if(shouldPipe(url,init||{}))return xhrStream(input,init||{});"
+            + "  }catch(e){}"
+            + "  return nativeFetch(input,init);"
+            + "};"
             + "function scrollChat(){"
             + "  try{"
-            + "    var nodes=document.querySelectorAll('[data-message-author-role], main [class*=\"markdown\"], main');"
+            + "    var nodes=document.querySelectorAll('[data-message-author-role], main');"
             + "    var el=nodes&&nodes.length?nodes[nodes.length-1]:null;"
             + "    if(el&&el.scrollIntoView)el.scrollIntoView({block:'end',behavior:'smooth'});"
             + "  }catch(e){}"
             + "}"
             + "var t=null;"
-            + "var obs=new MutationObserver(function(){"
-            + "  if(t)clearTimeout(t);"
-            + "  t=setTimeout(scrollChat,120);"
-            + "});"
-            + "var root=document.body||document.documentElement;"
-            + "obs.observe(root,{childList:true,subtree:true});"
-            + "setTimeout(scrollChat,800);"
+            + "try{"
+            + "  new MutationObserver(function(){"
+            + "    if(t)clearTimeout(t);"
+            + "    t=setTimeout(scrollChat,150);"
+            + "  }).observe(document.documentElement,{childList:true,subtree:true});"
+            + "}catch(e){}"
             + "}catch(e){}"
             + "})();";
         webView.evaluateJavascript(js, null);
