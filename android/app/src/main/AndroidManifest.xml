@@ -28,6 +28,7 @@
             android:name=".ToolWebViewActivity"
             android:exported="false"
             android:theme="@style/AppTheme.NoActionBar"
+            android:windowSoftInputMode="adjustPan|stateHidden"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode" />
 
         <provider

@@ -1034,6 +1034,26 @@ async function openViaExtension(
   finishOpen(dest, opts, false);
 }
 
+/** True for real SaaS destinations that should not use panel unlock Referer on mobile. */
+function isDirectLegalToolUrl(url?: string | null): boolean {
+  try {
+    const h = new URL(String(url || '').trim()).hostname.toLowerCase();
+    return (
+      h === 'chatgpt.com' ||
+      h.endsWith('.chatgpt.com') ||
+      h === 'chat.openai.com' ||
+      h.endsWith('.openai.com') ||
+      h === 'canva.com' ||
+      h.endsWith('.canva.com') ||
+      h.includes('grammarly.com') ||
+      h.includes('notion.so') ||
+      h.includes('midjourney.com')
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Mobile APK: fetch latest cookies from server and open in native in-app browser. */
 async function openViaMobileApp(
   dest: string,
@@ -1043,7 +1063,10 @@ async function openViaMobileApp(
   toolName: string,
 ) {
   const { launchToolNative } = await import('./mobile/toolLauncher');
-  const referrer = resolvePanelUnlockReferrer(unlockReferrer, dest);
+  // ChatGPT / legal direct URLs must not carry panel unlock Referer (forces desktop panel layout).
+  const referrer = isDirectLegalToolUrl(dest)
+    ? ''
+    : resolvePanelUnlockReferrer(unlockReferrer, dest);
   await reportProgress(opts, 'session');
   if (isToolAccessUrl(dest) || referrer) await reportProgress(opts, 'unlocking');
   await reportProgress(opts, 'launching');

@@ -2,8 +2,12 @@ package com.aitoolzmart.app;
 
 import android.annotation.SuppressLint;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -30,8 +34,14 @@ import java.util.Set;
 import java.util.TimeZone;
 
 /**
- * Full-screen in-app browser. Applies admin cookies from the launch API, then
- * loads the real tool URL (ChatGPT, Canva, panels, etc.).
+ * In-app tool browser.
+ * <ul>
+ *   <li>Always uses desktop Chrome UA so panel + ChatGPT cookies stick.</li>
+ *   <li>Panel / unlock-referrer tools default to desktop layout (scaled to fit).</li>
+ *   <li>Direct legal URLs (ChatGPT, Canva, …) default to mobile viewport.</li>
+ *   <li>Top-bar Desktop / Mobile toggles switch layout without breaking cookies.</li>
+ *   <li>Viewport is locked once — no scrollWidth refit while typing (stops layout jump).</li>
+ * </ul>
  */
 public class ToolWebViewActivity extends AppCompatActivity {
 
@@ -40,9 +50,21 @@ public class ToolWebViewActivity extends AppCompatActivity {
     static final String EXTRA_TITLE = "tool_title";
     static final String EXTRA_COOKIES = "tool_cookies";
 
+    private static final String UA_DESKTOP =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+    private enum ViewMode { DESKTOP, MOBILE }
+
     private WebView webView;
     private String destinationUrl = "";
     private String referrerUrl = "";
+    private ViewMode viewMode = ViewMode.DESKTOP;
+    private TextView btnDesktop;
+    private TextView btnMobile;
+    private int screenPx;
+    private float density;
+    private int phoneCssPx;
+    private boolean pageReady;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -62,49 +84,19 @@ public class ToolWebViewActivity extends AppCompatActivity {
         if (referrerUrl == null) referrerUrl = "";
         referrerUrl = referrerUrl.trim();
 
+        density = Math.max(0.01f, getResources().getDisplayMetrics().density);
+        screenPx = getResources().getDisplayMetrics().widthPixels;
+        phoneCssPx = Math.max(320, Math.round(screenPx / density));
+
+        // Panels need desktop chrome; direct legal sites (ChatGPT etc.) start in mobile view.
+        viewMode = prefersPanelDesktop() ? ViewMode.DESKTOP : ViewMode.MOBILE;
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.parseColor("#0d0908"));
 
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(Color.parseColor("#130d0d"));
-        int padH = (int) (12 * getResources().getDisplayMetrics().density);
-        int padV = (int) (8 * getResources().getDisplayMetrics().density);
-        bar.setPadding(padH, padV, padH, padV);
-        bar.setElevation(4f);
-        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            (int) (48 * getResources().getDisplayMetrics().density)
-        );
-        bar.setLayoutParams(barLp);
-        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
-
-        ImageButton back = new ImageButton(this);
-        back.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
-        back.setBackgroundColor(Color.TRANSPARENT);
-        back.setColorFilter(Color.parseColor("#fecaca"));
-        int btn = (int) (36 * getResources().getDisplayMetrics().density);
-        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(btn, btn);
-        back.setLayoutParams(backLp);
-        back.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
-        back.setPadding(padV, padV, padV, padV);
-        back.setOnClickListener(v -> finish());
-
-        TextView label = new TextView(this);
-        label.setText(title != null && !title.isEmpty() ? title : "Tool");
-        label.setTextColor(Color.parseColor("#ffffff"));
-        label.setTextSize(14f);
-        label.setSingleLine(true);
-        label.setEllipsize(TextUtils.TruncateAt.END);
-        label.setPadding(padH, 0, 0, 0);
-
-        bar.addView(back);
-        bar.addView(label, new LinearLayout.LayoutParams(
-            0,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            1f
-        ));
+        LinearLayout bar = buildTopBar(title);
+        root.addView(bar);
 
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
@@ -113,31 +105,22 @@ public class ToolWebViewActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        // Desktop Chrome UA keeps panel cookie sessions (mobile UA drops them).
-        settings.setUserAgentString(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        );
+        // Never switch to mobile UA — panel + ChatGPT sessions drop with mobile UA.
+        settings.setUserAgentString(UA_DESKTOP);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
         settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NORMAL);
-
-        // Shrink the fixed desktop layout (~1280px) so the full page fits the phone width.
-        int screenPx = getResources().getDisplayMetrics().widthPixels;
-        int desktopLayoutPx = 1280;
-        int initialScalePct = Math.max(28, Math.min(100, (screenPx * 100) / desktopLayoutPx));
-        webView.setInitialScale(initialScalePct);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
         cm.setAcceptThirdPartyCookies(webView, true);
-
         applyCookies(cm, cookiesJson, destinationUrl);
 
-        final float density = Math.max(0.01f, getResources().getDisplayMetrics().density);
-        final int phoneCssPx = Math.max(320, Math.round(screenPx / density));
+        applyNativeScale();
 
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
@@ -145,7 +128,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 if (request == null || request.getUrl() == null) return false;
                 String next = request.getUrl().toString();
-                // Re-apply Referer on every main navigation (panel unlock needs it on redirects).
                 if (needsUnlockReferrer(next) && !referrerUrl.isEmpty()) {
                     view.loadUrl(next, unlockHeaders());
                     return true;
@@ -165,52 +147,188 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                // Do NOT switch viewport to phone width — that clips desktop panel UIs.
-                // Keep a desktop layout width and scale it down so sidebar + content both show.
-                view.evaluateJavascript(
-                    "(function(){"
-                        + "try{"
-                        + "var phone=" + phoneCssPx + ";"
-                        + "var desktop=1280;"
-                        + "var m=document.querySelector('meta[name=\"viewport\"]');"
-                        + "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');"
-                        + "(document.head||document.documentElement).appendChild(m);}"
-                        + "function fit(){"
-                        + "  var w=Math.max("
-                        + "    document.documentElement.scrollWidth||0,"
-                        + "    document.body&&document.body.scrollWidth||0,"
-                        + "    desktop);"
-                        + "  if(w<desktop)w=desktop;"
-                        + "  var scale=Math.min(1,phone/w);"
-                        + "  m.setAttribute('content','width='+Math.round(w)+', initial-scale='+scale.toFixed(4)"
-                        + "    +', minimum-scale=0.15, maximum-scale=5, user-scalable=yes');"
-                        + "  document.documentElement.style.width='100%';"
-                        + "  document.documentElement.style.minHeight='100%';"
-                        + "  if(document.body){"
-                        + "    document.body.style.minHeight='100%';"
-                        + "    document.body.style.margin='0';"
-                        + "  }"
-                        + "}"
-                        + "fit();"
-                        + "setTimeout(fit,300);"
-                        + "setTimeout(fit,1000);"
-                        + "setTimeout(fit,2000);"
-                        + "}catch(e){}"
-                        + "})();",
-                    null
-                );
+                pageReady = true;
+                // Apply fixed viewport once per load — do not remeasure scrollWidth (typing shift).
+                injectLockedViewport();
             }
         });
 
-        root.addView(bar);
         root.addView(webView, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             0,
             1f
         ));
         setContentView(root);
+        refreshToggleStyles();
 
         webView.loadUrl(destinationUrl, unlockHeaders());
+    }
+
+    private LinearLayout buildTopBar(String title) {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setBackgroundColor(Color.parseColor("#130d0d"));
+        int padH = dp(12);
+        int padV = dp(8);
+        bar.setPadding(padH, padV, padH, padV);
+        bar.setElevation(4f);
+        bar.setLayoutParams(new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(52)
+        ));
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+
+        ImageButton back = new ImageButton(this);
+        back.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
+        back.setBackgroundColor(Color.TRANSPARENT);
+        back.setColorFilter(Color.parseColor("#fecaca"));
+        back.setLayoutParams(new LinearLayout.LayoutParams(dp(36), dp(36)));
+        back.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        back.setPadding(padV, padV, padV, padV);
+        back.setOnClickListener(v -> finish());
+        bar.addView(back);
+
+        TextView label = new TextView(this);
+        label.setText(title != null && !title.isEmpty() ? title : "Tool");
+        label.setTextColor(Color.parseColor("#ffffff"));
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
+        label.setSingleLine(true);
+        label.setEllipsize(TextUtils.TruncateAt.END);
+        label.setPadding(padH, 0, dp(6), 0);
+        bar.addView(label, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        btnDesktop = makeViewToggle("Desktop", ViewMode.DESKTOP);
+        btnMobile = makeViewToggle("Mobile", ViewMode.MOBILE);
+        bar.addView(btnDesktop);
+        bar.addView(btnMobile);
+        return bar;
+    }
+
+    private TextView makeViewToggle(String text, ViewMode mode) {
+        TextView btn = new TextView(this);
+        btn.setText(text);
+        btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        btn.setTypeface(Typeface.DEFAULT_BOLD);
+        btn.setGravity(Gravity.CENTER);
+        btn.setPadding(dp(10), dp(6), dp(10), dp(6));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        lp.setMargins(dp(4), 0, 0, 0);
+        btn.setLayoutParams(lp);
+        btn.setOnClickListener(v -> setViewMode(mode));
+        return btn;
+    }
+
+    private void setViewMode(ViewMode mode) {
+        if (viewMode == mode) {
+            // Re-apply locked viewport if user taps active mode after a site mutated meta.
+            if (pageReady) injectLockedViewport();
+            return;
+        }
+        viewMode = mode;
+        refreshToggleStyles();
+        applyNativeScale();
+        if (pageReady) injectLockedViewport();
+    }
+
+    private void refreshToggleStyles() {
+        styleToggle(btnDesktop, viewMode == ViewMode.DESKTOP);
+        styleToggle(btnMobile, viewMode == ViewMode.MOBILE);
+    }
+
+    private void styleToggle(TextView btn, boolean active) {
+        if (btn == null) return;
+        if (active) {
+            btn.setTextColor(Color.parseColor("#120405"));
+            btn.setBackgroundColor(Color.parseColor("#F6D890"));
+        } else {
+            btn.setTextColor(Color.parseColor("#D6CDD0"));
+            btn.setBackgroundColor(Color.parseColor("#351012"));
+        }
+    }
+
+    private void applyNativeScale() {
+        if (webView == null) return;
+        if (viewMode == ViewMode.DESKTOP) {
+            int desktopLayoutPx = 1280;
+            int initialScalePct = Math.max(28, Math.min(100, (screenPx * 100) / desktopLayoutPx));
+            webView.setInitialScale(initialScalePct);
+        } else {
+            webView.setInitialScale(100);
+        }
+    }
+
+    /**
+     * Fixed viewport for current mode. Never derives width from scrollWidth —
+     * that caused ChatGPT / panel layouts to jump while the keyboard or DOM updated.
+     */
+    private void injectLockedViewport() {
+        if (webView == null) return;
+        final String content;
+        if (viewMode == ViewMode.DESKTOP) {
+            double scale = Math.min(1.0, (double) phoneCssPx / 1280.0);
+            if (scale < 0.15) scale = 0.15;
+            content = "width=1280, initial-scale=" + String.format(Locale.US, "%.4f", scale)
+                + ", minimum-scale=0.15, maximum-scale=5, user-scalable=yes";
+        } else {
+            content = "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, user-scalable=yes";
+        }
+
+        String js = "(function(){"
+            + "try{"
+            + "var CONTENT=" + jsonString(content) + ";"
+            + "var m=document.querySelector('meta[name=\"viewport\"]');"
+            + "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');"
+            + "(document.head||document.documentElement).appendChild(m);}"
+            + "function lock(){m.setAttribute('content',CONTENT);}"
+            + "lock();"
+            + "if(!window.__zynexVpLock){"
+            + "  window.__zynexVpLock=true;"
+            + "  try{"
+            + "    new MutationObserver(function(){"
+            + "      if(m.getAttribute('content')!==CONTENT)lock();"
+            + "    }).observe(m,{attributes:true,attributeFilter:['content']});"
+            + "  }catch(e){}"
+            + "}"
+            + "document.documentElement.style.width='100%';"
+            + "if(document.body){document.body.style.margin=document.body.style.margin||'0';}"
+            + "}catch(e){}"
+            + "})();";
+        webView.evaluateJavascript(js, null);
+    }
+
+    private static String jsonString(String s) {
+        if (s == null) return "\"\"";
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    private int dp(int v) {
+        return Math.round(v * density);
+    }
+
+    /** Panel hosts or unlock-referrer tools need the scaled desktop layout by default. */
+    private boolean prefersPanelDesktop() {
+        String destHost = hostFromUrl(destinationUrl);
+        if (isPanelHost(destHost)) return true;
+        if (!referrerUrl.isEmpty() && !isDirectLegalHost(destHost)) return true;
+        return false;
+    }
+
+    private boolean isDirectLegalHost(String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(Locale.US);
+        return h.equals("chatgpt.com")
+            || h.endsWith(".chatgpt.com")
+            || h.equals("chat.openai.com")
+            || h.endsWith(".openai.com")
+            || h.equals("canva.com")
+            || h.endsWith(".canva.com")
+            || h.equals("www.canva.com")
+            || h.contains("grammarly.com")
+            || h.contains("notion.so")
+            || h.contains("midjourney.com");
     }
 
     private Map<String, String> unlockHeaders() {
@@ -231,8 +349,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
         String host = hostFromUrl(url);
         String destHost = hostFromUrl(destinationUrl);
         if (host == null) return false;
-        // Known panels OR any custom panel domain when admin set unlock referrer
-        // (e.g. testingg.one Grammarly panels — keep Referer across redirects).
         if (isPanelHost(host) || isPanelHost(destHost)) return true;
         return sameRegistrableDomain(host, destHost);
     }
@@ -252,7 +368,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
             || h.contains("panelhub");
     }
 
-    /** True when admin configured a panel unlock Referer (custom domains like testingg.one). */
     private boolean panelUnlockMode(String destHost) {
         return isPanelHost(destHost) || !referrerUrl.isEmpty();
     }
@@ -295,7 +410,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
                 String domain = c.optString("domain", "").trim();
                 String cookieUrlField = c.optString("url", "").trim();
 
-                // Prefer explicit cookie.url host when domain is missing (Chrome export often does this).
                 if (domain.isEmpty() && !cookieUrlField.isEmpty()) {
                     String fromUrl = hostFromUrl(cookieUrlField);
                     if (fromUrl != null) domain = fromUrl;
@@ -310,17 +424,11 @@ public class ToolWebViewActivity extends AppCompatActivity {
                 String sameSite = normalizeSameSite(c.optString("sameSite", ""));
                 if ("None".equals(sameSite)) secure = true;
 
-                // Host-only / __Host- cookies must NOT include Domain=
                 boolean omitDomain = hostOnly || name.startsWith("__Host-");
-
-                // CookieManager URL scheme must match the page. Grammarly-style exports often
-                // have secure:false — still use https://… when the tool URL is https, or the
-                // cookie never reaches the WebView request (desktop Chrome handles this differently).
                 boolean urlHttps = destHttps || secure;
                 String cookieUrl = urlForDomain(domain, path, urlHttps);
                 if (cookieUrl == null) continue;
 
-                // Clear any previous value for this cookie name on this host URL.
                 String clearKey = cookieUrl + "|" + name;
                 if (clearedUrls.add(clearKey)) {
                     cm.setCookie(cookieUrl, name + "=; Max-Age=0; path=" + path);
@@ -331,7 +439,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
                 writeCookie(cm, cookieUrl, name, value, path, omitDomain ? null : domain, secure, sameSite, c);
 
-                // Also host-only on exact destination host (matches extension fallback).
                 if (destHost != null && !destHost.equalsIgnoreCase(domain)) {
                     String destCookieUrl = urlForDomain(destHost, path, urlHttps);
                     if (destCookieUrl != null) {
@@ -339,7 +446,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
                     }
                 }
 
-                // Panel dual-write: parent apex when known (toolaccess / xemrush / …)
                 if (panelDest && destHost != null) {
                     String apex = panelApex(destHost);
                     if (apex == null) apex = registrableDomain(destHost);
@@ -363,7 +469,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
             }
             cm.flush();
         } catch (Exception ignored) {
-            /* best effort — still attempt to load */
+            /* best effort */
         }
     }
 
@@ -392,7 +498,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
         long exp = 0;
         if (c.has("expirationDate")) exp = (long) c.optDouble("expirationDate", 0);
         else if (c.has("expires")) exp = (long) c.optDouble("expires", 0);
-        if (exp > 1_000_000_000_000L) exp = exp / 1000L; // ms → s
+        if (exp > 1_000_000_000_000L) exp = exp / 1000L;
         if (exp > 1_000_000_000L) {
             try {
                 SimpleDateFormat fmt = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
@@ -408,7 +514,6 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private String normalizeSameSite(String raw) {
         String s = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.US);
-        // Match Chrome extension: "unspecified" means omit SameSite (do NOT force None).
         if (s.isEmpty() || s.equals("unspecified")) return "";
         if (s.equals("no_restriction") || s.equals("none")) return "None";
         if (s.equals("lax")) return "Lax";
