@@ -106,7 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Main Nav */}
       <header className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur border-b border-slate-800 text-white shadow-xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-24 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
 
           {/* Logo */}
           <button
@@ -116,7 +116,7 @@ export const Header: React.FC<HeaderProps> = ({
             <img
               src="/logo.png"
               alt="ZynexTools"
-              className="h-20 w-auto object-contain group-hover:scale-105 transition-transform duration-200"
+              className="h-9 sm:h-10 w-auto max-w-[140px] object-contain object-left group-hover:scale-105 transition-transform duration-200"
             />
           </button>
 

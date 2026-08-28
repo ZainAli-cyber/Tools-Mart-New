@@ -2,6 +2,25 @@
 // Account state lives in Supabase; this module deliberately stores nothing in
 // localStorage and never handles passwords.
 
+import {
+  addDays as addDaysSafe,
+  daysLeft as daysLeftSafe,
+  extendPlanExpiry,
+  planDaysFromOrderMonths,
+  planDaysFromPlanName,
+  planExpiryDate,
+  planIsActive as planIsActiveSafe,
+  todayDateOnly,
+} from './planDuration';
+
+export {
+  extendPlanExpiry,
+  planDaysFromOrderMonths,
+  planDaysFromPlanName,
+  planExpiryDate,
+  todayDateOnly,
+} from './planDuration';
+
 export type AccountRole = 'user' | 'reseller' | 'admin';
 
 export type AccountMeta = {
@@ -14,21 +33,8 @@ export type AccountMeta = {
   owner?: string;
 };
 
-export type PlanOption = { name: string; fee: number; days: number };
-
-export const PLAN_OPTIONS: PlanOption[] = [
-  { name: 'Monthly Plan', fee: 2000, days: 30 },
-  { name: '3 Month Plan', fee: 5000, days: 90 },
-  { name: '6 Month Plan', fee: 9000, days: 180 },
-  { name: 'Lite Reseller', fee: 5560, days: 30 },
-  { name: 'Guru Reseller', fee: 8340, days: 30 },
-  { name: 'Pro Reseller', fee: 30580, days: 180 },
-];
-
-/** Plans a reseller may sell to their own members. */
-export const MEMBER_PLAN_OPTIONS: PlanOption[] = PLAN_OPTIONS.filter(
-  p => !p.name.toLowerCase().includes('reseller'),
-);
+export type PlanOption = import('./planCatalog').PlanOption;
+export { PLAN_OPTIONS, MEMBER_PLAN_OPTIONS } from './planCatalog';
 
 export const BLANK_META: AccountMeta = { role: 'user', plan: '', fee: 0, days: 0, expiry: '' };
 
@@ -50,40 +56,36 @@ export function accountMetaFromRow(row: any): AccountMeta {
 
 // ── Date helpers ───────────────────────────────────────────────────────────
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayDateOnly();
 }
 
 export function addDays(dateStr: string, days: number): string {
-  const d = dateStr ? new Date(dateStr) : new Date();
-  if (isNaN(d.getTime())) d.setTime(Date.now());
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return addDaysSafe(dateStr, days);
 }
 
 export function daysLeft(expiry: string): number {
-  if (!expiry) return -1;
-  const raw = String(expiry).trim();
-  const dateOnly = raw.slice(0, 10);
-  const match = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const end = match
-    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 23, 59, 59, 999)
-    : new Date(raw);
-  if (isNaN(end.getTime())) return -1;
-  return Math.ceil((end.getTime() - Date.now()) / 86400000);
+  return daysLeftSafe(expiry);
 }
 
 /** Paid plan that has not passed its expiry date. Empty plan = unpaid. */
 export function planIsActive(plan?: string | null, expiry?: string | null): boolean {
-  if (!String(plan || '').trim()) return false;
-  if (!expiry) return true;
-  return daysLeft(String(expiry)) >= 0;
+  return planIsActiveSafe(plan, expiry);
 }
 
 export function fmtDate(d?: string): string {
   if (!d) return '—';
-  const dt = new Date(d);
-  if (isNaN(dt.getTime())) return d;
+  const dt = parseDateOnlyForDisplay(d);
+  if (!dt) return d;
   return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+}
+
+function parseDateOnlyForDisplay(value: string): Date | null {
+  const match = String(value || '').trim().slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    const dt = new Date(value);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
 
 export function shortId(id?: string): string {

@@ -36,7 +36,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             <img
               src="/logo.png"
               alt="ZynexTools"
-              className="h-24 w-auto object-contain"
+              className="h-10 w-auto max-w-[150px] object-contain object-left"
             />
           </button>
           <p className="text-xs text-slate-400 leading-relaxed">

@@ -3,6 +3,7 @@ import { Cookie, Plus, Save, Search, X } from 'lucide-react';
 import type { Tool } from '../data/adminStore';
 import { db } from '../data/adminStore';
 import { authStore } from '../store/authStore';
+import { resellerAuth } from '../../reseller/store/resellerAuth';
 import { AdminTable, Badge, SearchInput, SectionHeader, Td, Th, Tr } from '../components/AdminUI';
 import {
   cookiesAreSet,
@@ -121,7 +122,7 @@ export const CookiesPage: React.FC = () => {
 
   const setMethod = (method: ToolAccessMethod) => setForm(f => ({ ...f, accessMethod: method }));
 
-  const sessionExpired = /Admin session expired/i.test(error);
+  const sessionExpired = /Admin session expired|not authorized as admin/i.test(error);
   const toolaccessUrl = isToolAccessUrl(form.toolUrl);
   const oneClickToolaccess = form.accessMethod === 'one_click' && toolaccessUrl;
   const loginLikeReferrer = isLoginLikePanelReferrer(form.panelReferrer);
@@ -133,6 +134,7 @@ export const CookiesPage: React.FC = () => {
   const reLogin = async () => {
     setError('');
     await authStore.logout();
+    await resellerAuth.logout();
     window.location.assign('/admin');
   };
 

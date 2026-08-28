@@ -119,6 +119,12 @@ export const resellerAuth = {
         : Date.now() + 60 * 60 * 1000,
     };
     savePortalSession(session);
+    try {
+      const token = String(authData.session.access_token || '').trim();
+      if (token) localStorage.setItem('admin_jwt', token);
+    } catch {
+      /* ignore */
+    }
     return { ok: true };
   },
 

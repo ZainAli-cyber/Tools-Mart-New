@@ -2,23 +2,30 @@ import { supabase } from './db';
 
 const BASE = '/api';
 
-/** Prefer live Supabase session; legacy admin_jwt is only a fallback. */
+/** Prefer a refreshed Supabase session; do not send stale admin_jwt. */
 async function getToken(): Promise<string> {
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    const refreshed = String(data.session?.access_token || '').trim();
+    if (!error && refreshed) {
+      tokenStore.save(refreshed);
+      return refreshed;
+    }
+  } catch {
+    /* fall through */
+  }
   try {
     const { data } = await supabase.auth.getSession();
     const token = String(data.session?.access_token || '').trim();
     if (token) {
-      try {
-        localStorage.setItem('admin_jwt', token);
-      } catch {
-        /* ignore */
-      }
+      tokenStore.save(token);
       return token;
     }
   } catch {
     /* fall through */
   }
-  return localStorage.getItem('admin_jwt') || '';
+  tokenStore.clear();
+  return '';
 }
 
 async function request<T>(method: string, path: string, body?: any, auth = false): Promise<T> {

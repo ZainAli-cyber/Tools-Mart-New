@@ -3,27 +3,32 @@ import { createClient } from '@supabase/supabase-js';
 import { requireAuth, authenticateAdmin } from './auth';
 import { readDb, writeDb, logActivity, supabase } from './db';
 import { notifyAdminAndOwner, notifyTicketCreated, notifyTicketReply } from './notifications';
+import { activateCustomerForApprovedOrder, buildApprovedOrderDates } from './subscriptionActivate';
 
 const router = Router();
 
 const COLUMN_MISSING = /could not find|schema cache|column|42703|PGRST204/i;
 
-/** Service role for tools writes so cookie settings persist past RLS on Vercel. */
-function toolsAdminDb() {
+/** Service role for admin writes so mutations persist past RLS on Vercel. */
+function adminServiceDb() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!url) {
     throw new Error('Supabase is not configured (need SUPABASE_URL on Vercel)');
   }
   if (!serviceKey) {
     throw new Error(
-      'SUPABASE_SERVICE_ROLE_KEY is missing on Vercel. Add it under Project → Settings → Environment Variables (Production + Preview), then Redeploy. Cookie Save needs the service role key.',
+      'SUPABASE_SERVICE_ROLE_KEY is missing on Vercel. Add it under Project → Settings → Environment Variables (Production + Preview), then Redeploy.',
     );
   }
   return createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+/** @deprecated use adminServiceDb */
+function toolsAdminDb() {
+  return adminServiceDb();
 }
 
 function slugifyToolKey(value: string) {
@@ -249,17 +254,58 @@ router.post('/orders', requireAuth, async (req, res) => {
 });
 
 router.patch('/orders/:id', requireAuth, async (req, res) => {
-  const { data, error } = await supabase.from('orders').update(camelToSnakeOrder(req.body)).eq('id', req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  logActivity('Order Updated', `Updated order ${req.params.id}`);
-  res.json(snakeToCamelOrder(data));
+  try {
+    const sb = adminServiceDb();
+    const patch = camelToSnakeOrder(req.body);
+    const { data: existing, error: loadError } = await sb.from('orders').select('*').eq('id', req.params.id).single();
+    if (loadError || !existing) return res.status(404).json({ error: 'Order not found' });
+
+    const approving =
+      patch.status === 'approved' ||
+      req.body?.status === 'approved' ||
+      patch.sub_status === 'active' ||
+      req.body?.subStatus === 'active';
+
+    if (approving) {
+      const dates = buildApprovedOrderDates(existing, { ...patch, ...req.body });
+      patch.status = 'approved';
+      patch.payment_status = patch.payment_status || 'paid';
+      patch.sub_status = patch.sub_status || 'active';
+      patch.activation_date = dates.activationDate;
+      patch.expiry_date = dates.expiryDate;
+      patch.days_left = dates.daysLeft;
+      try {
+        const applied = await activateCustomerForApprovedOrder(sb, existing, patch);
+        if (applied.expiryDate) patch.expiry_date = applied.expiryDate;
+        if (applied.daysLeft !== undefined) patch.days_left = applied.daysLeft;
+        if (applied.customerId && !existing.customer_id) patch.customer_id = applied.customerId;
+      } catch (activationError: any) {
+        return res.status(500).json({ error: activationError?.message || 'Order saved but customer plan could not be activated' });
+      }
+    } else if (patch.expiry_date) {
+      const { daysLeft } = await import('./planDuration');
+      patch.days_left = daysLeft(String(patch.expiry_date));
+    }
+
+    const { data, error } = await sb.from('orders').update(patch).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    logActivity('Order Updated', `Updated order ${req.params.id}`);
+    res.json(snakeToCamelOrder(data));
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message || 'Could not update order' });
+  }
 });
 
 router.delete('/orders/:id', requireAuth, async (req, res) => {
-  const { error } = await supabase.from('orders').delete().eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  logActivity('Order Deleted', `Deleted order ${req.params.id}`);
-  res.json({ ok: true });
+  try {
+    const sb = adminServiceDb();
+    const { error } = await sb.from('orders').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    logActivity('Order Deleted', `Deleted order ${req.params.id}`);
+    res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message || 'Could not delete order' });
+  }
 });
 
 // ── TOOLS ─────────────────────────────────────────────────────────────────

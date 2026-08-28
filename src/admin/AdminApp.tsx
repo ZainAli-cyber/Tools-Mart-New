@@ -14,6 +14,8 @@ import { useLiveNotes } from '../lib/useLiveNotes';
 import { NoteAlertToast } from '../components/NoteAlertToast';
 import { resellerAuth } from '../reseller/store/resellerAuth';
 import { isMobileApp } from '../lib/mobile/toolLauncher';
+import { supabase } from '../lib/db';
+import { tokenStore } from '../lib/apiClient';
 
 export const AdminApp: React.FC = () => {
   const [authed, setAuthed] = useState(authStore.isAuthenticated());
@@ -22,6 +24,20 @@ export const AdminApp: React.FC = () => {
   const [globalSearch, setGlobalSearch] = useState('');
   const inbox = useLiveNotes(authed ? { id: 'admin', role: 'admin' } : null, authed);
   const unread = inbox.unread;
+
+  // Keep Supabase JWT in sync while the portal session is active (cookie saves need it).
+  useEffect(() => {
+    if (!authed) return;
+    void (async () => {
+      try {
+        const { data, error } = await supabase.auth.refreshSession();
+        const token = String(data.session?.access_token || '').trim();
+        if (!error && token) tokenStore.save(token);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [authed]);
 
   // Auto-expire check
   useEffect(() => {
@@ -47,11 +63,18 @@ export const AdminApp: React.FC = () => {
     return (
       <LoginPage
         embedded
-        onSuccess={() => {
+        onSuccess={async () => {
           const session = resellerAuth.session();
-          if (session?.role !== 'admin') {
+          if (String(session?.role || '').toLowerCase() !== 'admin') {
             window.location.href = '/reseller';
             return;
+          }
+          try {
+            const { data, error } = await supabase.auth.refreshSession();
+            const token = String(data.session?.access_token || '').trim();
+            if (!error && token) tokenStore.save(token);
+          } catch {
+            /* ignore */
           }
           setAuthed(true);
         }}

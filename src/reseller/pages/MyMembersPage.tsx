@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom';
 import { Plus, RefreshCw, ClipboardList, Wrench, Ban, Trash2, MessageCircle, Edit, MoreHorizontal, FileText, MonitorSmartphone } from 'lucide-react';
 import { RTable, Th, Td, Tr, Pill, RSearch, RModal, GhostBtn, RedBtn, inpCls, lblCls } from '../components/ResellerUI';
 import {
-  MEMBER_PLAN_OPTIONS, addDays, daysLeft, fmtDate,
+  MEMBER_PLAN_OPTIONS, daysLeft, fmtDate,
   shortId, today, waLink, type ResellerPayment,
+  extendPlanExpiry, planExpiryDate,
 } from '../../lib/accountStore';
 import { supabase } from '../../lib/db';
 import { useCatalogTools } from '../../lib/toolCookies';
@@ -194,7 +195,7 @@ const AddMemberModal: React.FC<{ ownerId: string; ownerName: string; onClose: ()
         plan: planName,
         fee,
         planDays: days,
-        expiry: addDays(join, days),
+        expiry: planExpiryDate(join, days),
         tools,
       });
     } catch (error: any) {
@@ -267,11 +268,11 @@ const AddMemberModal: React.FC<{ ownerId: string; ownerName: string; onClose: ()
 const RenewModal: React.FC<{ ownerId: string; member: ResellerMember; onClose: () => void; onSaved: () => void }> = ({ ownerId, member, onClose, onSaved }) => {
   const [days, setDays] = useState(member.meta.days || 30);
   const [fee, setFee] = useState(member.meta.fee || 0);
-  const base = daysLeft(member.meta.expiry) > 0 ? member.meta.expiry : today();
+  const base = daysLeft(member.meta.expiry) >= 0 ? member.meta.expiry : today();
 
   const save = async () => {
     await supabase.from('customers').update({
-      expiry: addDays(base, days),
+      expiry: extendPlanExpiry(base, days),
       plan_days: days || member.meta.days,
       fee: fee || member.meta.fee,
       plan: member.meta.plan || 'Monthly Plan',
@@ -295,7 +296,7 @@ const RenewModal: React.FC<{ ownerId: string; member: ResellerMember; onClose: (
         <p className="text-xs text-slate-400">Current expiry: <span className="text-white font-semibold">{member.meta.expiry ? fmtDate(member.meta.expiry) : 'No expiry'}</span></p>
         <div><label className={lblCls}>Extend by (days)</label><input type="number" min={1} value={days} onChange={e => setDays(Number(e.target.value) || 0)} className={inpCls} /></div>
         <div><label className={lblCls}>Selling price (PKR)</label><input type="number" min={0} value={fee} onChange={e => setFee(Number(e.target.value) || 0)} className={inpCls} /></div>
-        <p className="text-[11px] text-emerald-400">New expiry will be: {fmtDate(addDays(base, days))}</p>
+        <p className="text-[11px] text-emerald-400">New expiry will be: {fmtDate(extendPlanExpiry(base, days))}</p>
       </div>
     </RModal>
   );
@@ -323,7 +324,7 @@ const PlanModal: React.FC<{ ownerId: string; member: ResellerMember; onClose: ()
     if (!planName) return;
     await supabase.from('customers').update({
       plan: planName, fee, plan_days: days,
-      expiry: addDays(today(), days),
+      expiry: planExpiryDate(today(), days),
     }).eq('id', member.id);
     if (fee > 0) {
       await supabase.from('reseller_payments').insert({

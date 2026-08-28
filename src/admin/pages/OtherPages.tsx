@@ -9,7 +9,7 @@ import { ToolEditor } from '../components/ToolEditor';
 import { DeviceLimitsToggle } from '../components/DeviceLimitsToggle';
 import {
   AccountRole, AccountMeta, PLAN_OPTIONS, accountMetaFromRow,
-  addDays, daysLeft, fmtDate, shortId, waLink,
+  addDays, daysLeft, fmtDate, shortId, waLink, extendPlanExpiry, planExpiryDate, todayDateOnly,
 } from '../../lib/accountStore';
 import { createAccount, deleteAccount, updateAccount } from '../../lib/accountApi';
 import { AccountProfileForm } from '../../components/AccountProfileForm';
@@ -90,7 +90,7 @@ const AddMemberModal: React.FC<{ onClose: () => void; onSaved: () => void }> = (
         plan: planName,
         fee,
         planDays: days,
-        expiry: addDays(join, days),
+        expiry: planExpiryDate(join, days),
         tools,
       });
     } catch (error: any) {
@@ -200,10 +200,10 @@ const RenewModal: React.FC<{ account: any; onClose: () => void; onSaved: () => v
   const [days, setDays] = useState(meta.days || 30);
   const [fee, setFee] = useState(meta.fee || 0);
   const save = async () => {
-    const base = daysLeft(meta.expiry) > 0 ? meta.expiry : new Date().toISOString().slice(0, 10);
+    const base = daysLeft(meta.expiry) >= 0 ? meta.expiry : todayDateOnly();
     const { supabase } = await import('../../lib/db');
     await supabase.from('customers').update({
-      expiry: addDays(base, days),
+      expiry: extendPlanExpiry(base, days),
       fee: fee || meta.fee,
       plan_days: days || meta.days,
       plan: meta.plan || 'Monthly Plan',
@@ -218,7 +218,7 @@ const RenewModal: React.FC<{ account: any; onClose: () => void; onSaved: () => v
         <p className="text-xs text-slate-400">Current expiry: <span className="text-white font-semibold">{meta.expiry ? fmtDate(meta.expiry) : 'No expiry'}</span></p>
         <div><label className={lblCls}>Extend by (days)</label><input type="number" min={1} value={days} onChange={e=>setDays(Number(e.target.value)||0)} className={inpCls}/></div>
         <div><label className={lblCls}>Selling price (PKR)</label><input type="number" min={0} value={fee} onChange={e=>setFee(Number(e.target.value)||0)} className={inpCls}/></div>
-        <p className="text-[11px] text-emerald-400">New expiry will be: {fmtDate(addDays(daysLeft(meta.expiry) > 0 ? meta.expiry : new Date().toISOString().slice(0,10), days))}</p>
+        <p className="text-[11px] text-emerald-400">New expiry will be: {fmtDate(extendPlanExpiry(daysLeft(meta.expiry) >= 0 ? meta.expiry : todayDateOnly(), days))}</p>
       </div>
     </ModalShell>
   );
@@ -244,10 +244,10 @@ const PlanModal: React.FC<{ account: any; onClose: () => void; onSaved: () => vo
     }
     const planName = plan === CUSTOM_PLAN_KEY ? customName.trim() : plan;
     if (!planName) return;
-    const start = new Date().toISOString().slice(0, 10);
+    const start = todayDateOnly();
     await supabase.from('customers').update({
       plan: planName, fee, plan_days: days,
-      expiry: addDays(start, days),
+      expiry: planExpiryDate(start, days),
       role: planName.toLowerCase().includes('reseller') ? 'reseller' : meta.role,
     }).eq('id', account.id);
     onSaved(); onClose();

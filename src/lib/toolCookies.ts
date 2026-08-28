@@ -432,29 +432,55 @@ const SESSION_EXPIRED_MSG =
  * Prefer the live access token; keep admin_jwt as a sync/fallback for older apiClient callers.
  */
 export async function getAdminAccessToken(): Promise<string> {
+  const persist = (token: string) => {
+    try {
+      localStorage.setItem('admin_jwt', token);
+    } catch {
+      /* ignore quota / private mode */
+    }
+  };
+  const clearStale = () => {
+    try {
+      localStorage.removeItem('admin_jwt');
+    } catch {
+      /* ignore */
+    }
+  };
+
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    const refreshed = String(data.session?.access_token || '').trim();
+    if (!error && refreshed) {
+      persist(refreshed);
+      return refreshed;
+    }
+  } catch {
+    /* fall through */
+  }
+
   try {
     const { data } = await supabase.auth.getSession();
     const token = String(data.session?.access_token || '').trim();
     if (token) {
-      try {
-        localStorage.setItem('admin_jwt', token);
-      } catch {
-        /* ignore quota / private mode */
-      }
+      persist(token);
       return token;
     }
   } catch {
     /* fall through */
   }
-  try {
-    return String(localStorage.getItem('admin_jwt') || '').trim();
-  } catch {
-    return '';
-  }
+
+  // Stale admin_jwt caused "session expired" loops while the portal UI still looked signed in.
+  clearStale();
+  return '';
 }
 
 function mapAdminSaveError(status: number, body: any, fallback: string): string {
-  if (status === 401 || status === 403) return SESSION_EXPIRED_MSG;
+  if (status === 401) return SESSION_EXPIRED_MSG;
+  if (status === 403) {
+    const raw = String(body?.error || body?.message || '').trim();
+    if (/administrator|forbidden/i.test(raw)) return raw;
+    return 'Your account is not authorized as admin. Sign in with an administrator account, then Save again.';
+  }
   const raw = String(body?.error || body?.message || fallback || '').trim();
   // Misconfigured service role is a server/config issue — do not label it as session expiry.
   if (/SUPABASE_SERVICE_ROLE_KEY|not configured|service.?role/i.test(raw)) {
@@ -725,7 +751,7 @@ export async function saveToolCookieSettings(
         } catch {
           /* ignore */
         }
-        return { ok: false, error: SESSION_EXPIRED_MSG };
+        return { ok: false, error: lastError };
       }
       if (res.status === 404) continue;
       return { ok: false, error: lastError };

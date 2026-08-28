@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Eye, Check, X, RefreshCw, Trash2, Plus } from 'lucide-react';
 import { Order } from '../data/adminStore';
 import { supabase } from '../../lib/db';
+import { api } from '../../lib/apiClient';
 import { notifyAdminAndOwner } from '../../lib/notifications';
 import { accountForSale, collectSales, liveSubscription, type SaleRow } from '../../lib/sales';
+import { daysLeft, planDaysFromOrderMonths, planExpiryDate, todayDateOnly } from '../../lib/planDuration';
 import { SectionHeader, AdminTable, Th, Td, Tr, StatusBadge, DaysLeftBadge, AdminBtn, SearchInput, ProgressBar, Badge } from '../components/AdminUI';
 
 const PAYMENT_METHODS = ['easypaisa','jazzcash','bank','whatsapp','screenshot','prepaid','other'];
@@ -81,10 +83,40 @@ function saleToDisplay(row: SaleRow, shopById: Map<string, Order>, customersById
   };
 }
 
+function activationExpiry(activationDate: string, durationMonths: number) {
+  return planExpiryDate(activationDate, planDaysFromOrderMonths(durationMonths));
+}
+
+function buildApprovePatch(order: DisplayOrder) {
+  const activationDate = todayDateOnly();
+  const planDays = planDaysFromOrderMonths(order.duration || 1);
+  const expiryDate = order.expiryDate || activationExpiry(activationDate, order.duration || 1);
+  return {
+    status: 'approved',
+    paymentStatus: 'paid',
+    subStatus: 'active',
+    activationDate,
+    expiryDate,
+    daysLeft: daysLeft(expiryDate),
+    duration: order.duration || 1,
+    tool: order.tool,
+    customerEmail: order.customerEmail,
+    customerPhone: order.customerPhone,
+  };
+}
+
+function orderNeedsApproval(order: DisplayOrder) {
+  return order.source === 'shop' && (order.status === 'pending' || order.paymentStatus === 'pending');
+}
+
 function sourceLabel(source: OrderSource) {
   if (source === 'direct') return 'Plan sale';
   if (source === 'reseller') return 'Reseller sale';
   return 'Shop order';
+}
+
+async function patchShopOrder(id: string, patch: Record<string, unknown>) {
+  await api.orders.update(id, patch);
 }
 
 /* ── Add Order Modal ── */
@@ -114,9 +146,8 @@ const AddOrderModal: React.FC<{ onClose: () => void; onSaved: () => void }> = ({
 
   useEffect(() => {
     if (form.activationDate && form.duration) {
-      const d = new Date(form.activationDate);
-      d.setMonth(d.getMonth() + Number(form.duration));
-      setForm(f => ({ ...f, expiryDate: d.toISOString().slice(0,10) }));
+      const planDays = planDaysFromOrderMonths(Number(form.duration));
+      setForm(f => ({ ...f, expiryDate: planExpiryDate(form.activationDate, planDays) }));
     }
   }, [form.activationDate, form.duration]);
 
@@ -315,19 +346,23 @@ const AddOrderModal: React.FC<{ onClose: () => void; onSaved: () => void }> = ({
 };
 
 /* ── View Order Modal ── */
-const OrderModal: React.FC<{ order: DisplayOrder; onClose: () => void; onUpdate: () => void }> = ({ order, onClose, onUpdate }) => {
+const OrderModal: React.FC<{ order: DisplayOrder; onClose: () => void; onUpdate: () => void; onNotify: (msg: string) => void }> = ({ order, onClose, onUpdate, onNotify }) => {
   const [adminNotes, setAdminNotes] = useState(order.adminNotes);
+  const [saving, setSaving] = useState(false);
   const isShop = order.source === 'shop';
-  const update = async (patch: any) => {
-    if (!isShop) return;
-    const snakePatch: any = {};
-    if (patch.status !== undefined) snakePatch.status = patch.status;
-    if (patch.paymentStatus !== undefined) snakePatch.payment_status = patch.paymentStatus;
-    if (patch.subStatus !== undefined) snakePatch.sub_status = patch.subStatus;
-    if (patch.activationDate !== undefined) snakePatch.activation_date = patch.activationDate;
-    if (patch.adminNotes !== undefined) snakePatch.admin_notes = patch.adminNotes;
-    await supabase.from('orders').update(snakePatch).eq('id', order.id);
-    onUpdate(); onClose();
+  const update = async (patch: Record<string, unknown>, opts?: { close?: boolean }) => {
+    if (!isShop || saving) return;
+    setSaving(true);
+    try {
+      await patchShopOrder(order.id, patch);
+      onNotify(opts?.close === false ? 'Notes saved' : 'Order updated');
+      onUpdate();
+      if (opts?.close !== false) onClose();
+    } catch (err: any) {
+      onNotify(err?.message || 'Could not update order. Sign in again, then retry.');
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
@@ -352,18 +387,18 @@ const OrderModal: React.FC<{ order: DisplayOrder; onClose: () => void; onUpdate:
         {isShop && (
           <div className="px-5 pb-3">
             <div className="text-xs font-bold text-slate-400 mb-1">Admin Notes</div>
-            <textarea value={adminNotes} onChange={e=>setAdminNotes(e.target.value)} onBlur={()=>update({adminNotes})} rows={2}
+            <textarea value={adminNotes} onChange={e=>setAdminNotes(e.target.value)} onBlur={()=>void update({ adminNotes }, { close: false })} rows={2}
               className="w-full bg-[#1a1210] border border-[#2a1e1c] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500/50 transition resize-none" placeholder="Private admin notes…"/>
           </div>
         )}
         {isShop ? (
           <div className="p-5 border-t border-[#2a1e1c] flex flex-wrap gap-2">
-            <AdminBtn variant="green" onClick={()=>update({status:'approved',paymentStatus:'paid',subStatus:'active',activationDate:new Date().toISOString().slice(0,10)})}><Check className="w-3 h-3"/> Approve</AdminBtn>
-            <AdminBtn variant="red" onClick={()=>update({status:'rejected'})}><X className="w-3 h-3"/> Reject</AdminBtn>
-            <AdminBtn variant="amber" onClick={()=>update({status:'approved',subStatus:'renewed'})}><RefreshCw className="w-3 h-3"/> Renew</AdminBtn>
-            <AdminBtn onClick={()=>update({paymentStatus:'paid'})}>Mark Paid</AdminBtn>
-            <AdminBtn onClick={()=>update({status:'refunded'})}>Refund</AdminBtn>
-            <AdminBtn variant="red" onClick={()=>update({subStatus:'suspended'})}>Suspend</AdminBtn>
+            <AdminBtn variant="green" disabled={saving} onClick={()=>void update(buildApprovePatch(order))}><Check className="w-3 h-3"/> Approve</AdminBtn>
+            <AdminBtn variant="red" disabled={saving} onClick={()=>void update({ status: 'rejected' })}><X className="w-3 h-3"/> Reject</AdminBtn>
+            <AdminBtn variant="amber" disabled={saving} onClick={()=>void update({ status: 'approved', subStatus: 'renewed' })}><RefreshCw className="w-3 h-3"/> Renew</AdminBtn>
+            <AdminBtn disabled={saving} onClick={()=>void update({ paymentStatus: 'paid' })}>Mark Paid</AdminBtn>
+            <AdminBtn disabled={saving} onClick={()=>void update({ status: 'refunded' })}>Refund</AdminBtn>
+            <AdminBtn variant="red" disabled={saving} onClick={()=>void update({ subStatus: 'suspended' })}>Suspend</AdminBtn>
           </div>
         ) : (
           <div className="p-5 border-t border-[#2a1e1c] text-[11px] text-slate-500">This {sourceLabel(order.source).toLowerCase()} is recorded from accounts/payments and is view-only.</div>
@@ -380,6 +415,12 @@ export const OrdersPage: React.FC = () => {
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState<DisplayOrder|null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [toast, setToast] = useState('');
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(''), 3200);
+  };
 
   const loadOrders = useCallback(async () => {
     const [{ data: orderRows }, { data: customerRows }, { data: paymentRows }] = await Promise.all([
@@ -414,14 +455,28 @@ export const OrdersPage: React.FC = () => {
   }, [loadOrders]);
 
   const deleteOrder = async (id: string) => {
-    if (!confirm('Delete?')) return;
-    await supabase.from('orders').delete().eq('id', id);
-    loadOrders();
+    if (!confirm('Delete this shop order?')) return;
+    try {
+      await api.orders.delete(id);
+      showToast('Order deleted');
+      loadOrders();
+    } catch (err: any) {
+      showToast(err?.message || 'Could not delete order. Sign in again, then retry.');
+    }
   };
 
-  const quickApprove = async (id: string) => {
-    await supabase.from('orders').update({ status: 'approved', payment_status: 'paid', sub_status: 'active', activation_date: new Date().toISOString().slice(0,10) }).eq('id', id);
-    loadOrders();
+  const quickApprove = async (order: DisplayOrder) => {
+    if (!orderNeedsApproval(order)) {
+      showToast('This order is already approved.');
+      return;
+    }
+    try {
+      await patchShopOrder(order.id, buildApprovePatch(order));
+      showToast(`Approved ${order.invoiceNo}`);
+      loadOrders();
+    } catch (err: any) {
+      showToast(err?.message || 'Could not approve order. Sign in again, then retry.');
+    }
   };
 
   const filtered = orders.filter(o => {
@@ -432,6 +487,11 @@ export const OrdersPage: React.FC = () => {
 
   return (
     <div className="space-y-5">
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl bg-[#1a1210] border border-emerald-500/30 text-emerald-300 text-xs font-semibold shadow-xl">
+          {toast}
+        </div>
+      )}
       <SectionHeader title="Orders Management" sub={`${orders.length} total orders`}/>
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[['Total',orders.length,'text-white'],['Approved',orders.filter(o=>o.status==='approved').length,'text-emerald-400'],['Pending',orders.filter(o=>o.status==='pending').length,'text-amber-400'],['Rejected',orders.filter(o=>o.status==='rejected').length,'text-red-400'],['Refunded',orders.filter(o=>o.status==='refunded').length,'text-purple-400']].map(([l,v,c])=>(
@@ -468,8 +528,14 @@ export const OrdersPage: React.FC = () => {
                   <AdminBtn onClick={()=>setSelected(o)}><Eye className="w-3 h-3"/></AdminBtn>
                   {o.source === 'shop' && (
                     <>
-                      <AdminBtn variant="green" onClick={()=>quickApprove(o.id)}><Check className="w-3 h-3"/></AdminBtn>
-                      <AdminBtn variant="red" onClick={()=>deleteOrder(o.id)}><Trash2 className="w-3 h-3"/></AdminBtn>
+                      {orderNeedsApproval(o) && (
+                        <AdminBtn variant="green" title="Approve order" onClick={() => void quickApprove(o)}>
+                          <Check className="w-3 h-3"/>
+                        </AdminBtn>
+                      )}
+                      <AdminBtn variant="red" title="Delete order" onClick={() => void deleteOrder(o.id)}>
+                        <Trash2 className="w-3 h-3"/>
+                      </AdminBtn>
                     </>
                   )}
                 </div></Td>
@@ -479,7 +545,7 @@ export const OrdersPage: React.FC = () => {
         </AdminTable>
       )}
       {!loading && !filtered.length && <div className="text-center py-12 text-slate-600 text-sm">No orders found</div>}
-      {selected && <OrderModal order={selected} onClose={()=>setSelected(null)} onUpdate={loadOrders}/>}
+      {selected && <OrderModal order={selected} onClose={()=>setSelected(null)} onUpdate={loadOrders} onNotify={showToast}/>}
       {showAdd && <AddOrderModal onClose={()=>setShowAdd(false)} onSaved={loadOrders}/>}
     </div>
   );
