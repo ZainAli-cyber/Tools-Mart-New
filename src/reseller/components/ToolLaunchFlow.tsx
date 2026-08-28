@@ -16,6 +16,7 @@ import {
   type LaunchProgressStep,
 } from '../../lib/toolCookies';
 import { CookieSessionApplyScreen } from './CookieSessionApplyScreen';
+import { isMobileApp, launchToolNative } from '../../lib/mobile/toolLauncher';
 
 /** By extension tools never get Session Apply / Continue without extension. */
 function allowsSessionApply(tool: Tool, err?: NeedExtensionError | null): boolean {
@@ -409,6 +410,20 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
   const onOpenReady = useCallback(() => {
     const url = String(readyUrl || pendingDestRef.current || '').trim();
     if (!url) return;
+    const clearReady = () => {
+      setReadyUrl(null);
+      setConnecting(null);
+      pendingRef.current = null;
+      pendingDestRef.current = null;
+    };
+    if (isMobileApp()) {
+      void launchToolNative({ url, title: pendingRef.current?.name || 'Tool' })
+        .then(clearReady)
+        .catch(err => {
+          window.alert(err?.message || 'Could not open tool in the app.');
+        });
+      return;
+    }
     // Prefer a real user-gesture <a> click — more reliable than window.open after async work.
     try {
       const a = document.createElement('a');
@@ -419,17 +434,11 @@ export function useToolLaunch(opts?: { onOpenExtensionsPage?: () => void }) {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setReadyUrl(null);
-      setConnecting(null);
-      pendingRef.current = null;
-      pendingDestRef.current = null;
+      clearReady();
     } catch (err: any) {
       try {
         openToolInNewTab(url);
-        setReadyUrl(null);
-        setConnecting(null);
-        pendingRef.current = null;
-        pendingDestRef.current = null;
+        clearReady();
       } catch (err2: any) {
         window.alert(
           err2?.message ||

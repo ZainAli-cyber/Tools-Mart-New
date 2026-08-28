@@ -37,8 +37,10 @@ export const MobileAppPage: React.FC<{ customerId: string }> = ({ customerId }) 
     };
   }, []);
 
-  const apkHref = apiUrl(String(info?.apkUrl || DEFAULT_APK));
-  const version = String(info?.version || '1.0.0');
+  const apkPath = String(info?.apkUrl || DEFAULT_APK).trim();
+  const version = String(info?.version || '1.2.0');
+  const apkBase = /^https?:\/\//i.test(apkPath) ? apkPath : apiUrl(apkPath);
+  const apkHref = `${apkBase}${apkBase.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`;
 
   return (
     <div className="space-y-5">
@@ -65,7 +67,7 @@ export const MobileAppPage: React.FC<{ customerId: string }> = ({ customerId }) 
 
           <a
             href={apkHref}
-            download
+            download="zynextools.apk"
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-red-900/30 transition hover:bg-red-500"
           >
             <Download className="h-4 w-4" />

@@ -301,7 +301,7 @@ function apiUrl(path) {
 var DEFAULT_PORTAL;
 var init_portalBase = __esm({
   "src/lib/mobile/portalBase.ts"() {
-    DEFAULT_PORTAL = "https://zynextools.com";
+    DEFAULT_PORTAL = "https://www.zynextools.com";
   }
 });
 
@@ -5294,7 +5294,7 @@ function canDispatch(profile, items) {
 }
 router8.get("/info", (_req, res) => {
   const apkUrl = String(process.env.MOBILE_APK_URL || "/downloads/zynextools.apk").trim();
-  const version = String(process.env.MOBILE_APK_VERSION || "1.1.0").trim();
+  const version = String(process.env.MOBILE_APK_VERSION || "1.2.0").trim();
   res.json({
     ok: true,
     platform: "android",

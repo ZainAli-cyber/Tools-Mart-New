@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from './db';
 import { db, type Tool } from '../admin/data/adminStore';
 
@@ -997,6 +998,15 @@ function finishOpen(dest: string, opts?: LaunchToolOptions, openedByExtension = 
   if (openedByExtension) return;
   const url = absolutePortalUrl(String(dest || '').trim());
   opts?.onDestinationReady?.(url);
+  // Android WebView: window.open / _blank opens Chrome — always use native tool browser.
+  if (Capacitor.isNativePlatform()) {
+    void import('./mobile/toolLauncher')
+      .then(({ launchToolNative }) => launchToolNative({ url, title: 'Tool' }))
+      .catch(err => {
+        window.alert(err?.message || 'Could not open tool in the app.');
+      });
+    return;
+  }
   if (opts?.reservedTab) {
     navigateReservedTab(opts.reservedTab, url);
     return;
@@ -1265,6 +1275,31 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
     opts?.onProgress?.('done');
     return;
   } catch (err) {
+    const { isMobileApp } = await import('./mobile/toolLauncher');
+    if (isMobileApp()) {
+      // Never fall back to window.open on native — that opens Chrome instead of in-app WebView.
+      const local = readCookieFallback()[tool.id] || {
+        accessMethod: tool.accessMethod,
+        toolUrl: tool.toolUrl,
+        cookiesJson: tool.cookiesJson,
+        panelReferrer: tool.panelReferrer,
+      };
+      const dest = String(local.toolUrl || '').trim();
+      if (dest) {
+        let cookies: any[] = [];
+        try {
+          cookies = parseCookieJson(local.cookiesJson);
+        } catch {
+          cookies = [];
+        }
+        const unlockReferrer = String(local.panelReferrer || tool.panelReferrer || '').trim();
+        await openViaMobileApp(dest, cookies, opts, unlockReferrer || undefined, tool.name);
+        opts?.onProgress?.('done');
+        return;
+      }
+      throw err;
+    }
+
     // Never fall through to local one_click after by_extension NeedExtensionError.
     if (
       err instanceof NeedExtensionError ||

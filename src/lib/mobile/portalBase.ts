@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-const DEFAULT_PORTAL = 'https://zynextools.com';
+const DEFAULT_PORTAL = 'https://www.zynextools.com';
 
 /** Production portal origin — used for API calls when the WebView has no same-origin /api. */
 export function getPortalBaseUrl(): string {

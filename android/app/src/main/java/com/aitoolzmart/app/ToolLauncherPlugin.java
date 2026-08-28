@@ -35,13 +35,17 @@ public class ToolLauncherPlugin extends Plugin {
         JSArray cookies = call.getArray("cookies", new JSArray());
 
         try {
-            Intent intent = new Intent(getContext(), ToolWebViewActivity.class);
+            android.app.Activity activity = getActivity();
+            if (activity == null) {
+                call.reject("App activity not available");
+                return;
+            }
+            Intent intent = new Intent(activity, ToolWebViewActivity.class);
             intent.putExtra(ToolWebViewActivity.EXTRA_URL, url);
             intent.putExtra(ToolWebViewActivity.EXTRA_REFERRER, referrer);
             intent.putExtra(ToolWebViewActivity.EXTRA_TITLE, title);
             intent.putExtra(ToolWebViewActivity.EXTRA_COOKIES, cookies.toString());
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            getContext().startActivity(intent);
+            activity.startActivity(intent);
 
             JSObject ret = new JSObject();
             ret.put("ok", true);

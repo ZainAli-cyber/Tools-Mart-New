@@ -101,7 +101,7 @@ npm run android:apk
 
 | Env | Purpose |
 |-----|---------|
-| `VITE_PORTAL_URL` | Portal origin for bundled APK API calls (default: zynextools.com) |
+| `VITE_PORTAL_URL` | Portal origin for bundled APK API calls (default: www.zynextools.com) |
 | `CAPACITOR_SERVER_URL` | Override portal URL in Capacitor config |
 | `CAPACITOR_USE_BUNDLED=1` | Ship dashboard inside APK instead of loading remote portal |
 | `MOBILE_APK_URL` | Download link shown on dashboard (default: `/downloads/zynextools.apk`) |

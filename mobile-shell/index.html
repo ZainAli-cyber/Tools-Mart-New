@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>ZynexTools</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #090303;
+        color: #f8fafc;
+        font-family: system-ui, sans-serif;
+      }
+      .wrap {
+        display: flex;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #dc2626;
+        animation: pulse 1s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.35; transform: scale(0.9); }
+        50% { opacity: 1; transform: scale(1); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="dot" aria-hidden="true"></div>
+      <p>Loading ZynexTools…</p>
+    </div>
+  </body>
+</html>
