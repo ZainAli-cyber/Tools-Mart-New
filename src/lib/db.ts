@@ -7,14 +7,27 @@ import { createClient } from '@supabase/supabase-js';
  * Vite inlines `process.env.VITE_*` via vite.config.ts `define`.
  */
 const nodeEnv = typeof process !== 'undefined' ? process.env : {};
-const SUPABASE_URL =
-  nodeEnv.SUPABASE_URL ||
-  nodeEnv.VITE_SUPABASE_URL ||
-  'https://duvwpbetvftqissnstoy.supabase.co';
-const SUPABASE_ANON =
-  nodeEnv.SUPABASE_ANON_KEY ||
-  nodeEnv.VITE_SUPABASE_ANON_KEY ||
+
+const DEFAULT_SUPABASE_URL = 'https://duvwpbetvftqissnstoy.supabase.co';
+const DEFAULT_SUPABASE_ANON =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1dndwYmV0dmZ0cWlzc25zdG95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4NjkxMTksImV4cCI6MjEwMjQ0NTExOX0.2_-KYBcp3z4xa9MMsg4GAAdWpABhOIWInfN2SIFiv1w';
+
+/** Shared Supabase env for browser + Vercel API (includes repo defaults when Vercel vars are unset). */
+export function getSupabaseConfig() {
+  return {
+    url:
+      nodeEnv.SUPABASE_URL ||
+      nodeEnv.VITE_SUPABASE_URL ||
+      DEFAULT_SUPABASE_URL,
+    anon:
+      nodeEnv.SUPABASE_ANON_KEY ||
+      nodeEnv.VITE_SUPABASE_ANON_KEY ||
+      DEFAULT_SUPABASE_ANON,
+    serviceKey: String(nodeEnv.SUPABASE_SERVICE_ROLE_KEY || '').trim(),
+  };
+}
+
+const { url: SUPABASE_URL, anon: SUPABASE_ANON } = getSupabaseConfig();
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: {

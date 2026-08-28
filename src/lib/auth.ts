@@ -1,10 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Request, Response, NextFunction } from 'express';
+import { getSupabaseConfig } from './db';
 
 function client(token?: string) {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anon) throw new Error('Supabase authentication is not configured');
+  const { url, anon } = getSupabaseConfig();
   return createClient(url, anon, {
     auth: { persistSession: false },
     global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
@@ -12,10 +11,7 @@ function client(token?: string) {
 }
 
 function supabaseEnv() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  return { url, anon, serviceKey };
+  return getSupabaseConfig();
 }
 
 export async function authenticateAdmin(email: string, password: string) {
@@ -45,10 +41,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
 
     const { url, anon, serviceKey } = supabaseEnv();
-    if (!url || !anon) {
-      return res.status(500).json({ error: 'Supabase authentication is not configured' });
-    }
-
     const authClient = createClient(url, anon, { auth: { persistSession: false } });
     const { data, error } = await authClient.auth.getUser(token);
     if (error || !data.user) {

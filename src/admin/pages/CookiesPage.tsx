@@ -163,7 +163,7 @@ export const CookiesPage: React.FC = () => {
     });
     setSaving(false);
     if (!result.ok) {
-      setError(result.error);
+      setError(result.ok === false ? result.error : 'Could not save cookie settings.');
       return;
     }
     db.log('Cookies Saved', `${editing.name} access ${form.accessMethod}`);
