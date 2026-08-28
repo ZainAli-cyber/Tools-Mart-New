@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createClient } from '@supabase/supabase-js';
+import { createAuthAndAdminClients } from './db';
 import {
   GLOBAL_PROXY_SQL_HINT,
   clearGlobalProxyConfig,
@@ -14,18 +14,7 @@ import { getShowToolAccessLabels, setShowToolAccessLabels } from './toolAccessLa
 const router = Router();
 
 function clients() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !anonKey || !serviceKey) {
-    throw new Error(
-      'SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env, then restart the server.',
-    );
-  }
-  return {
-    auth: createClient(url, anonKey, { auth: { persistSession: false } }),
-    admin: createClient(url, serviceKey, { auth: { persistSession: false } }),
-  };
+  return createAuthAndAdminClients();
 }
 
 async function actor(req: any) {

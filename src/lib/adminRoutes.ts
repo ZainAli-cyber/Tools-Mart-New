@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth, authenticateAdmin } from './auth';
-import { readDb, writeDb, logActivity, supabase, getSupabaseConfig } from './db';
+import { getSupabaseConfig, requireServiceRoleKey } from './db';
 import { notifyAdminAndOwner, notifyTicketCreated, notifyTicketReply } from './notifications';
 import { activateCustomerForApprovedOrder, buildApprovedOrderDates } from './subscriptionActivate';
 
@@ -11,15 +11,8 @@ const COLUMN_MISSING = /could not find|schema cache|column|42703|PGRST204/i;
 
 /** Service role for admin writes so mutations persist past RLS on Vercel. */
 function adminServiceDb() {
-  const { url, serviceKey } = getSupabaseConfig();
-  if (!url) {
-    throw new Error('Supabase is not configured (need SUPABASE_URL on Vercel)');
-  }
-  if (!serviceKey) {
-    throw new Error(
-      'SUPABASE_SERVICE_ROLE_KEY is missing on Vercel. Add it under Project → Settings → Environment Variables (Production), then Redeploy.',
-    );
-  }
+  const { url } = getSupabaseConfig();
+  const serviceKey = requireServiceRoleKey();
   return createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });

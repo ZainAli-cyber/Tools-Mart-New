@@ -7,7 +7,7 @@
  *   /fx/<token>/~<host>/…    → any other host the tool page needs (CDNs, APIs)
  */
 import { Router } from 'express';
-import { createClient } from '@supabase/supabase-js';
+import { createAnonSupabase, createPrivilegedSupabase } from './db';
 import { createHash, randomBytes } from 'crypto';
 import { planIsActive } from './accountStore';
 import {
@@ -72,29 +72,12 @@ if (!process.env.VERCEL) {
   setInterval(pruneSessions, 60_000).unref?.();
 }
 
-function config() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anon) throw new Error('Supabase authentication is not configured');
-  return { url, anon };
-}
-
 function client(token?: string) {
-  const { url, anon } = config();
-  return createClient(url, anon, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
-  });
+  return createAnonSupabase(token);
 }
 
 function toolsDb() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !(serviceKey || anon)) throw new Error('Supabase authentication is not configured');
-  return createClient(url, serviceKey || anon!, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createPrivilegedSupabase();
 }
 
 function slugify(value: string) {

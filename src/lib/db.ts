@@ -27,6 +27,56 @@ export function getSupabaseConfig() {
   };
 }
 
+export function serviceRoleMissingMessage() {
+  if (nodeEnv.VERCEL) {
+    return 'SUPABASE_SERVICE_ROLE_KEY is missing on Vercel. Project → Settings → Environment Variables → Production → paste the service_role key → Redeploy.';
+  }
+  return 'SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env in the project root, then restart the server (npm run dev).';
+}
+
+export function requireServiceRoleKey(): string {
+  const key = getSupabaseConfig().serviceKey;
+  if (key) return key;
+  throw new Error(serviceRoleMissingMessage());
+}
+
+export function createAnonSupabase(token?: string) {
+  const { url, anon } = getSupabaseConfig();
+  return createClient(url, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+  });
+}
+
+/** Service role when configured; otherwise anon (sufficient for reads with current RLS). */
+export function createPrivilegedSupabase(token?: string) {
+  const { url, anon, serviceKey } = getSupabaseConfig();
+  const key = serviceKey || anon;
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: !serviceKey && token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+  });
+}
+
+export function createAuthAndAdminClients() {
+  const { url, anon, serviceKey } = getSupabaseConfig();
+  const adminKey = serviceKey || anon;
+  return {
+    auth: createClient(url, anon, { auth: { persistSession: false } }),
+    admin: createClient(url, adminKey, { auth: { persistSession: false } }),
+    hasServiceRole: Boolean(serviceKey),
+  };
+}
+
+export function supabaseSealKeyMaterial(): string {
+  const { serviceKey, anon } = getSupabaseConfig();
+  return serviceKey || anon || 'atm-proxy';
+}
+
+export function createServiceSupabase() {
+  return createPrivilegedSupabase();
+}
+
 const { url: SUPABASE_URL, anon: SUPABASE_ANON } = getSupabaseConfig();
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {

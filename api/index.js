@@ -12,13 +12,70 @@ var __export = (target, all) => {
 var db_exports = {};
 __export(db_exports, {
   DEFAULT_SETTINGS: () => DEFAULT_SETTINGS,
-  logActivity: () => logActivity,
-  readDb: () => readDb,
+  createAnonSupabase: () => createAnonSupabase,
+  createAuthAndAdminClients: () => createAuthAndAdminClients,
+  createPrivilegedSupabase: () => createPrivilegedSupabase,
+  createServiceSupabase: () => createServiceSupabase,
+  getSupabaseConfig: () => getSupabaseConfig,
+  logActivity: () => logActivity2,
+  readDb: () => readDb2,
+  requireServiceRoleKey: () => requireServiceRoleKey,
   seedIfEmpty: () => seedIfEmpty,
-  supabase: () => supabase,
+  serviceRoleMissingMessage: () => serviceRoleMissingMessage,
+  supabase: () => supabase2,
+  supabaseSealKeyMaterial: () => supabaseSealKeyMaterial,
   writeDb: () => writeDb
 });
-import { createClient as createClient2 } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
+function getSupabaseConfig() {
+  return {
+    url: nodeEnv.SUPABASE_URL || nodeEnv.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL,
+    anon: nodeEnv.SUPABASE_ANON_KEY || nodeEnv.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON,
+    serviceKey: String(nodeEnv.SUPABASE_SERVICE_ROLE_KEY || "").trim()
+  };
+}
+function serviceRoleMissingMessage() {
+  if (nodeEnv.VERCEL) {
+    return "SUPABASE_SERVICE_ROLE_KEY is missing on Vercel. Project \u2192 Settings \u2192 Environment Variables \u2192 Production \u2192 paste the service_role key \u2192 Redeploy.";
+  }
+  return "SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env in the project root, then restart the server (npm run dev).";
+}
+function requireServiceRoleKey() {
+  const key = getSupabaseConfig().serviceKey;
+  if (key) return key;
+  throw new Error(serviceRoleMissingMessage());
+}
+function createAnonSupabase(token) {
+  const { url, anon } = getSupabaseConfig();
+  return createClient(url, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
+  });
+}
+function createPrivilegedSupabase(token) {
+  const { url, anon, serviceKey } = getSupabaseConfig();
+  const key = serviceKey || anon;
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: !serviceKey && token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
+  });
+}
+function createAuthAndAdminClients() {
+  const { url, anon, serviceKey } = getSupabaseConfig();
+  const adminKey = serviceKey || anon;
+  return {
+    auth: createClient(url, anon, { auth: { persistSession: false } }),
+    admin: createClient(url, adminKey, { auth: { persistSession: false } }),
+    hasServiceRole: Boolean(serviceKey)
+  };
+}
+function supabaseSealKeyMaterial() {
+  const { serviceKey, anon } = getSupabaseConfig();
+  return serviceKey || anon || "atm-proxy";
+}
+function createServiceSupabase() {
+  return createPrivilegedSupabase();
+}
 function toSnake(obj) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return obj;
   const map = {
@@ -131,17 +188,17 @@ function toCamel(obj) {
   }
   return out;
 }
-async function readDb(name, defaultVal) {
+async function readDb2(name, defaultVal) {
   const table = TABLE[name];
   if (!table) return defaultVal;
   try {
     if (name === "settings") {
-      const { data: data2, error: error2 } = await supabase.from("settings").select("*").eq("id", 1).single();
+      const { data: data2, error: error2 } = await supabase2.from("settings").select("*").eq("id", 1).single();
       if (error2 || !data2) return defaultVal;
       return toCamel(data2);
     }
     const orderCol = name === "activity" ? "created_at" : "created_at";
-    const { data, error } = await supabase.from(table).select("*").order(orderCol, { ascending: false });
+    const { data, error } = await supabase2.from(table).select("*").order(orderCol, { ascending: false });
     if (error || !data) return defaultVal;
     return toCamel(data);
   } catch {
@@ -154,20 +211,20 @@ async function writeDb(name, data) {
   try {
     if (name === "settings") {
       const row = toSnake({ ...data, id: 1 });
-      await supabase.from("settings").upsert(row);
+      await supabase2.from("settings").upsert(row);
       return;
     }
     const rows = Array.isArray(data) ? data : [data];
     if (rows.length === 0) return;
     const snakeRows = rows.map(toSnake);
-    await supabase.from(table).upsert(snakeRows);
+    await supabase2.from(table).upsert(snakeRows);
   } catch (e) {
     console.error(`Supabase writeDb error [${name}]:`, e);
   }
 }
-async function logActivity(action, detail) {
+async function logActivity2(action, detail) {
   try {
-    await supabase.from("activity_log").insert({
+    await supabase2.from("activity_log").insert({
       id: "ACT" + Date.now(),
       action,
       detail,
@@ -179,13 +236,14 @@ async function logActivity(action, detail) {
 }
 function seedIfEmpty() {
 }
-var nodeEnv, SUPABASE_URL, SUPABASE_ANON, supabase, TABLE, DEFAULT_SETTINGS;
+var nodeEnv, DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON, SUPABASE_URL, SUPABASE_ANON, supabase2, TABLE, DEFAULT_SETTINGS;
 var init_db = __esm({
   "src/lib/db.ts"() {
     nodeEnv = typeof process !== "undefined" ? process.env : {};
-    SUPABASE_URL = nodeEnv.SUPABASE_URL || nodeEnv.VITE_SUPABASE_URL || "https://duvwpbetvftqissnstoy.supabase.co";
-    SUPABASE_ANON = nodeEnv.SUPABASE_ANON_KEY || nodeEnv.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1dndwYmV0dmZ0cWlzc25zdG95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4NjkxMTksImV4cCI6MjEwMjQ0NTExOX0.2_-KYBcp3z4xa9MMsg4GAAdWpABhOIWInfN2SIFiv1w";
-    supabase = createClient2(SUPABASE_URL, SUPABASE_ANON, {
+    DEFAULT_SUPABASE_URL = "https://duvwpbetvftqissnstoy.supabase.co";
+    DEFAULT_SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1dndwYmV0dmZ0cWlzc25zdG95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4NjkxMTksImV4cCI6MjEwMjQ0NTExOX0.2_-KYBcp3z4xa9MMsg4GAAdWpABhOIWInfN2SIFiv1w";
+    ({ url: SUPABASE_URL, anon: SUPABASE_ANON } = getSupabaseConfig());
+    supabase2 = createClient(SUPABASE_URL, SUPABASE_ANON, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -255,8 +313,8 @@ __export(pushClient_exports, {
 async function requestPushDispatch(rows) {
   if (!rows.length) return;
   try {
-    const { supabase: supabase2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const { data } = await supabase2.auth.getSession();
+    const { supabase: supabase3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    const { data } = await supabase3.auth.getSession();
     const token = data.session?.access_token;
     if (!token) return;
     await fetch(apiUrl("/api/mobile/push/dispatch"), {
@@ -285,12 +343,8 @@ __export(pushEngine_exports, {
   sendPushToAccounts: () => sendPushToAccounts,
   unregisterPushToken: () => unregisterPushToken
 });
-import { createClient as createClient3 } from "@supabase/supabase-js";
 function serviceDb() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url3 || !key) throw new Error("Supabase service role not configured");
-  return createClient3(url3, key, { auth: { persistSession: false } });
+  return createPrivilegedSupabase();
 }
 async function getMessaging() {
   if (firebaseReady === false) return null;
@@ -412,6 +466,7 @@ async function sendPushForNoteRows(rows) {
 var firebaseReady, messaging;
 var init_pushEngine = __esm({
   "src/lib/pushEngine.ts"() {
+    init_db();
     firebaseReady = null;
     messaging = null;
   }
@@ -436,6 +491,105 @@ var init_pushDispatchServer = __esm({
   }
 });
 
+// src/lib/planCatalog.ts
+var PLAN_OPTIONS, MEMBER_PLAN_OPTIONS;
+var init_planCatalog = __esm({
+  "src/lib/planCatalog.ts"() {
+    PLAN_OPTIONS = [
+      { name: "Monthly Plan", fee: 2e3, days: 30 },
+      { name: "3 Month Plan", fee: 5e3, days: 90 },
+      { name: "6 Month Plan", fee: 9e3, days: 180 },
+      { name: "Lite Reseller", fee: 5560, days: 30 },
+      { name: "Guru Reseller", fee: 8340, days: 30 },
+      { name: "Pro Reseller", fee: 30580, days: 180 }
+    ];
+    MEMBER_PLAN_OPTIONS = PLAN_OPTIONS.filter(
+      (p) => !p.name.toLowerCase().includes("reseller")
+    );
+  }
+});
+
+// src/lib/planDuration.ts
+var planDuration_exports = {};
+__export(planDuration_exports, {
+  addDays: () => addDays,
+  daysLeft: () => daysLeft,
+  extendPlanExpiry: () => extendPlanExpiry,
+  formatDateOnly: () => formatDateOnly,
+  parseDateOnly: () => parseDateOnly,
+  planDaysFromOrderMonths: () => planDaysFromOrderMonths,
+  planDaysFromPlanName: () => planDaysFromPlanName,
+  planExpiryDate: () => planExpiryDate,
+  planIsActive: () => planIsActive,
+  resolvePlanDays: () => resolvePlanDays,
+  todayDateOnly: () => todayDateOnly
+});
+function parseDateOnly(value) {
+  const match = String(value || "").trim().slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+function formatDateOnly(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function todayDateOnly() {
+  return formatDateOnly(/* @__PURE__ */ new Date());
+}
+function addDays(dateStr, days) {
+  const n = Math.max(0, Math.floor(Number(days) || 0));
+  const d = parseDateOnly(dateStr) || /* @__PURE__ */ new Date();
+  d.setDate(d.getDate() + n);
+  return formatDateOnly(d);
+}
+function planExpiryDate(startDate, planDays) {
+  const days = Math.max(1, Math.floor(Number(planDays) || 0));
+  return addDays(startDate, days - 1);
+}
+function extendPlanExpiry(currentExpiry, planDays) {
+  const days = Math.max(1, Math.floor(Number(planDays) || 0));
+  const base = String(currentExpiry || "").trim().slice(0, 10) || todayDateOnly();
+  return addDays(base, days);
+}
+function daysLeft(expiry, now = /* @__PURE__ */ new Date()) {
+  if (!expiry) return -1;
+  const end = parseDateOnly(expiry);
+  if (!end) return -1;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  return Math.round((endDay.getTime() - today.getTime()) / 864e5);
+}
+function planIsActive(plan, expiry, now = /* @__PURE__ */ new Date()) {
+  if (!String(plan || "").trim()) return false;
+  if (!expiry) return true;
+  return daysLeft(String(expiry), now) >= 0;
+}
+function planDaysFromOrderMonths(months) {
+  const m = Math.max(1, Math.floor(Number(months) || 0));
+  return m * 30;
+}
+function planDaysFromPlanName(planName) {
+  const want = String(planName || "").trim().toLowerCase();
+  const hit = PLAN_OPTIONS.find((p) => p.name.toLowerCase() === want);
+  return hit?.days || 30;
+}
+function resolvePlanDays(input) {
+  if (input.planDays && input.planDays > 0) return Math.floor(input.planDays);
+  if (input.planName) {
+    const fromName = planDaysFromPlanName(input.planName);
+    if (fromName > 0) return fromName;
+  }
+  if (input.orderMonths) return planDaysFromOrderMonths(input.orderMonths);
+  return 30;
+}
+var init_planDuration = __esm({
+  "src/lib/planDuration.ts"() {
+    init_planCatalog();
+  }
+});
+
 // api/handler.ts
 import express2 from "express";
 
@@ -444,25 +598,29 @@ import express from "express";
 
 // src/lib/adminRoutes.ts
 import { Router } from "express";
-import { createClient as createClient4 } from "@supabase/supabase-js";
+import { createClient as createClient3 } from "@supabase/supabase-js";
 
 // src/lib/auth.ts
-import { createClient } from "@supabase/supabase-js";
+init_db();
+import { createClient as createClient2 } from "@supabase/supabase-js";
 function client(token) {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url3 || !anon) throw new Error("Supabase authentication is not configured");
-  return createClient(url3, anon, {
+  const { url, anon } = getSupabaseConfig();
+  return createClient2(url, anon, {
     auth: { persistSession: false },
     global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
   });
 }
+function supabaseEnv() {
+  return getSupabaseConfig();
+}
 async function authenticateAdmin(email, password) {
-  const supabase2 = client();
-  const { data, error } = await supabase2.auth.signInWithPassword({ email, password });
+  const supabase3 = client();
+  const { data, error } = await supabase3.auth.signInWithPassword({ email, password });
   if (error || !data.user || !data.session) return null;
-  const { data: profile } = await supabase2.from("customers").select("id,role,status").eq("auth_user_id", data.user.id).single();
-  if (profile?.role !== "admin" || profile.status === "blocked") return null;
+  const { url, serviceKey } = supabaseEnv();
+  const db2 = serviceKey && url ? createClient2(url, serviceKey, { auth: { persistSession: false } }) : supabase3;
+  const { data: profile } = await db2.from("customers").select("id,role,status").eq("auth_user_id", data.user.id).single();
+  if (String(profile?.role || "").toLowerCase() !== "admin" || profile?.status === "blocked") return null;
   return data.session.access_token;
 }
 async function requireAuth(req, res, next) {
@@ -471,18 +629,28 @@ async function requireAuth(req, res, next) {
     if (!header?.startsWith("Bearer ")) {
       return res.status(401).json({ error: "Unauthorized \u2014 no token" });
     }
-    const token = header.slice(7);
-    const supabase2 = client(token);
-    const { data, error } = await supabase2.auth.getUser(token);
-    if (error || !data.user) return res.status(401).json({ error: "Unauthorized \u2014 invalid or expired token" });
-    const { data: profile } = await supabase2.from("customers").select("id,email,role,status").eq("auth_user_id", data.user.id).single();
-    if (profile?.role !== "admin" || profile.status === "blocked") {
-      return res.status(403).json({ error: "Forbidden" });
+    const token = header.slice(7).trim();
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized \u2014 no token" });
+    }
+    const { url, anon, serviceKey } = supabaseEnv();
+    const authClient2 = createClient2(url, anon, { auth: { persistSession: false } });
+    const { data, error } = await authClient2.auth.getUser(token);
+    if (error || !data.user) {
+      return res.status(401).json({ error: "Unauthorized \u2014 invalid or expired token" });
+    }
+    const db2 = serviceKey ? createClient2(url, serviceKey, { auth: { persistSession: false } }) : client(token);
+    const { data: profile, error: profileError } = await db2.from("customers").select("id,email,role,status").eq("auth_user_id", data.user.id).single();
+    if (profileError || !profile) {
+      return res.status(403).json({ error: "Forbidden \u2014 administrator profile not found" });
+    }
+    if (String(profile.role || "").toLowerCase() !== "admin" || profile.status === "blocked") {
+      return res.status(403).json({ error: "Forbidden \u2014 administrator access required" });
     }
     req.admin = profile;
     next();
-  } catch {
-    return res.status(401).json({ error: "Unauthorized \u2014 invalid or expired token" });
+  } catch (e) {
+    return res.status(401).json({ error: e?.message || "Unauthorized \u2014 invalid or expired token" });
   }
 }
 
@@ -510,10 +678,10 @@ function stamp() {
 }
 async function insertNoteRows(rows) {
   if (!rows.length) return;
-  const full = await supabase.from("notifications").insert(rows);
+  const full = await supabase2.from("notifications").insert(rows);
   if (!full.error) return;
   const fallback = rows.map(({ audience: _a, recipient_id: _r, ...rest }) => rest);
-  const retry = await supabase.from("notifications").insert(fallback);
+  const retry = await supabase2.from("notifications").insert(fallback);
   if (retry.error) throw new Error(retry.error.message);
 }
 function noteId(suffix = "") {
@@ -547,15 +715,15 @@ function directNote(account, title, message, type) {
 async function ownerOfCustomer(hint) {
   let row = null;
   if (hint.customerId) {
-    const { data } = await supabase.from("customers").select("id,owner_id,role").eq("id", hint.customerId).maybeSingle();
+    const { data } = await supabase2.from("customers").select("id,owner_id,role").eq("id", hint.customerId).maybeSingle();
     row = data;
   }
   if (!row && hint.customerPhone) {
-    const { data } = await supabase.from("customers").select("id,owner_id,role").eq("phone", hint.customerPhone).maybeSingle();
+    const { data } = await supabase2.from("customers").select("id,owner_id,role").eq("phone", hint.customerPhone).maybeSingle();
     row = data;
   }
   if (!row && hint.customerEmail) {
-    const { data } = await supabase.from("customers").select("id,owner_id,role").eq("email", hint.customerEmail).maybeSingle();
+    const { data } = await supabase2.from("customers").select("id,owner_id,role").eq("email", hint.customerEmail).maybeSingle();
     row = data;
   }
   const ownerId = row?.owner_id || null;
@@ -633,7 +801,7 @@ async function notifyTicketReply(ticket, from) {
   let customerId = ticket.customer_id || null;
   let customerRole = "user";
   if (!customerId && ticket.customer_email) {
-    const { data } = await supabase.from("customers").select("id,role").eq("email", ticket.customer_email).maybeSingle();
+    const { data } = await supabase2.from("customers").select("id,role").eq("email", ticket.customer_email).maybeSingle();
     if (data?.id) {
       customerId = String(data.id);
       customerRole = data.role === "reseller" ? "reseller" : "user";
@@ -644,24 +812,89 @@ async function notifyTicketReply(ticket, from) {
   }
 }
 
+// src/lib/subscriptionActivate.ts
+init_planDuration();
+function mergeTools(existing, toolName) {
+  const list = Array.isArray(existing) ? existing.map(String) : [];
+  if (!toolName || list.includes(toolName)) return list;
+  return [...list, toolName];
+}
+async function findCustomer(sb, order) {
+  if (order.customer_id) {
+    const { data } = await sb.from("customers").select("*").eq("id", order.customer_id).maybeSingle();
+    if (data) return data;
+  }
+  const email = String(order.customer_email || "").trim().toLowerCase();
+  if (email) {
+    const { data } = await sb.from("customers").select("*").ilike("email", email).maybeSingle();
+    if (data) return data;
+  }
+  const phone = String(order.customer_phone || "").trim();
+  if (phone) {
+    const { data } = await sb.from("customers").select("*").eq("phone", phone).maybeSingle();
+    if (data) return data;
+  }
+  return null;
+}
+function buildApprovedOrderDates(order, patch = {}) {
+  const activationDate = String(
+    patch.activation_date || patch.activationDate || order.activation_date || todayDateOnly()
+  ).slice(0, 10);
+  const planDays = resolvePlanDays({
+    planDays: Number(patch.plan_days ?? patch.planDays) || void 0,
+    planName: String(patch.plan || order.tool || ""),
+    orderMonths: Number(patch.duration ?? order.duration) || 1
+  });
+  const expiryDate = String(
+    patch.expiry_date || patch.expiryDate || planExpiryDate(activationDate, planDays)
+  ).slice(0, 10);
+  return {
+    activationDate,
+    planDays,
+    expiryDate,
+    daysLeft: daysLeft(expiryDate)
+  };
+}
+async function activateCustomerForApprovedOrder(sb, order, patch = {}) {
+  const dates = buildApprovedOrderDates(order, patch);
+  const customer = await findCustomer(sb, order);
+  if (!customer) {
+    return { ...dates, customerId: null, customerUpdated: false };
+  }
+  const toolName = String(order.tool || "").trim();
+  const planName = String(customer.plan || toolName || "Monthly Plan").trim() || "Monthly Plan";
+  const stillActive = customer.expiry && daysLeft(String(customer.expiry)) >= 0 && String(customer.plan || "").trim();
+  const expiry = stillActive ? extendPlanExpiry(String(customer.expiry), dates.planDays) : dates.expiryDate;
+  const { error } = await sb.from("customers").update({
+    plan: toolName || planName,
+    plan_days: dates.planDays,
+    expiry,
+    fee: Number(order.final_amount ?? customer.fee ?? 0) || Number(customer.fee || 0),
+    status: "active",
+    tools: mergeTools(customer.tools, toolName)
+  }).eq("id", customer.id);
+  if (error) throw new Error(error.message);
+  return {
+    ...dates,
+    expiryDate: expiry,
+    daysLeft: daysLeft(expiry),
+    customerId: String(customer.id),
+    customerUpdated: true
+  };
+}
+
 // src/lib/adminRoutes.ts
 var router = Router();
 var COLUMN_MISSING = /could not find|schema cache|column|42703|PGRST204/i;
-function toolsAdminDb() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url3) {
-    throw new Error("Supabase is not configured (need SUPABASE_URL on Vercel)");
-  }
-  if (!serviceKey3) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is missing on Vercel. Add it under Project \u2192 Settings \u2192 Environment Variables (Production + Preview), then Redeploy. Cookie Save needs the service role key."
-    );
-  }
-  return createClient4(url3, serviceKey3, {
+function adminServiceDb() {
+  const { url } = getSupabaseConfig();
+  const serviceKey = requireServiceRoleKey();
+  return createClient3(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
+}
+function toolsAdminDb() {
+  return adminServiceDb();
 }
 function slugifyToolKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -846,16 +1079,50 @@ router.post("/orders", requireAuth, async (req, res) => {
   res.json(snakeToCamelOrder(data));
 });
 router.patch("/orders/:id", requireAuth, async (req, res) => {
-  const { data, error } = await supabase.from("orders").update(camelToSnakeOrder(req.body)).eq("id", req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  logActivity("Order Updated", `Updated order ${req.params.id}`);
-  res.json(snakeToCamelOrder(data));
+  try {
+    const sb = adminServiceDb();
+    const patch = camelToSnakeOrder(req.body);
+    const { data: existing, error: loadError } = await sb.from("orders").select("*").eq("id", req.params.id).single();
+    if (loadError || !existing) return res.status(404).json({ error: "Order not found" });
+    const approving = patch.status === "approved" || req.body?.status === "approved" || patch.sub_status === "active" || req.body?.subStatus === "active";
+    if (approving) {
+      const dates = buildApprovedOrderDates(existing, { ...patch, ...req.body });
+      patch.status = "approved";
+      patch.payment_status = patch.payment_status || "paid";
+      patch.sub_status = patch.sub_status || "active";
+      patch.activation_date = dates.activationDate;
+      patch.expiry_date = dates.expiryDate;
+      patch.days_left = dates.daysLeft;
+      try {
+        const applied = await activateCustomerForApprovedOrder(sb, existing, patch);
+        if (applied.expiryDate) patch.expiry_date = applied.expiryDate;
+        if (applied.daysLeft !== void 0) patch.days_left = applied.daysLeft;
+        if (applied.customerId && !existing.customer_id) patch.customer_id = applied.customerId;
+      } catch (activationError) {
+        return res.status(500).json({ error: activationError?.message || "Order saved but customer plan could not be activated" });
+      }
+    } else if (patch.expiry_date) {
+      const { daysLeft: daysLeft2 } = await Promise.resolve().then(() => (init_planDuration(), planDuration_exports));
+      patch.days_left = daysLeft2(String(patch.expiry_date));
+    }
+    const { data, error } = await sb.from("orders").update(patch).eq("id", req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    logActivity("Order Updated", `Updated order ${req.params.id}`);
+    res.json(snakeToCamelOrder(data));
+  } catch (e) {
+    return res.status(500).json({ error: e.message || "Could not update order" });
+  }
 });
 router.delete("/orders/:id", requireAuth, async (req, res) => {
-  const { error } = await supabase.from("orders").delete().eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  logActivity("Order Deleted", `Deleted order ${req.params.id}`);
-  res.json({ ok: true });
+  try {
+    const sb = adminServiceDb();
+    const { error } = await sb.from("orders").delete().eq("id", req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    logActivity("Order Deleted", `Deleted order ${req.params.id}`);
+    res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message || "Could not delete order" });
+  }
 });
 router.get("/tools", requireAuth, async (req, res) => {
   try {
@@ -1606,22 +1873,11 @@ router.get("/orders/:id/invoice", requireAuth, async (req, res) => {
 });
 
 // src/lib/accountRoutes.ts
+init_db();
 import { Router as Router2 } from "express";
-import { createClient as createClient5 } from "@supabase/supabase-js";
 var router2 = Router2();
-var url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-var anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-var serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 function clients() {
-  if (!url || !anonKey || !serviceKey) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is missing. Open Supabase \u2192 Project Settings \u2192 API, copy the service_role secret, add it to .env, then restart the server."
-    );
-  }
-  return {
-    auth: createClient5(url, anonKey, { auth: { persistSession: false } }),
-    admin: createClient5(url, serviceKey, { auth: { persistSession: false } })
-  };
+  return createAuthAndAdminClients();
 }
 async function actor(req) {
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -1823,47 +2079,23 @@ router2.delete("/:id", async (req, res) => {
 var accountRoutes_default = router2;
 
 // src/lib/extensionRoutes.ts
+init_db();
 import { Router as Router3 } from "express";
-import { createClient as createClient7 } from "@supabase/supabase-js";
 
 // src/lib/accountStore.ts
-var PLAN_OPTIONS = [
-  { name: "Monthly Plan", fee: 2e3, days: 30 },
-  { name: "3 Month Plan", fee: 5e3, days: 90 },
-  { name: "6 Month Plan", fee: 9e3, days: 180 },
-  { name: "Lite Reseller", fee: 5560, days: 30 },
-  { name: "Guru Reseller", fee: 8340, days: 30 },
-  { name: "Pro Reseller", fee: 30580, days: 180 }
-];
-var MEMBER_PLAN_OPTIONS = PLAN_OPTIONS.filter(
-  (p) => !p.name.toLowerCase().includes("reseller")
-);
-function daysLeft(expiry) {
-  if (!expiry) return -1;
-  const raw = String(expiry).trim();
-  const dateOnly = raw.slice(0, 10);
-  const match = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const end = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 23, 59, 59, 999) : new Date(raw);
-  if (isNaN(end.getTime())) return -1;
-  return Math.ceil((end.getTime() - Date.now()) / 864e5);
-}
-function planIsActive(plan, expiry) {
-  if (!String(plan || "").trim()) return false;
-  if (!expiry) return true;
-  return daysLeft(String(expiry)) >= 0;
+init_planDuration();
+init_planDuration();
+init_planCatalog();
+function planIsActive2(plan, expiry) {
+  return planIsActive(plan, expiry);
 }
 
 // src/lib/deviceSessions.ts
-import { createClient as createClient6 } from "@supabase/supabase-js";
+init_db();
 var DEVICE_LIMIT_MESSAGE = "Device limit reached. Ask admin/reseller to manage devices or remove an old device.";
 var DEVICE_LIMITS_SETTING_KEY = "device_limits_enabled";
 function serviceClient() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url3 || !serviceKey3) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env and restart the server.");
-  }
-  return createClient6(url3, serviceKey3, { auth: { persistSession: false } });
+  return createServiceSupabase();
 }
 function isAdminRole(role) {
   return String(role || "").trim().toLowerCase() === "admin";
@@ -2176,27 +2408,11 @@ function failed(key) {
   record.count += 1;
   loginAttempts.set(key, record);
 }
-function config() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url3 || !anon) throw new Error("Supabase authentication is not configured");
-  return { url: url3, anon };
-}
 function client2(token) {
-  const { url: url3, anon } = config();
-  return createClient7(url3, anon, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
-  });
+  return createAnonSupabase(token);
 }
 function toolsDb() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url3 || !(serviceKey3 || anon)) throw new Error("Supabase authentication is not configured");
-  return createClient7(url3, serviceKey3 || anon, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
+  return createPrivilegedSupabase();
 }
 function slugify(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -2282,13 +2498,13 @@ async function findToolByKey(key) {
   return rows.find((row) => toolMatchesKey2(row, raw)) || null;
 }
 async function profileForToken(token) {
-  const supabase2 = client2(token);
-  const { data: authData, error: authError } = await supabase2.auth.getUser(token);
+  const supabase3 = client2(token);
+  const { data: authData, error: authError } = await supabase3.auth.getUser(token);
   if (authError || !authData.user) return null;
   const db2 = toolsDb();
   const { data: profile, error } = await db2.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).maybeSingle();
   if (!error && profile) return profile;
-  const fallback = await supabase2.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).single();
+  const fallback = await supabase3.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).single();
   if (fallback.error || !fallback.data) return null;
   return fallback.data;
 }
@@ -2300,8 +2516,8 @@ router3.post("/login", async (req, res) => {
     if (blocked(key)) {
       return res.status(429).json({ error: "Too many login attempts. Try again in 15 minutes." });
     }
-    const supabase2 = client2();
-    const { data, error } = await supabase2.auth.signInWithPassword({ email, password });
+    const supabase3 = client2();
+    const { data, error } = await supabase3.auth.signInWithPassword({ email, password });
     if (error || !data.session) {
       failed(key);
       return res.status(401).json({ error: "Invalid email or password" });
@@ -2338,8 +2554,8 @@ router3.post("/refresh", async (req, res) => {
   try {
     const refreshToken = String(req.body?.refreshToken || "");
     if (!refreshToken) return res.status(400).json({ error: "Refresh token required" });
-    const supabase2 = client2();
-    const { data, error } = await supabase2.auth.refreshSession({ refresh_token: refreshToken });
+    const supabase3 = client2();
+    const { data, error } = await supabase3.auth.refreshSession({ refresh_token: refreshToken });
     if (error || !data.session) return res.status(401).json({ error: "Session expired. Please sign in again." });
     return res.json({
       accessToken: data.session.access_token,
@@ -2357,7 +2573,7 @@ router3.get("/entitlements", async (req, res) => {
     const profile = await profileForToken(token);
     if (!profile) return res.status(401).json({ error: "Session expired. Please sign in again." });
     if (profile.status === "blocked") return res.status(403).json({ error: "Account suspended" });
-    const planActive = planIsActive(profile.plan, profile.expiry);
+    const planActive = planIsActive2(profile.plan, profile.expiry);
     const assigned = planActive && Array.isArray(profile.tools) ? profile.tools : [];
     const sb = toolsDb();
     const catalog = await sb.from("tools").select("*");
@@ -2409,12 +2625,12 @@ function resolveToolAccessMethod(tool, extra) {
 }
 function cookieFields(tool) {
   const extra = parseExtraBag(tool?.extra);
-  const url3 = "toolUrl" in extra || "tool_url" in extra ? String(extra.toolUrl || extra.tool_url || "") : String(tool?.tool_url || "");
+  const url = "toolUrl" in extra || "tool_url" in extra ? String(extra.toolUrl || extra.tool_url || "") : String(tool?.tool_url || "");
   const cookiesRaw = "cookiesJson" in extra || "cookies_json" in extra ? String(extra.cookiesJson ?? extra.cookies_json ?? "") : String(tool?.cookies_json ?? "");
   const panelReferrer = "panelReferrer" in extra || "unlockReferrer" in extra || "panel_referrer" in extra ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "") : String(tool?.panel_referrer || "");
   return {
     accessMethod: resolveToolAccessMethod(tool, extra),
-    url: String(url3 || "").trim(),
+    url: String(url || "").trim(),
     cookiesRaw: String(cookiesRaw || ""),
     panelReferrer: String(panelReferrer || "").trim()
   };
@@ -2441,7 +2657,7 @@ router3.get("/launch/:toolId", async (req, res) => {
     if (deviceCheck.ok === false) {
       return res.status(deviceCheck.status).json({ error: deviceCheck.error || DEVICE_LIMIT_MESSAGE });
     }
-    const planActive = planIsActive(profile.plan, profile.expiry);
+    const planActive = planIsActive2(profile.plan, profile.expiry);
     if (!planActive) return res.status(403).json({ error: "Activate or renew a plan to access tools." });
     const tool = await findToolByKey(req.params.toolId);
     if (!tool) return res.status(404).json({ error: "Tool not found" });
@@ -2467,22 +2683,11 @@ router3.get("/launch/:toolId", async (req, res) => {
 var extensionRoutes_default = router3;
 
 // src/lib/notificationRoutes.ts
+init_db();
 import { Router as Router4 } from "express";
-import { createClient as createClient8 } from "@supabase/supabase-js";
 var router4 = Router4();
-var url2 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-var anonKey2 = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-var serviceKey2 = process.env.SUPABASE_SERVICE_ROLE_KEY;
 function clients2() {
-  if (!url2 || !anonKey2 || !serviceKey2) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is missing. Open Supabase \u2192 Project Settings \u2192 API, copy the service_role secret, add it to .env, then restart the server."
-    );
-  }
-  return {
-    auth: createClient8(url2, anonKey2, { auth: { persistSession: false } }),
-    admin: createClient8(url2, serviceKey2, { auth: { persistSession: false } })
-  };
+  return createAuthAndAdminClients();
 }
 async function actor2(req) {
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -2521,22 +2726,11 @@ router4.post("/actions", async (req, res) => {
 var notificationRoutes_default = router4;
 
 // src/lib/deviceRoutes.ts
+init_db();
 import { Router as Router5 } from "express";
-import { createClient as createClient9 } from "@supabase/supabase-js";
 var router5 = Router5();
 function clients3() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey3 = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url3 || !anonKey3 || !serviceKey3) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is missing. Open Supabase \u2192 Project Settings \u2192 API, copy the service_role secret, add it to .env, then restart the server."
-    );
-  }
-  return {
-    auth: createClient9(url3, anonKey3, { auth: { persistSession: false } }),
-    admin: createClient9(url3, serviceKey3, { auth: { persistSession: false } })
-  };
+  return createAuthAndAdminClients();
 }
 async function actor3(req) {
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -2750,23 +2944,18 @@ router5.delete("/:sessionId", async (req, res) => {
 var deviceRoutes_default = router5;
 
 // src/lib/toolProxyRoutes.ts
+init_db();
 import { Router as Router6 } from "express";
-import { createClient as createClient12 } from "@supabase/supabase-js";
 import { createHash as createHash2, randomBytes as randomBytes2 } from "crypto";
 
 // src/lib/globalProxySettings.ts
-import { createClient as createClient10 } from "@supabase/supabase-js";
+init_db();
 var GLOBAL_PROXY_SETTING_KEY = "global_proxy_engine";
 var GLOBAL_PROXY_SQL_HINT = "Run supabase_global_proxy_engine.sql (or supabase_device_limits_toggle.sql) in the Supabase SQL Editor so app_settings exists, then try again.";
 var CACHE_MS = 8e3;
 var cache = null;
 function serviceClient2() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url3 || !serviceKey3) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for proxy settings");
-  }
-  return createClient10(url3, serviceKey3, { auth: { persistSession: false } });
+  return createPrivilegedSupabase();
 }
 function isAppSettingsMissing2(message) {
   return /app_settings|does not exist|schema cache|Could not find the table/i.test(
@@ -2913,13 +3102,13 @@ async function getActiveOutboundProxyUrl(admin) {
 async function setGlobalProxyConfig(input, admin) {
   const db2 = admin || serviceClient2();
   const prev = await getGlobalProxyConfig(db2);
-  let url3 = prev.url;
+  let url = prev.url;
   if (typeof input.url === "string") {
     const trimmed = input.url.trim();
-    url3 = trimmed ? normalizeProxyUrl(trimmed) : "";
+    url = trimmed ? normalizeProxyUrl(trimmed) : "";
   }
-  const enabled = Boolean(input.enabled) && Boolean(url3);
-  const value = { enabled, url: url3 };
+  const enabled = Boolean(input.enabled) && Boolean(url);
+  const value = { enabled, url };
   const { error } = await db2.from("app_settings").upsert(
     {
       key: GLOBAL_PROXY_SETTING_KEY,
@@ -3012,7 +3201,7 @@ function looksLikeCloudflare(status, body) {
   if ((status === 403 || status === 503) && /cf-|challenge|cloudflare/i.test(head)) return true;
   return false;
 }
-async function fetchViaProxy(proxyUrl, url3, headers, timeoutMs = 35e3) {
+async function fetchViaProxy(proxyUrl, url, headers, timeoutMs = 35e3) {
   const undici = await import("undici");
   const agent = new undici.ProxyAgent({
     uri: proxyUrl,
@@ -3023,7 +3212,7 @@ async function fetchViaProxy(proxyUrl, url3, headers, timeoutMs = 35e3) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error("Proxy request timed out")), timeoutMs);
   try {
-    const res = await undici.fetch(url3, {
+    const res = await undici.fetch(url, {
       dispatcher: agent,
       signal: controller.signal,
       headers,
@@ -3260,7 +3449,7 @@ async function bootstrapSessionCookies(target) {
   const referer = String(target.referrer || `${origin}/`).trim() || `${origin}/`;
   const endpoints = [`${origin}/api/auth/session`, `${origin}/backend-api/me`];
   let anyOk = false;
-  for (const url3 of endpoints) {
+  for (const url of endpoints) {
     try {
       const headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -3268,10 +3457,10 @@ async function bootstrapSessionCookies(target) {
         Referer: referer,
         Origin: origin
       };
-      const cookie = cookieHeaderFor(cookies, url3);
+      const cookie = cookieHeaderFor(cookies, url);
       if (cookie) headers.Cookie = cookie;
-      const res = await proxyAwareFetch(url3, { method: "GET", redirect: "manual", headers });
-      cookies = mergeSetCookies(cookies, res, url3);
+      const res = await proxyAwareFetch(url, { method: "GET", redirect: "manual", headers });
+      cookies = mergeSetCookies(cookies, res, url);
       const body = await res.text();
       const ct = res.headers.get("content-type") || "";
       if (res.status >= 200 && res.status < 400 && !isCloudflareChallenge(res.status, ct, body)) {
@@ -3279,14 +3468,14 @@ async function bootstrapSessionCookies(target) {
         continue;
       }
       if (isCloudflareChallenge(res.status, ct, body)) {
-        errors.push(`${url3}: Cloudflare blocked the proxy IP \u2014 use residential sticky Webshare in Admin.`);
+        errors.push(`${url}: Cloudflare blocked the proxy IP \u2014 use residential sticky Webshare in Admin.`);
       } else if (res.status === 401 || res.status === 403) {
-        errors.push(`${url3}: session rejected (${res.status}) \u2014 copy fresh cookies from a logged-in ChatGPT tab.`);
+        errors.push(`${url}: session rejected (${res.status}) \u2014 copy fresh cookies from a logged-in ChatGPT tab.`);
       } else {
-        errors.push(`${url3}: HTTP ${res.status}`);
+        errors.push(`${url}: HTTP ${res.status}`);
       }
     } catch (err) {
-      errors.push(`${url3}: ${String(err?.message || err)}`);
+      errors.push(`${url}: ${String(err?.message || err)}`);
     }
   }
   return { cookies, ok: anyOk, errors };
@@ -3300,11 +3489,11 @@ function domainMatches(host, domain) {
   if (family.test(h) && family.test(d)) return true;
   return false;
 }
-function cookieHeaderFor(cookies, url3) {
+function cookieHeaderFor(cookies, url) {
   let host = "";
   let path = "/";
   try {
-    const u = new URL(url3);
+    const u = new URL(url);
     host = u.hostname.toLowerCase();
     path = u.pathname || "/";
   } catch {
@@ -3326,10 +3515,10 @@ function cookieHeaderFor(cookies, url3) {
   }
   return [...seen.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
 }
-function mergeSetCookies(cookies, response, url3) {
+function mergeSetCookies(cookies, response, url) {
   let host = "";
   try {
-    host = new URL(url3).hostname.toLowerCase();
+    host = new URL(url).hostname.toLowerCase();
   } catch {
   }
   const raw = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
@@ -3440,9 +3629,9 @@ function fromProxyPath(target, remainder) {
       return new URL(tail, `https://${host}`).href;
     }
     const originBase = target.origin.endsWith("/") ? target.origin : `${target.origin}/`;
-    const url3 = new URL(withSlash, originBase);
-    if (isBlockedHost(url3.hostname)) return null;
-    return url3.href;
+    const url = new URL(withSlash, originBase);
+    if (isBlockedHost(url.hostname)) return null;
+    return url.href;
   } catch {
     return null;
   }
@@ -3470,12 +3659,12 @@ function isCloudflareChallenge(status, contentType, body) {
 function oneClickBlockedHtml(toolHost) {
   return cloudflareBlockedPage(toolHost);
 }
-function isOneClickBlockedHost(url3) {
+function isOneClickBlockedHost(url) {
   try {
-    const h = new URL(String(url3 || "").trim()).hostname.toLowerCase();
+    const h = new URL(String(url || "").trim()).hostname.toLowerCase();
     return h === "canva.com" || h.endsWith(".canva.com") || h === "canva.cn" || h.endsWith(".canva.cn");
   } catch {
-    return /canva\.(com|cn)/i.test(String(url3 || ""));
+    return /canva\.(com|cn)/i.test(String(url || ""));
   }
 }
 function cloudflareBlockedPage(toolHost) {
@@ -3859,7 +4048,7 @@ function isPanelDenied(status, contentType, bodyPreview) {
     String(bodyPreview || "")
   );
 }
-function buildRequestHeaders(target, clientHeaders, url3, method, refererOverride) {
+function buildRequestHeaders(target, clientHeaders, url, method, refererOverride) {
   const headers = {};
   for (const [rawKey, rawValue] of Object.entries(clientHeaders || {})) {
     const key = rawKey.toLowerCase();
@@ -3874,11 +4063,11 @@ function buildRequestHeaders(target, clientHeaders, url3, method, refererOverrid
     headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
   }
   headers["Accept-Encoding"] = "identity";
-  const cookie = cookieHeaderFor(target.cookies, url3);
+  const cookie = cookieHeaderFor(target.cookies, url);
   if (cookie) headers.Cookie = cookie;
   let sameOrigin = target.origin;
   try {
-    sameOrigin = new URL(url3).origin;
+    sameOrigin = new URL(url).origin;
   } catch {
   }
   let mappedReferer = "";
@@ -4066,19 +4255,13 @@ The <code>proxy_token</code> cookie is expired or was copied before the panel wa
 }
 
 // src/lib/proxySessionStore.ts
+init_db();
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
-import { createClient as createClient11 } from "@supabase/supabase-js";
 function db() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url3 || !(serviceKey3 || anon)) throw new Error("Supabase authentication is not configured");
-  return createClient11(url3, serviceKey3 || anon, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
+  return createPrivilegedSupabase();
 }
 function keyBuf() {
-  return createHash("sha256").update(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "atm-proxy").digest();
+  return createHash("sha256").update(supabaseSealKeyMaterial()).digest();
 }
 function sealSession(s) {
   const iv = randomBytes(12);
@@ -4156,27 +4339,11 @@ function pruneSessions() {
 if (!process.env.VERCEL) {
   setInterval(pruneSessions, 6e4).unref?.();
 }
-function config2() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url3 || !anon) throw new Error("Supabase authentication is not configured");
-  return { url: url3, anon };
-}
 function client3(token) {
-  const { url: url3, anon } = config2();
-  return createClient12(url3, anon, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
-  });
+  return createAnonSupabase(token);
 }
 function toolsDb2() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url3 || !(serviceKey3 || anon)) throw new Error("Supabase authentication is not configured");
-  return createClient12(url3, serviceKey3 || anon, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
+  return createPrivilegedSupabase();
 }
 function slugify2(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -4273,17 +4440,17 @@ function hostsFromCookies(cookies, origin) {
   }
   return [...hosts];
 }
-function isPanelUnlockUrl(url3) {
+function isPanelUnlockUrl(url) {
   try {
-    const host = new URL(String(url3 || "").trim()).hostname.toLowerCase();
+    const host = new URL(String(url || "").trim()).hostname.toLowerCase();
     return host === "toolaccess.click" || host.endsWith(".toolaccess.click") || host.endsWith(".xemrush.site") || host.endsWith(".semrush.site") || host.endsWith(".groupbuy.tools") || /\.(toolpanel|sharedpanel|panelhub)\./i.test(host);
   } catch {
-    return /toolaccess\.click|xemrush\.site|semrush\.site/i.test(String(url3 || ""));
+    return /toolaccess\.click|xemrush\.site|semrush\.site/i.test(String(url || ""));
   }
 }
-function isRealToolOrigin(url3) {
+function isRealToolOrigin(url) {
   try {
-    const host = new URL(String(url3 || "").trim()).hostname.toLowerCase();
+    const host = new URL(String(url || "").trim()).hostname.toLowerCase();
     return host === "chatgpt.com" || host.endsWith(".chatgpt.com") || host === "chat.openai.com" || host.endsWith(".openai.com") || host === "claude.ai" || host.endsWith(".claude.ai") || host === "gemini.google.com" || host === "www.midjourney.com" || host.endsWith(".midjourney.com");
   } catch {
     return false;
@@ -4368,13 +4535,13 @@ async function findToolByKey2(key) {
   return rows.find((row) => toolMatchesKey3(row, raw)) || null;
 }
 async function profileForToken2(token) {
-  const supabase2 = client3(token);
-  const { data: authData, error: authError } = await supabase2.auth.getUser(token);
+  const supabase3 = client3(token);
+  const { data: authData, error: authError } = await supabase3.auth.getUser(token);
   if (authError || !authData.user) return null;
   const db2 = toolsDb2();
   const { data: profile, error } = await db2.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).maybeSingle();
   if (!error && profile) return profile;
-  const fallback = await supabase2.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).single();
+  const fallback = await supabase3.from("customers").select("id,customer_code,name,email,role,status,plan,expiry,tools").eq("auth_user_id", authData.user.id).single();
   if (fallback.error || !fallback.data) return null;
   return fallback.data;
 }
@@ -4398,12 +4565,12 @@ function resolveToolAccessMethod2(tool, extra) {
 }
 function cookieFields2(tool) {
   const extra = parseExtraJson(tool?.extra);
-  const url3 = "toolUrl" in extra || "tool_url" in extra ? String(extra.toolUrl || extra.tool_url || "") : String(tool?.tool_url || "");
+  const url = "toolUrl" in extra || "tool_url" in extra ? String(extra.toolUrl || extra.tool_url || "") : String(tool?.tool_url || "");
   const cookiesRaw = "cookiesJson" in extra || "cookies_json" in extra ? String(extra.cookiesJson ?? extra.cookies_json ?? "") : String(tool?.cookies_json ?? "");
   const panelReferrer = "panelReferrer" in extra || "unlockReferrer" in extra || "panel_referrer" in extra ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "") : String(tool?.panel_referrer || "");
   return {
     accessMethod: resolveToolAccessMethod2(tool, extra),
-    url: String(url3 || "").trim(),
+    url: String(url || "").trim(),
     cookiesRaw: String(cookiesRaw || ""),
     panelReferrer: String(panelReferrer || "").trim()
   };
@@ -4431,7 +4598,7 @@ async function requireEntitledLaunch(req) {
   if (deviceCheck.ok === false) {
     return { ok: false, status: deviceCheck.status, error: deviceCheck.error || DEVICE_LIMIT_MESSAGE };
   }
-  if (!planIsActive(profile.plan, profile.expiry)) {
+  if (!planIsActive2(profile.plan, profile.expiry)) {
     return { ok: false, status: 403, error: "Activate or renew a plan to access tools." };
   }
   const toolKey = String(req.body?.toolId || req.body?.toolKey || req.query?.toolId || "").trim();
@@ -4592,7 +4759,7 @@ function isDocumentRequest(req) {
   const accept = String(req.headers?.accept || "");
   return /text\/html/i.test(accept);
 }
-async function proxyThrough(session, req, res, url3) {
+async function proxyThrough(session, req, res, url) {
   return runWithProxySticky(session.token, async () => {
     const document = isDocumentRequest(req);
     const panelMode = Boolean(session.referrer);
@@ -4604,7 +4771,7 @@ async function proxyThrough(session, req, res, url3) {
       referrerCandidates: panelMode ? session.referrerCandidates : []
     };
     const before = session.cookies.length;
-    const result = await forwardRequest({ target, req, res, url: url3, document });
+    const result = await forwardRequest({ target, req, res, url, document });
     const changed = result.cookies !== session.cookies && (result.cookies.length !== before || JSON.stringify(result.cookies) !== JSON.stringify(session.cookies));
     session.cookies = result.cookies;
     session.cookieHeader = cookiesToHeader(result.cookies);
@@ -4742,11 +4909,11 @@ async function handleFxProxy(req, res) {
       cookies: session.cookies,
       referrer: session.referrer
     };
-    const url3 = isRoot ? session.targetUrl : fromProxyPath(target, remainder);
-    if (!url3) return res.status(400).json({ error: "Invalid proxy path" });
+    const url = isRoot ? session.targetUrl : fromProxyPath(target, remainder);
+    if (!url) return res.status(400).json({ error: "Invalid proxy path" });
     const sealed = sealSession(session);
     setProxyCookie(res, session.token, sealed);
-    await proxyThrough(session, req, res, url3);
+    await proxyThrough(session, req, res, url);
   } catch (error) {
     const message = String(error?.message || "Proxy request failed");
     console.error("[tool-proxy/fx]", message);
@@ -4771,8 +4938,8 @@ async function handleOriginToolApi(req, res) {
     }
     const original = String(req.originalUrl || req.url || "/");
     const base = session.origin.endsWith("/") ? session.origin : `${session.origin}/`;
-    const url3 = new URL(original, base).href;
-    await proxyThrough(session, req, res, url3);
+    const url = new URL(original, base).href;
+    await proxyThrough(session, req, res, url);
   } catch (error) {
     if (res.headersSent) return;
     return res.status(502).json({ error: error?.message || "Tool API proxy failed" });
@@ -4830,8 +4997,8 @@ async function handlePortalToolFallback(req, res, next) {
     const session = await resolveSession(token, req);
     if (!session) return next();
     const base = session.origin.endsWith("/") ? session.origin : `${session.origin}/`;
-    const url3 = new URL(String(req.originalUrl || req.url || "/"), base).href;
-    await proxyThrough(session, req, res, url3);
+    const url = new URL(String(req.originalUrl || req.url || "/"), base).href;
+    await proxyThrough(session, req, res, url);
   } catch (error) {
     if (res.headersSent) return;
     return next();
@@ -4850,9 +5017,9 @@ async function handleProxyAsset(req, res) {
   try {
     const session = await resolveSession(tokenFromRequest(req), req);
     if (!session) return res.status(410).json({ error: "Tool session ended" });
-    const url3 = String(req.query?.u || "").trim();
-    if (!/^https?:\/\//i.test(url3)) return res.status(400).json({ error: "Invalid asset URL" });
-    await proxyThrough(session, req, res, url3);
+    const url = String(req.query?.u || "").trim();
+    if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: "Invalid asset URL" });
+    await proxyThrough(session, req, res, url);
   } catch (error) {
     if (res.headersSent) return;
     return res.status(502).json({ error: error?.message || "Asset proxy failed" });
@@ -4867,19 +5034,16 @@ router6.all("/asset", (req, res) => {
 var toolProxyRoutes_default = router6;
 
 // src/lib/settingsRoutes.ts
+init_db();
 import { Router as Router7 } from "express";
-import { createClient as createClient14 } from "@supabase/supabase-js";
 
 // src/lib/toolAccessLabels.ts
-import { createClient as createClient13 } from "@supabase/supabase-js";
+init_db();
 var TOOL_ACCESS_LABELS_KEY = "show_tool_access_labels";
 var CACHE_MS2 = 15e3;
 var cache2 = null;
 function serviceClient3() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url3 || !key) throw new Error("Supabase service role not configured");
-  return createClient13(url3, key, { auth: { persistSession: false } });
+  return createPrivilegedSupabase();
 }
 function isAppSettingsMissing3(message) {
   return /app_settings|does not exist|schema cache|Could not find the table/i.test(String(message || ""));
@@ -4949,18 +5113,7 @@ async function setShowToolAccessLabels(enabled, admin) {
 // src/lib/settingsRoutes.ts
 var router7 = Router7();
 function clients4() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey3 = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url3 || !anonKey3 || !serviceKey3) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env, then restart the server."
-    );
-  }
-  return {
-    auth: createClient14(url3, anonKey3, { auth: { persistSession: false } }),
-    admin: createClient14(url3, serviceKey3, { auth: { persistSession: false } })
-  };
+  return createAuthAndAdminClients();
 }
 async function actor4(req) {
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -5005,11 +5158,11 @@ router7.patch("/global-proxy", async (req, res) => {
     if (current.role !== "admin") return res.status(403).json({ error: "Admin only" });
     const { admin } = clients4();
     const enabled = Boolean(req.body?.enabled);
-    const url3 = typeof req.body?.url === "string" ? req.body.url : void 0;
-    if (enabled && (url3 === void 0 ? !(await getGlobalProxyConfig(admin)).url : !String(url3).trim())) {
+    const url = typeof req.body?.url === "string" ? req.body.url : void 0;
+    if (enabled && (url === void 0 ? !(await getGlobalProxyConfig(admin)).url : !String(url).trim())) {
       return res.status(400).json({ error: "Proxy URL is required when enabling the Global Proxy Engine." });
     }
-    const cfg = await setGlobalProxyConfig({ enabled, url: url3 }, admin);
+    const cfg = await setGlobalProxyConfig({ enabled, url }, admin);
     invalidateProxyAgentCache();
     return res.json({
       enabled: cfg.enabled,
@@ -5055,14 +5208,14 @@ router7.post("/global-proxy/test", async (req, res) => {
     const current = await actor4(req);
     if (!current) return res.status(401).json({ error: "Not authorized" });
     if (current.role !== "admin") return res.status(403).json({ error: "Admin only" });
-    let url3 = typeof req.body?.url === "string" ? req.body.url.trim() : "";
-    if (!url3) {
+    let url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+    if (!url) {
       const { admin } = clients4();
       const cfg = await getGlobalProxyConfig(admin);
-      url3 = cfg.url;
+      url = cfg.url;
     }
-    if (!url3) return res.status(400).json({ error: "Enter a proxy URL to test." });
-    const result = await testProxyUrl(url3);
+    if (!url) return res.status(400).json({ error: "Enter a proxy URL to test." });
+    const result = await testProxyUrl(url);
     if (result.ok === false) {
       return res.status(502).json({ ok: false, error: result.error });
     }
@@ -5119,33 +5272,18 @@ router7.patch("/tool-access-labels", async (req, res) => {
 var settingsRoutes_default = router7;
 
 // src/lib/mobileRoutes.ts
+init_db();
 init_pushEngine();
 import { Router as Router8 } from "express";
-import { createClient as createClient15 } from "@supabase/supabase-js";
 var router8 = Router8();
-function config3() {
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url3 || !anon) throw new Error("Supabase authentication is not configured");
-  return { url: url3, anon };
-}
 function authClient(token) {
-  const { url: url3, anon } = config3();
-  return createClient15(url3, anon, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: token ? { headers: { Authorization: `Bearer ${token}` } } : void 0
-  });
+  return createAnonSupabase(token);
 }
 async function profileForToken3(token) {
   const client4 = authClient(token);
   const { data: userData, error } = await client4.auth.getUser(token);
   if (error || !userData.user) return null;
-  const url3 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey3 = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const db2 = createClient15(url3, serviceKey3 || anon, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
+  const db2 = createPrivilegedSupabase(token);
   const { data: profile } = await db2.from("customers").select("id,role,status").eq("auth_user_id", userData.user.id).maybeSingle();
   if (!profile || profile.status === "blocked") return null;
   return profile;
@@ -5390,9 +5528,9 @@ ${text.slice(0, 5e3)}`
   });
   app.post("/api/seo/headers", async (req, res) => {
     try {
-      const { url: url3 } = req.body;
-      if (!url3) return res.status(400).json({ success: false, error: "URL required." });
-      let formatted = url3.trim();
+      const { url } = req.body;
+      if (!url) return res.status(400).json({ success: false, error: "URL required." });
+      let formatted = url.trim();
       if (!formatted.startsWith("http")) formatted = "https://" + formatted;
       const response = await fetch(formatted, {
         method: "HEAD",
@@ -5419,9 +5557,9 @@ var healthPayload = () => ({
   service: "ZynexTools",
   timestamp: (/* @__PURE__ */ new Date()).toISOString()
 });
-function isHealthPath(url3) {
-  if (!url3) return false;
-  const path = url3.split("?")[0];
+function isHealthPath(url) {
+  if (!url) return false;
+  const path = url.split("?")[0];
   return path === "/api/health" || path === "/health";
 }
 var fullApp = null;

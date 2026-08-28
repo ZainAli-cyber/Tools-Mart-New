@@ -2,7 +2,7 @@
  * Server-side FCM push (Firebase Cloud Messaging).
  * Requires FIREBASE_SERVICE_ACCOUNT_JSON env var on Vercel.
  */
-import { createClient } from '@supabase/supabase-js';
+import { createPrivilegedSupabase } from './db';
 
 export type PushItem = {
   accountId: string;
@@ -14,10 +14,7 @@ let firebaseReady: boolean | null = null;
 let messaging: import('firebase-admin/messaging').Messaging | null = null;
 
 function serviceDb() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase service role not configured');
-  return createClient(url, key, { auth: { persistSession: false } });
+  return createPrivilegedSupabase();
 }
 
 async function getMessaging() {

@@ -2,7 +2,8 @@
  * Global Proxy Engine — residential / HTTP proxy used by the server-side
  * tool cloud proxy so one-click tools can open without the Chrome extension.
  */
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createPrivilegedSupabase } from './db';
 
 export const GLOBAL_PROXY_SETTING_KEY = 'global_proxy_engine';
 
@@ -27,12 +28,7 @@ const CACHE_MS = 8_000;
 let cache: { at: number; value: GlobalProxyConfig } | null = null;
 
 function serviceClient(): SupabaseClient {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for proxy settings');
-  }
-  return createClient(url, serviceKey, { auth: { persistSession: false } });
+  return createPrivilegedSupabase();
 }
 
 function isAppSettingsMissing(message: unknown): boolean {

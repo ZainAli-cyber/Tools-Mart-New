@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createClient } from '@supabase/supabase-js';
+import { createAnonSupabase, createPrivilegedSupabase } from './db';
 import {
   pushConfigured,
   registerPushToken,
@@ -11,31 +11,15 @@ import {
 
 const router = Router();
 
-function config() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anon) throw new Error('Supabase authentication is not configured');
-  return { url, anon };
-}
-
 function authClient(token?: string) {
-  const { url, anon } = config();
-  return createClient(url, anon, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
-  });
+  return createAnonSupabase(token);
 }
 
 async function profileForToken(token: string) {
   const client = authClient(token);
   const { data: userData, error } = await client.auth.getUser(token);
   if (error || !userData.user) return null;
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const db = createClient(url!, serviceKey || anon!, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const db = createPrivilegedSupabase(token);
   const { data: profile } = await db
     .from('customers')
     .select('id,role,status')

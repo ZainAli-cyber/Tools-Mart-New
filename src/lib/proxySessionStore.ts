@@ -3,7 +3,7 @@
  * Memory Map is not shared across lambdas — without this, ChatGPT CSS/JS 410/404.
  */
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
-import { createClient } from '@supabase/supabase-js';
+import { createPrivilegedSupabase, supabaseSealKeyMaterial } from './db';
 
 export type StoredProxySession = {
   token: string;
@@ -22,18 +22,12 @@ export type StoredProxySession = {
 };
 
 function db() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !(serviceKey || anon)) throw new Error('Supabase authentication is not configured');
-  return createClient(url, serviceKey || anon!, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createPrivilegedSupabase();
 }
 
 function keyBuf() {
   return createHash('sha256')
-    .update(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || 'atm-proxy')
+    .update(supabaseSealKeyMaterial())
     .digest();
 }
 

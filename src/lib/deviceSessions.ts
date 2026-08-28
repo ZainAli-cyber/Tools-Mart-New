@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createServiceSupabase } from './db';
 
 export const DEVICE_LIMIT_MESSAGE =
   'Device limit reached. Ask admin/reseller to manage devices or remove an old device.';
@@ -20,12 +21,7 @@ export type DeviceCheckResult =
   | { ok: false; error: string; status: number; maxDevices?: number; deviceCount?: number };
 
 function serviceClient(): SupabaseClient {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env and restart the server.');
-  }
-  return createClient(url, serviceKey, { auth: { persistSession: false } });
+  return createServiceSupabase();
 }
 
 function isAdminRole(role: unknown): boolean {

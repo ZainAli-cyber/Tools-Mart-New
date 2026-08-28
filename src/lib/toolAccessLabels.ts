@@ -1,5 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { createClient } from '@supabase/supabase-js';
+import { createPrivilegedSupabase } from './db';
 
 export const TOOL_ACCESS_LABELS_KEY = 'show_tool_access_labels';
 
@@ -7,10 +6,7 @@ const CACHE_MS = 15_000;
 let cache: { value: boolean; at: number; setupRequired?: boolean } | null = null;
 
 function serviceClient() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase service role not configured');
-  return createClient(url, key, { auth: { persistSession: false } });
+  return createPrivilegedSupabase();
 }
 
 function isAppSettingsMissing(message?: string) {
