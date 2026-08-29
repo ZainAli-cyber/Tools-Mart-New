@@ -112,6 +112,8 @@ html[data-theme="light"] {
 
 body {
   background-color: var(--bg-primary);
+  background-image: var(--page-gradient, none);
+  background-attachment: fixed;
   color: var(--text-primary);
 }
 

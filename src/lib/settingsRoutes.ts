@@ -11,6 +11,11 @@ import {
 import { invalidateProxyAgentCache, testProxyUrl } from './proxyFetch';
 import { getShowToolAccessLabels, setShowToolAccessLabels } from './toolAccessLabels';
 import { getBrandingSettings, setBrandingSettings, normalizeBranding } from './brandingSettings';
+import {
+  getColorSchemeSettings,
+  setColorSchemeSettings,
+  normalizeColorScheme,
+} from './colorSchemeSettings';
 
 const router = Router();
 
@@ -222,6 +227,38 @@ router.patch('/branding', async (req, res) => {
     return res.json({ ok: true, branding });
   } catch (error: any) {
     const message = error?.message || 'Could not save branding';
+    const setup = /app_settings|supabase_device_limits/i.test(message);
+    return res.status(setup ? 503 : 500).json({ error: message });
+  }
+});
+
+/** GET /api/settings/colors — public (apply theme before login) */
+router.get('/colors', async (_req, res) => {
+  try {
+    const { admin } = clients();
+    const result = await getColorSchemeSettings(admin);
+    return res.json({
+      ok: true,
+      scheme: result.scheme,
+      ...(result.setupRequired ? { setupRequired: true } : {}),
+    });
+  } catch {
+    return res.json({ ok: true, scheme: normalizeColorScheme(null) });
+  }
+});
+
+/** PATCH /api/settings/colors — admin only */
+router.patch('/colors', async (req, res) => {
+  try {
+    const current = await actor(req);
+    if (!current) return res.status(401).json({ error: 'Not authorized' });
+    if (current.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const { admin } = clients();
+    const body = req.body?.scheme && typeof req.body.scheme === 'object' ? req.body.scheme : req.body;
+    const scheme = await setColorSchemeSettings(body || {}, admin);
+    return res.json({ ok: true, scheme });
+  } catch (error: any) {
+    const message = error?.message || 'Could not save color scheme';
     const setup = /app_settings|supabase_device_limits/i.test(message);
     return res.status(setup ? 503 : 500).json({ error: message });
   }

@@ -8,6 +8,7 @@ import { SectionHeader, AdminTable, Th, Td, Tr, StatusBadge, AdminBtn, SearchInp
 import { ToolEditor } from '../components/ToolEditor';
 import { DeviceLimitsToggle } from '../components/DeviceLimitsToggle';
 import { BrandingSettingsPanel } from '../components/BrandingSettingsPanel';
+import { ColorSchemeSettingsPanel } from '../components/ColorSchemeSettingsPanel';
 import {
   AccountRole, AccountMeta, PLAN_OPTIONS, accountMetaFromRow,
   addDays, daysLeft, fmtDate, shortId, waLink, extendPlanExpiry, planExpiryDate, todayDateOnly,
@@ -1757,8 +1758,8 @@ export const SettingsPage: React.FC = () => {
       <input type={type} value={String(form[k])} onChange={e=>setForm(p=>({...p,[k]:type==='number'?Number(e.target.value):e.target.value}))} className="w-full bg-[#1a1210] border border-[#2a1e1c] focus:border-red-500/50 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition"/></div>
   );
   return (
-    <div className="space-y-5 max-w-3xl">
-      <SectionHeader title="Settings" sub="Configure your site and admin panel"/>
+    <div className="space-y-5 max-w-4xl">
+      <SectionHeader title="Settings" sub="Configure your site, logos, colors, and admin panel"/>
       {saved && <div className="bg-emerald-900/30 border border-emerald-500/40 text-emerald-400 text-sm font-bold px-4 py-2 rounded-xl">✅ Settings saved!</div>}
       {[{title:'General',fields:[['Site Name','siteName'],['Contact Email','contactEmail'],['WhatsApp','whatsapp'],['Currency','currency'],['Invoice Prefix','invoicePrefix'],['Tax %','taxPercent','number']]},{title:'Payment Methods',fields:[['EasyPaisa','easypaisa'],['JazzCash','jazzcash'],['PayPal Email','paypalEmail'],['Bank Name','bankName'],['Bank Account','bankAccount']]}].map(s=>(
         <div key={s.title} className="bg-[#130d0d] border border-[#2a1e1c] rounded-2xl p-5 space-y-4">
@@ -1768,6 +1769,7 @@ export const SettingsPage: React.FC = () => {
       ))}
       <DeviceLimitsToggle compact />
       <BrandingSettingsPanel />
+      <ColorSchemeSettingsPanel />
       <div className="bg-[#130d0d] border border-[#2a1e1c] rounded-2xl p-5 flex items-center justify-between">
         <div><h3 className="text-sm font-extrabold text-white">Maintenance Mode</h3><p className="text-xs text-slate-400 mt-1">Disable public site access</p></div>
         <button onClick={()=>setForm(p=>({...p,maintenanceMode:!p.maintenanceMode}))} className="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-xl border transition" style={form.maintenanceMode?{background:'#dc262622',color:'#f87171',borderColor:'#dc262644'}:{background:'#1a1210',color:'#666',borderColor:'#2a1e1c'}}>{form.maintenanceMode?'ON':'OFF'}</button>

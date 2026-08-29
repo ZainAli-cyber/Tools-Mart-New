@@ -123,3 +123,19 @@ export function saveBrandingSettingsApi(branding: Partial<BrandingSettingsDto>) 
     body: JSON.stringify({ branding }),
   }) as Promise<{ ok?: boolean; branding: BrandingSettingsDto }>;
 }
+
+export function getColorSchemeSettingsApi() {
+  return fetch('/api/settings/colors')
+    .then(async res => {
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Could not load colors');
+      return body as { ok?: boolean; scheme: any; setupRequired?: boolean };
+    });
+}
+
+export function saveColorSchemeSettingsApi(scheme: any) {
+  return authorizedFetch('/api/settings/colors', {
+    method: 'PATCH',
+    body: JSON.stringify({ scheme }),
+  }) as Promise<{ ok?: boolean; scheme: any }>;
+}

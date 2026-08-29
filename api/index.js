@@ -4761,7 +4761,7 @@ function isDocumentRequest(req) {
 }
 async function proxyThrough(session, req, res, url) {
   return runWithProxySticky(session.token, async () => {
-    const document = isDocumentRequest(req);
+    const document2 = isDocumentRequest(req);
     const panelMode = Boolean(session.referrer);
     const target = {
       token: session.token,
@@ -4771,14 +4771,14 @@ async function proxyThrough(session, req, res, url) {
       referrerCandidates: panelMode ? session.referrerCandidates : []
     };
     const before = session.cookies.length;
-    const result = await forwardRequest({ target, req, res, url, document });
+    const result = await forwardRequest({ target, req, res, url, document: document2 });
     const changed = result.cookies !== session.cookies && (result.cookies.length !== before || JSON.stringify(result.cookies) !== JSON.stringify(session.cookies));
     session.cookies = result.cookies;
     session.cookieHeader = cookiesToHeader(result.cookies);
     if (result.referrerUsed && panelMode) session.referrer = result.referrerUsed;
     session.expiresAt = Date.now() + SESSION_TTL_MS;
     const sealed = await rememberSession(session);
-    if (changed || result.referrerUsed || document) {
+    if (changed || result.referrerUsed || document2) {
       setProxyCookie(res, session.token, sealed);
     } else {
       sessions.set(session.token, session);
@@ -5211,6 +5211,215 @@ async function setBrandingSettings(input, admin) {
   return next;
 }
 
+// src/lib/colorSchemeSettings.ts
+init_db();
+var COLOR_SCHEME_KEY = "branding_colors";
+var DEFAULT_DARK_PALETTE = {
+  bgPage: "#120405",
+  bgSecondary: "#090303",
+  bgCard: "#24090B",
+  bgCardAlt: "#351012",
+  bgElevated: "#24090B",
+  bgInput: "#090303",
+  border: "#6F2626",
+  borderLight: "#C69B47",
+  borderSubtle: "#351012",
+  textPrimary: "#FFF8EE",
+  textMuted: "#D6CDD0",
+  textFaint: "#95898B",
+  brand: "#5D0808",
+  brandDark: "#351012",
+  brandLight: "#6F2626",
+  brandGlow: "rgba(93, 8, 8, 0.28)",
+  gold: "#F6D890",
+  goldStrong: "#D9B85F",
+  goldDark: "#B98A35",
+  goldHover: "#E2BF6B",
+  premiumBorder: "#C69B47",
+  btnPrimaryBg: "#F6D890",
+  btnPrimaryText: "#5D0808",
+  btnPrimaryHover: "#E2BF6B",
+  btnSecondaryBg: "#24090B",
+  btnSecondaryHover: "#351012",
+  btnSecondaryBorder: "#6F2626",
+  btnSecondaryText: "#F6D890",
+  success: "#19B978",
+  warning: "#F4C542",
+  tipAmber: "#F6D890",
+  pageGradientEnabled: false,
+  pageGradientFrom: "#120405",
+  pageGradientTo: "#090303",
+  pageGradientAngle: 160,
+  cardGradientFrom: "#24090B",
+  cardGradientMid: "#1a0608",
+  cardGradientTo: "#120405",
+  cardGradientHoverFrom: "#351012",
+  cardGradientHoverTo: "#24090B",
+  heroGlowFrom: "rgba(246, 216, 144, 0.12)",
+  heroGlowTo: "rgba(93, 8, 8, 0.28)"
+};
+var DEFAULT_LIGHT_PALETTE = {
+  bgPage: "#FFF8EE",
+  bgSecondary: "#ffffff",
+  bgCard: "#ffffff",
+  bgCardAlt: "#F7EFE6",
+  bgElevated: "#F7EFE6",
+  bgInput: "#FFF8EE",
+  border: "#D6CDD0",
+  borderLight: "#B98A35",
+  borderSubtle: "#E8DFD6",
+  textPrimary: "#120405",
+  textMuted: "#5D0808",
+  textFaint: "#95898B",
+  brand: "#5D0808",
+  brandDark: "#351012",
+  brandLight: "#6F2626",
+  brandGlow: "rgba(93, 8, 8, 0.12)",
+  gold: "#D9B85F",
+  goldStrong: "#B98A35",
+  goldDark: "#B98A35",
+  goldHover: "#C69B47",
+  premiumBorder: "#C69B47",
+  btnPrimaryBg: "#5D0808",
+  btnPrimaryText: "#FFF8EE",
+  btnPrimaryHover: "#351012",
+  btnSecondaryBg: "rgba(93, 8, 8, 0.08)",
+  btnSecondaryHover: "rgba(93, 8, 8, 0.14)",
+  btnSecondaryBorder: "rgba(93, 8, 8, 0.45)",
+  btnSecondaryText: "#5D0808",
+  success: "#19B978",
+  warning: "#F4C542",
+  tipAmber: "#B98A35",
+  pageGradientEnabled: false,
+  pageGradientFrom: "#FFF8EE",
+  pageGradientTo: "#F7EFE6",
+  pageGradientAngle: 160,
+  cardGradientFrom: "#FFF8EE",
+  cardGradientMid: "#ffffff",
+  cardGradientTo: "#F7EFE6",
+  cardGradientHoverFrom: "#F7EFE6",
+  cardGradientHoverTo: "#FFF8EE",
+  heroGlowFrom: "rgba(93, 8, 8, 0.08)",
+  heroGlowTo: "rgba(185, 138, 53, 0.08)"
+};
+var DEFAULT_COLOR_SCHEME = {
+  dark: DEFAULT_DARK_PALETTE,
+  light: DEFAULT_LIGHT_PALETTE
+};
+var CACHE_MS4 = 2e4;
+var cache4 = null;
+function serviceClient5() {
+  return createPrivilegedSupabase();
+}
+function isAppSettingsMissing5(message) {
+  return /app_settings|does not exist|schema cache|Could not find the table/i.test(String(message || ""));
+}
+function asColor(raw, fallback) {
+  const s = String(raw || "").trim();
+  if (!s) return fallback;
+  if (/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s) || /^rgba?\(/i.test(s) || /^hsla?\(/i.test(s)) {
+    return s;
+  }
+  return fallback;
+}
+function asBool(raw, fallback) {
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "string") {
+    const v = raw.trim().toLowerCase();
+    if (v === "true" || v === "1" || v === "yes" || v === "on") return true;
+    if (v === "false" || v === "0" || v === "no" || v === "off") return false;
+  }
+  return fallback;
+}
+function asAngle(raw, fallback) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(360, Math.round(n)));
+}
+function normalizePalette(input, fallback) {
+  const src = input && typeof input === "object" ? input : {};
+  const out = { ...fallback };
+  Object.keys(fallback).forEach((key) => {
+    if (key === "pageGradientEnabled") {
+      out[key] = asBool(src[key], fallback[key]);
+      return;
+    }
+    if (key === "pageGradientAngle") {
+      out[key] = asAngle(src[key], fallback[key]);
+      return;
+    }
+    out[key] = asColor(src[key], String(fallback[key]));
+  });
+  return out;
+}
+function normalizeColorScheme(input) {
+  const src = input && typeof input === "object" ? input : {};
+  return {
+    dark: normalizePalette(src.dark, DEFAULT_DARK_PALETTE),
+    light: normalizePalette(src.light, DEFAULT_LIGHT_PALETTE)
+  };
+}
+function parseStored2(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object") return value;
+  return null;
+}
+async function getColorSchemeSettings(admin) {
+  const now = Date.now();
+  if (cache4 && now - cache4.at < CACHE_MS4 && !cache4.setupRequired) {
+    return { scheme: cache4.value };
+  }
+  try {
+    const db2 = admin || serviceClient5();
+    const { data, error } = await db2.from("app_settings").select("value").eq("key", COLOR_SCHEME_KEY).maybeSingle();
+    if (error) {
+      const setupRequired = isAppSettingsMissing5(error.message);
+      cache4 = { value: DEFAULT_COLOR_SCHEME, at: now, setupRequired };
+      return { scheme: DEFAULT_COLOR_SCHEME, setupRequired: setupRequired || void 0 };
+    }
+    const scheme = normalizeColorScheme(parseStored2(data?.value));
+    cache4 = { value: scheme, at: now };
+    return { scheme };
+  } catch (err) {
+    const setupRequired = isAppSettingsMissing5(err?.message);
+    cache4 = { value: DEFAULT_COLOR_SCHEME, at: now, setupRequired };
+    return { scheme: DEFAULT_COLOR_SCHEME, setupRequired: setupRequired || void 0 };
+  }
+}
+async function setColorSchemeSettings(input, admin) {
+  const db2 = admin || serviceClient5();
+  const current = await getColorSchemeSettings(db2);
+  const next = normalizeColorScheme({
+    dark: { ...current.scheme.dark, ...input.dark || {} },
+    light: { ...current.scheme.light, ...input.light || {} }
+  });
+  const { error } = await db2.from("app_settings").upsert(
+    {
+      key: COLOR_SCHEME_KEY,
+      value: next,
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    { onConflict: "key" }
+  );
+  if (error) {
+    if (isAppSettingsMissing5(error.message)) {
+      throw new Error(
+        "Run supabase_device_limits_toggle.sql (creates app_settings) in Supabase, then try again."
+      );
+    }
+    throw new Error(error.message);
+  }
+  cache4 = { value: next, at: Date.now() };
+  return next;
+}
+
 // src/lib/settingsRoutes.ts
 var router7 = Router7();
 function clients4() {
@@ -5394,6 +5603,34 @@ router7.patch("/branding", async (req, res) => {
     return res.json({ ok: true, branding });
   } catch (error) {
     const message = error?.message || "Could not save branding";
+    const setup = /app_settings|supabase_device_limits/i.test(message);
+    return res.status(setup ? 503 : 500).json({ error: message });
+  }
+});
+router7.get("/colors", async (_req, res) => {
+  try {
+    const { admin } = clients4();
+    const result = await getColorSchemeSettings(admin);
+    return res.json({
+      ok: true,
+      scheme: result.scheme,
+      ...result.setupRequired ? { setupRequired: true } : {}
+    });
+  } catch {
+    return res.json({ ok: true, scheme: normalizeColorScheme(null) });
+  }
+});
+router7.patch("/colors", async (req, res) => {
+  try {
+    const current = await actor4(req);
+    if (!current) return res.status(401).json({ error: "Not authorized" });
+    if (current.role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const { admin } = clients4();
+    const body = req.body?.scheme && typeof req.body.scheme === "object" ? req.body.scheme : req.body;
+    const scheme = await setColorSchemeSettings(body || {}, admin);
+    return res.json({ ok: true, scheme });
+  } catch (error) {
+    const message = error?.message || "Could not save color scheme";
     const setup = /app_settings|supabase_device_limits/i.test(message);
     return res.status(setup ? 503 : 500).json({ error: message });
   }
