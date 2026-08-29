@@ -56,6 +56,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
     static final String EXTRA_REFERRER = "tool_referrer";
     static final String EXTRA_TITLE = "tool_title";
     static final String EXTRA_COOKIES = "tool_cookies";
+    static final String EXTRA_FORCE_DESKTOP = "tool_force_desktop";
 
     private static final String UA_DESKTOP =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -85,6 +86,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
      * Mobile WebView UA with those cookies triggers “unusual activity”.
      */
     private boolean googleLabsMode;
+    /** Admin Cookies checkbox: APK open as Desktop by default. */
+    private boolean forceDesktopPref;
     /** Stock WebView UA (Chrome/Android) — required for ChatGPT live streams. */
     private String uaWebViewDefault = "";
 
@@ -97,6 +100,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
         referrerUrl = getIntent().getStringExtra(EXTRA_REFERRER);
         String title = getIntent().getStringExtra(EXTRA_TITLE);
         String cookiesJson = getIntent().getStringExtra(EXTRA_COOKIES);
+        forceDesktopPref = getIntent().getBooleanExtra(EXTRA_FORCE_DESKTOP, false);
 
         if (destinationUrl == null || destinationUrl.trim().isEmpty()) {
             finish();
@@ -117,7 +121,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
         chatGptMode = isChatGptHost(destHost);
         googleLabsMode = isGoogleLabsHost(destHost);
         directToolMode = isDirectLegalHost(destHost) || (!isPanelHost(destHost) && referrerUrl.isEmpty());
-        if (googleLabsMode) {
+        // Admin checkbox OR known Labs hosts → Desktop (desktop cookies need desktop layout).
+        if (forceDesktopPref || googleLabsMode) {
             viewMode = ViewMode.DESKTOP;
         } else if (chatGptMode || directToolMode) {
             viewMode = ViewMode.MOBILE;
@@ -152,8 +157,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
         applyUserAgent(settings);
         installDocumentStartStealth();
         settings.setUseWideViewPort(true);
-        // Labs desktop site: overview mode helps fit Win Chrome layout on a phone.
-        settings.setLoadWithOverviewMode(googleLabsMode || !(chatGptMode || directToolMode));
+        // Desktop layout tools: overview mode so width=1280 fits the phone screen.
+        settings.setLoadWithOverviewMode(wantsDesktopLayout() || !(chatGptMode || directToolMode));
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
@@ -239,11 +244,13 @@ public class ToolWebViewActivity extends AppCompatActivity {
             public void onPageFinished(WebView view, String url) {
                 pageReady = true;
                 injectBrowserStealth();
-                if (chatGptMode) {
+                if (chatGptMode && viewMode != ViewMode.DESKTOP) {
                     injectChatGptStreamFix();
                     return;
                 }
-                if (!directToolMode && !viewportApplied) {
+                // Desktop mode must inject width=1280 even for Labs (directToolMode),
+                // otherwise CSS still renders the mobile Flow UI.
+                if ((wantsDesktopLayout() || !directToolMode) && !viewportApplied) {
                     viewportApplied = true;
                     injectLockedViewport();
                 }
@@ -268,7 +275,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
     private void applyUserAgent(WebSettings settings) {
         if (settings == null) return;
         // Desktop-copied cookies + mobile UA = Google Flow “unusual activity”.
-        if (googleLabsMode) {
+        if (wantsDesktopChromeUa()) {
             settings.setUserAgentString(UA_DESKTOP);
             return;
         }
@@ -286,6 +293,17 @@ public class ToolWebViewActivity extends AppCompatActivity {
         } else {
             settings.setUserAgentString(UA_DESKTOP);
         }
+    }
+
+    /** Desktop layout (viewport + scale) whenever Desktop is selected (not ChatGPT). */
+    private boolean wantsDesktopLayout() {
+        return viewMode == ViewMode.DESKTOP && !chatGptMode;
+    }
+
+    /** Windows Chrome UA for Labs / admin-forced tools / Desktop mode. */
+    private boolean wantsDesktopChromeUa() {
+        if (forceDesktopPref || googleLabsMode) return true;
+        return viewMode == ViewMode.DESKTOP && !chatGptMode;
     }
 
     /** Strip Android WebView markers that SaaS anti-bot systems key on. */
@@ -328,7 +346,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
     }
 
     private String buildStealthScript(boolean documentStart) {
-        boolean desktop = googleLabsMode || viewMode == ViewMode.DESKTOP;
+        boolean desktop = wantsDesktopChromeUa() || viewMode == ViewMode.DESKTOP;
         String ua = desktop
             ? UA_DESKTOP
             : ((uaWebViewDefault != null && !uaWebViewDefault.isEmpty())
@@ -475,17 +493,22 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private void setViewMode(ViewMode mode) {
         if (viewMode == mode) {
-            if (pageReady && !chatGptMode && !directToolMode) injectLockedViewport();
+            if (pageReady && wantsDesktopLayout()) injectLockedViewport();
             return;
         }
         viewMode = mode;
         refreshToggleStyles();
-        if (webView != null) applyUserAgent(webView.getSettings());
+        if (webView != null) {
+            applyUserAgent(webView.getSettings());
+            webView.getSettings().setLoadWithOverviewMode(
+                wantsDesktopLayout() || !(chatGptMode || directToolMode)
+            );
+        }
         applyNativeScale();
         viewportApplied = false;
         if (pageReady) {
-            // Google Labs: keep desktop UA even if user taps Mobile — only reload layout.
-            if (chatGptMode || directToolMode) {
+            // Reload so viewport + UA apply for Labs / direct SaaS.
+            if (chatGptMode || directToolMode || forceDesktopPref || googleLabsMode) {
                 webView.reload();
             } else {
                 injectLockedViewport();
@@ -512,26 +535,24 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private void applyNativeScale() {
         if (webView == null) return;
-        // Direct SaaS / ChatGPT: never shrink — scale hacks break live UIs & anti-bot checks.
-        if (chatGptMode || directToolMode) {
-            webView.setInitialScale(100);
+        if (wantsDesktopLayout()) {
+            int desktopLayoutPx = 1280;
+            int initialScalePct = Math.max(25, Math.min(100, (screenPx * 100) / desktopLayoutPx));
+            webView.setInitialScale(initialScalePct);
             return;
         }
-        if (viewMode == ViewMode.DESKTOP) {
-            int desktopLayoutPx = 1280;
-            int initialScalePct = Math.max(30, Math.min(100, (screenPx * 100) / desktopLayoutPx));
-            webView.setInitialScale(initialScalePct);
-        } else {
-            webView.setInitialScale(100);
-        }
+        webView.setInitialScale(100);
     }
 
     /**
-     * Fixed viewport for panel tools only.
-     * Never derives width from scrollWidth (typing shift).
+     * Force a desktop-width viewport so responsive sites (Flow / Labs) stop
+     * rendering their mobile UI when Desktop is selected.
      */
     private void injectLockedViewport() {
-        if (webView == null || chatGptMode || directToolMode) return;
+        if (webView == null) return;
+        if (chatGptMode && viewMode != ViewMode.DESKTOP) return;
+        if (!wantsDesktopLayout() && directToolMode) return;
+
         final String content;
         if (viewMode == ViewMode.DESKTOP) {
             double scale = Math.min(1.0, (double) phoneCssPx / 1280.0);
@@ -542,13 +563,29 @@ public class ToolWebViewActivity extends AppCompatActivity {
             content = "width=device-width, initial-scale=1, minimum-scale=0.5, maximum-scale=5, user-scalable=yes";
         }
 
+        boolean lockDesktopWidth = viewMode == ViewMode.DESKTOP;
         String js = "(function(){"
             + "try{"
             + "var CONTENT=" + jsonString(content) + ";"
+            + "var LOCK=" + (lockDesktopWidth ? "true" : "false") + ";"
             + "var m=document.querySelector('meta[name=\"viewport\"]');"
             + "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');"
             + "(document.head||document.documentElement).appendChild(m);}"
             + "m.setAttribute('content',CONTENT);"
+            + "if(LOCK){"
+            + "  try{document.documentElement.style.minWidth='1280px';}catch(e){}"
+            + "  try{if(document.body)document.body.style.minWidth='1280px';}catch(e){}"
+            + "  try{"
+            + "    var s=document.getElementById('zynex-desktop-lock');"
+            + "    if(!s){s=document.createElement('style');s.id='zynex-desktop-lock';"
+            + "      (document.head||document.documentElement).appendChild(s);}"
+            + "    s.textContent='html,body{min-width:1280px!important;}';"
+            + "  }catch(e){}"
+            + "}else{"
+            + "  try{document.documentElement.style.minWidth='';}catch(e){}"
+            + "  try{if(document.body)document.body.style.minWidth='';}catch(e){}"
+            + "  try{var s=document.getElementById('zynex-desktop-lock');if(s)s.remove();}catch(e){}"
+            + "}"
             + "}catch(e){}"
             + "})();";
         webView.evaluateJavascript(js, null);

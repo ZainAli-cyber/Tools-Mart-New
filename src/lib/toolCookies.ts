@@ -142,6 +142,11 @@ export type ToolCookieFields = {
   cookiesJson: string;
   /** Dashboard URL to spoof as Referer for *.toolaccess.click panels. */
   panelReferrer?: string;
+  /**
+   * Mobile APK: open this tool in Desktop Chrome layout by default.
+   * Use for Google Flow / Labs and similar tools that flag mobile WebView.
+   */
+  apkDesktopDefault?: boolean;
 };
 
 type FallbackMap = Record<string, ToolCookieFields>;
@@ -154,6 +159,7 @@ const EMPTY_COOKIE_FIELDS: ToolCookieFields = {
   toolUrl: '',
   cookiesJson: '',
   panelReferrer: '',
+  apkDesktopDefault: false,
 };
 
 export function isOneClick(method?: string | null): boolean {
@@ -418,6 +424,9 @@ export function normalizeToolRow(row: any, fallback?: ToolCookieFields | null): 
       'panelReferrer' in extraObj || 'unlockReferrer' in extraObj || 'panel_referrer' in extraObj
         ? String(extraObj.panelReferrer || extraObj.unlockReferrer || extraObj.panel_referrer || '')
         : String(row.panel_referrer || row.panelReferrer || extra.panelReferrer || ''),
+    apkDesktopDefault: Boolean(
+      extraObj.apkDesktopDefault ?? extraObj.apk_desktop_default ?? extra.apkDesktopDefault ?? false,
+    ),
   };
 }
 
@@ -698,6 +707,7 @@ export async function saveToolCookieSettings(
     toolUrl: fields.toolUrl || '',
     cookiesJson: fields.cookiesJson || '',
     panelReferrer: fields.panelReferrer || '',
+    apkDesktopDefault: Boolean(fields.apkDesktopDefault),
   };
 
   for (const key of keys) {
@@ -851,6 +861,7 @@ export async function fetchLaunchPayload(
   name: string;
   panelReferrer?: string;
   unlockReferrer?: string;
+  apkDesktopDefault?: boolean;
 }> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -875,6 +886,7 @@ export async function fetchLaunchPayload(
     name: String(body.name || ''),
     panelReferrer: panelReferrer || undefined,
     unlockReferrer: panelReferrer || undefined,
+    apkDesktopDefault: Boolean(body.apkDesktopDefault ?? body.apk_desktop_default),
   };
 }
 
@@ -1108,6 +1120,7 @@ async function openViaMobileApp(
   opts: LaunchToolOptions | undefined,
   unlockReferrer: string | undefined,
   toolName: string,
+  apkDesktopDefault?: boolean,
 ) {
   const { launchToolNative } = await import('./mobile/toolLauncher');
   // ChatGPT / legal direct URLs must not carry panel unlock Referer (forces desktop panel layout).
@@ -1122,6 +1135,7 @@ async function openViaMobileApp(
     cookies: Array.isArray(cookies) ? cookies : [],
     referrer: referrer || undefined,
     title: toolName,
+    forceDesktop: Boolean(apkDesktopDefault),
   });
 }
 
@@ -1273,7 +1287,14 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
 
     const { isMobileApp } = await import('./mobile/toolLauncher');
     if (isMobileApp()) {
-      await openViaMobileApp(dest, cookies, opts, unlockReferrer || undefined, payload.name || tool.name);
+      await openViaMobileApp(
+        dest,
+        cookies,
+        opts,
+        unlockReferrer || undefined,
+        payload.name || tool.name,
+        Boolean(payload.apkDesktopDefault ?? (tool as any).apkDesktopDefault),
+      );
       opts?.onProgress?.('done');
       return;
     }
@@ -1304,7 +1325,16 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
           cookies = [];
         }
         const unlockReferrer = String(local.panelReferrer || tool.panelReferrer || '').trim();
-        await openViaMobileApp(dest, cookies, opts, unlockReferrer || undefined, tool.name);
+        await openViaMobileApp(
+          dest,
+          cookies,
+          opts,
+          unlockReferrer || undefined,
+          tool.name,
+          Boolean(
+            (local as ToolCookieFields).apkDesktopDefault ?? (tool as any).apkDesktopDefault,
+          ),
+        );
         opts?.onProgress?.('done');
         return;
       }

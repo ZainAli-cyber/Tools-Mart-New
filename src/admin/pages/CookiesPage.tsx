@@ -58,6 +58,7 @@ export const CookiesPage: React.FC = () => {
     toolUrl: '',
     cookiesJson: '',
     panelReferrer: '',
+    apkDesktopDefault: false,
   });
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -117,6 +118,7 @@ export const CookiesPage: React.FC = () => {
       toolUrl: tool.toolUrl || '',
       cookiesJson: tool.cookiesJson || '',
       panelReferrer: tool.panelReferrer || '',
+      apkDesktopDefault: Boolean(tool.apkDesktopDefault),
     });
   };
 
@@ -160,6 +162,7 @@ export const CookiesPage: React.FC = () => {
       toolUrl: form.toolUrl.trim(),
       cookiesJson: raw,
       panelReferrer: form.panelReferrer?.trim() || '',
+      apkDesktopDefault: Boolean(form.apkDesktopDefault),
     });
     setSaving(false);
     if (!result.ok) {
@@ -408,6 +411,24 @@ export const CookiesPage: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              <label className="flex items-start gap-3 cursor-pointer select-none bg-[#0d0908] border border-[#2a1e1c] rounded-xl px-3 py-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-red-500"
+                  checked={Boolean(form.apkDesktopDefault)}
+                  onChange={e => setForm(f => ({ ...f, apkDesktopDefault: e.target.checked }))}
+                />
+                <span>
+                  <span className="block text-xs font-extrabold text-white">
+                    APK: open as Desktop by default
+                  </span>
+                  <span className="block text-[10px] text-slate-500 mt-1 leading-relaxed">
+                    Turn ON for Google Flow / Labs / VEO and similar tools. Desktop Chrome cookies + mobile layout
+                    often trigger “unusual activity”. Members can still switch Mobile/Desktop in the app bar.
+                  </span>
+                </span>
+              </label>
 
               <div>
                 <label className={lblCls}>

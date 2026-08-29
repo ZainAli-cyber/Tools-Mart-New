@@ -312,6 +312,7 @@ function cookieFields(tool: any) {
     url: String(url || '').trim(),
     cookiesRaw: String(cookiesRaw || ''),
     panelReferrer: String(panelReferrer || '').trim(),
+    apkDesktopDefault: Boolean(extra.apkDesktopDefault ?? extra.apk_desktop_default),
   };
 }
 
@@ -362,6 +363,7 @@ router.get('/launch/:toolId', async (req, res) => {
       cookies,
       panelReferrer: fields.panelReferrer || undefined,
       unlockReferrer: fields.panelReferrer || undefined,
+      apkDesktopDefault: Boolean(fields.apkDesktopDefault),
     });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Could not launch tool' });

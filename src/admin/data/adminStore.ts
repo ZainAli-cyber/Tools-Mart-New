@@ -4,7 +4,7 @@
 export interface Order { id:string; invoiceNo:string; orderDate:string; customerName:string; customerEmail:string; customerPhone:string; customerCity:string; whatsapp:string; tool:string; duration:number; amount:number; discount:number; finalAmount:number; status:string; paymentMethod:string; paymentStatus:string; transactionId:string; notes:string; adminNotes:string; subStatus:string; activationDate:string; expiryDate:string; daysLeft:number; screenshot:string|null; }
 export interface Customer { id:string; name:string; email:string; phone:string; country:string; city:string; totalOrders:number; totalSpend:number; joinDate:string; status:string; tools:string[]; notes:string; }
 export type ToolAccessMethod = 'extension' | 'one_click';
-export interface Tool { id:string; name:string; category:string; rating:number; price:number; originalPrice:number; discount:number; favicon:string; desc:string; fullDesc?:string; features?:string[]; useCases?:string[]; faqs?:{q:string;a:string}[]; waText?:string; isPrivate?:boolean; isSemiPrivate?:boolean; badge?:string; showOnHome?:boolean; accessMethod?:ToolAccessMethod; toolUrl?:string; cookiesJson?:string; panelReferrer?:string; }
+export interface Tool { id:string; name:string; category:string; rating:number; price:number; originalPrice:number; discount:number; favicon:string; desc:string; fullDesc?:string; features?:string[]; useCases?:string[]; faqs?:{q:string;a:string}[]; waText?:string; isPrivate?:boolean; isSemiPrivate?:boolean; badge?:string; showOnHome?:boolean; accessMethod?:ToolAccessMethod; toolUrl?:string; cookiesJson?:string; panelReferrer?:string; apkDesktopDefault?:boolean; }
 export interface Coupon { id:string; code:string; type:string; value:number; usageLimit:number; usedCount:number; expiry:string; active:boolean; minPurchase:number; }
 export interface Ticket { id:string; customerName:string; customerEmail:string; subject:string; message:string; status:string; priority:string; createdAt:string; replies:{from:string;message:string;time:string}[]; }
 export interface Notification { id:string; type:string; title:string; message:string; time:string; read:boolean; }
@@ -74,6 +74,7 @@ export const db = {
       toolUrl: tool.toolUrl ?? prev?.toolUrl,
       cookiesJson: tool.cookiesJson ?? prev?.cookiesJson,
       panelReferrer: tool.panelReferrer ?? prev?.panelReferrer,
+      apkDesktopDefault: tool.apkDesktopDefault ?? prev?.apkDesktopDefault,
     };
     i >= 0 ? all.splice(i, 1, merged) : all.push(merged);
     this.saveTools(all);

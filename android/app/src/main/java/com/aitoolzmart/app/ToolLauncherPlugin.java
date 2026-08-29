@@ -32,6 +32,7 @@ public class ToolLauncherPlugin extends Plugin {
 
         String referrer = call.getString("referrer", "").trim();
         String title = call.getString("title", "Tool").trim();
+        boolean forceDesktop = Boolean.TRUE.equals(call.getBoolean("forceDesktop", false));
         JSArray cookies = call.getArray("cookies", new JSArray());
 
         try {
@@ -45,6 +46,7 @@ public class ToolLauncherPlugin extends Plugin {
             intent.putExtra(ToolWebViewActivity.EXTRA_REFERRER, referrer);
             intent.putExtra(ToolWebViewActivity.EXTRA_TITLE, title);
             intent.putExtra(ToolWebViewActivity.EXTRA_COOKIES, cookies.toString());
+            intent.putExtra(ToolWebViewActivity.EXTRA_FORCE_DESKTOP, forceDesktop);
             activity.startActivity(intent);
 
             JSObject ret = new JSObject();

@@ -37,7 +37,7 @@ function canDispatch(profile: { id: string; role: string }, items: PushItem[]) {
 /** Public mobile app metadata — APK download link for dashboard. */
 router.get('/info', (_req, res) => {
   const apkUrl = String(process.env.MOBILE_APK_URL || '/downloads/zynextools.apk').trim();
-  const version = String(process.env.MOBILE_APK_VERSION || '1.5.0').trim();
+  const version = String(process.env.MOBILE_APK_VERSION || '1.5.1').trim();
   res.json({
     ok: true,
     platform: 'android',
