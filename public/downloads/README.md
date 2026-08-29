@@ -1,15 +1,20 @@
-# Mobile APK download
+# Downloads
 
-Place the built Android APK here as **`zynextools.apk`**.
+## Android APK
+- **`zynextools.apk`** — install from Dashboard → Mobile App
 
-Users download from **Dashboard → Mobile App**.
+## Browser extension
+- **`zynextools-extension.zip`** — install from Dashboard → Extensions / Installation Guide
+- Extension display name: **ZynexTools**
 
-After building:
+After building APK:
 ```bash
 npm run build:mobile
 npm run cap:open:android
-# Android Studio: Build → Build Bundle(s) / APK(s) → Build APK(s)
 # Copy: android/app/build/outputs/apk/debug/app-debug.apk → public/downloads/zynextools.apk
 ```
 
-Or set `MOBILE_APK_URL` on Vercel to an external URL (Google Drive direct link, etc.).
+After updating the extension folder:
+```bash
+# Rebuild zip from /extension into public/downloads/zynextools-extension.zip
+```

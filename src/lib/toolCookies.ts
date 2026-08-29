@@ -6,7 +6,7 @@ import { db, type Tool } from '../admin/data/adminStore';
 export type ToolAccessMethod = 'extension' | 'one_click';
 
 export const FALLBACK_COOKIE_KEY = 'atm_tool_cookie_fallback';
-export const EXTENSION_DOWNLOAD_URL = '/downloads/ai-toolz-mart-extension.zip';
+export const EXTENSION_DOWNLOAD_URL = '/downloads/zynextools-extension.zip';
 export const EXTENSION_DISPLAY_NAME = 'ZynexTools';
 
 const NEED_EXTENSION_MSG =

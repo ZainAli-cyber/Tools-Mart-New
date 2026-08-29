@@ -537,7 +537,7 @@ async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, re
     return {
       ok: false,
       error:
-        'Could not install panel Referer unlock rules. Update or reload the Access extension (v1.3.2+), then try again.',
+        'Could not install panel Referer unlock rules. Update or reload the ZynexTools extension (v1.4.0+), then try again.',
       count: list.length,
       setCount,
       unlockMode,
