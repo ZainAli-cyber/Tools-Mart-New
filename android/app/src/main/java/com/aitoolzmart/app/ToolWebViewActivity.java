@@ -23,12 +23,15 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.URL;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -77,6 +80,11 @@ public class ToolWebViewActivity extends AppCompatActivity {
     private boolean chatGptMode;
     /** True for real SaaS destinations (not panels) — need Chrome-like WebView. */
     private boolean directToolMode;
+    /**
+     * Google Labs / Flow / Gemini — admin cookies are copied from desktop Chrome.
+     * Mobile WebView UA with those cookies triggers “unusual activity”.
+     */
+    private boolean googleLabsMode;
     /** Stock WebView UA (Chrome/Android) — required for ChatGPT live streams. */
     private String uaWebViewDefault = "";
 
@@ -104,10 +112,14 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
         // Direct SaaS (ChatGPT Labs, etc.): cleaned Chrome UA — WebView “wv” triggers
         // “unusual activity”. Panels: desktop UA + scaled layout for cookies / full UI.
+        // Google Flow cookies are desktop Chrome sessions — must keep desktop UA.
         String destHost = hostFromUrl(destinationUrl);
         chatGptMode = isChatGptHost(destHost);
+        googleLabsMode = isGoogleLabsHost(destHost);
         directToolMode = isDirectLegalHost(destHost) || (!isPanelHost(destHost) && referrerUrl.isEmpty());
-        if (chatGptMode || directToolMode) {
+        if (googleLabsMode) {
+            viewMode = ViewMode.DESKTOP;
+        } else if (chatGptMode || directToolMode) {
             viewMode = ViewMode.MOBILE;
         } else if (prefersPanelDesktop()) {
             viewMode = ViewMode.DESKTOP;
@@ -138,8 +150,10 @@ public class ToolWebViewActivity extends AppCompatActivity {
         // Hide “WebView” hints in the UA string — many SaaS tools ban `; wv)`.
         uaWebViewDefault = cleanChromeUa(String.valueOf(settings.getUserAgentString()));
         applyUserAgent(settings);
+        installDocumentStartStealth();
         settings.setUseWideViewPort(true);
-        settings.setLoadWithOverviewMode(!(chatGptMode || directToolMode));
+        // Labs desktop site: overview mode helps fit Win Chrome layout on a phone.
+        settings.setLoadWithOverviewMode(googleLabsMode || !(chatGptMode || directToolMode));
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
@@ -253,6 +267,11 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private void applyUserAgent(WebSettings settings) {
         if (settings == null) return;
+        // Desktop-copied cookies + mobile UA = Google Flow “unusual activity”.
+        if (googleLabsMode) {
+            settings.setUserAgentString(UA_DESKTOP);
+            return;
+        }
         if (chatGptMode || directToolMode) {
             // Real Chrome-looking UA — fake Windows UA / raw WebView “wv” trips Labs bans.
             if (viewMode == ViewMode.DESKTOP) {
@@ -283,20 +302,69 @@ public class ToolWebViewActivity extends AppCompatActivity {
         return ua;
     }
 
+    /** Run stealth before page JS (when WebView feature is available). */
+    private void installDocumentStartStealth() {
+        if (webView == null) return;
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                WebViewCompat.addDocumentStartJavaScript(
+                    webView,
+                    buildStealthScript(true),
+                    Collections.singleton("*")
+                );
+            }
+        } catch (Exception ignored) {
+            /* older WebView — onPageStarted injection still runs */
+        }
+    }
+
     /**
-     * Generic anti-detection for ALL tools in the APK WebView.
-     * Makes navigator / chrome look like mobile Chrome so Labs and similar
-     * stop returning “unusual activity” for shared sessions.
+     * Anti-detection for APK WebView. Google Labs gets a desktop Chrome fingerprint
+     * so it matches the cookie jar copied from the desktop extension.
      */
     private void injectBrowserStealth() {
         if (webView == null) return;
-        String js = "(function(){"
+        webView.evaluateJavascript(buildStealthScript(false), null);
+    }
+
+    private String buildStealthScript(boolean documentStart) {
+        boolean desktop = googleLabsMode || viewMode == ViewMode.DESKTOP;
+        String ua = desktop
+            ? UA_DESKTOP
+            : ((uaWebViewDefault != null && !uaWebViewDefault.isEmpty())
+                ? uaWebViewDefault
+                : UA_ANDROID_FALLBACK);
+        String platform = desktop ? "Win32" : "Linux armv8l";
+        int touchPoints = desktop ? 0 : 5;
+        String mobileHint = desktop ? "false" : "true";
+        String onceGuard = documentStart
+            ? "if(window.__zynexStealthDS)return;window.__zynexStealthDS=true;"
+            : "if(window.__zynexStealth)return;window.__zynexStealth=true;";
+
+        return "(function(){"
             + "try{"
-            + "if(window.__zynexStealth)return;"
-            + "window.__zynexStealth=true;"
-            + "try{Object.defineProperty(navigator,'webdriver',{get:function(){return undefined;},configurable:true});}catch(e){}"
-            + "try{if(!window.chrome){window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}}};}"
-            + "else if(!window.chrome.runtime){window.chrome.runtime={};}}catch(e){}"
+            + onceGuard
+            + "var UA=" + jsonString(ua) + ";"
+            + "var PLATFORM=" + jsonString(platform) + ";"
+            + "var TOUCH=" + touchPoints + ";"
+            + "var MOBILE=" + mobileHint + ";"
+            + "function hide(obj,prop,val){"
+            + "  try{Object.defineProperty(obj,prop,{get:function(){return val;},configurable:true});}catch(e){}"
+            + "}"
+            + "hide(navigator,'webdriver',undefined);"
+            + "hide(navigator,'userAgent',UA);"
+            + "hide(navigator,'appVersion',UA.replace(/^Mozilla\\//,''));"
+            + "hide(navigator,'platform',PLATFORM);"
+            + "hide(navigator,'vendor','Google Inc.');"
+            + "hide(navigator,'maxTouchPoints',TOUCH);"
+            + "hide(navigator,'hardwareConcurrency',8);"
+            + "try{hide(navigator,'deviceMemory',8);}catch(e){}"
+            + "hide(navigator,'languages',['en-US','en']);"
+            + "hide(navigator,'language','en-US');"
+            + "try{"
+            + "  if(!window.chrome){window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}}};}"
+            + "  else if(!window.chrome.runtime){window.chrome.runtime={};}"
+            + "}catch(e){}"
             + "try{"
             + "  var desc=Object.getOwnPropertyDescriptor(navigator,'plugins');"
             + "  if(!desc||desc.configurable){"
@@ -304,26 +372,30 @@ public class ToolWebViewActivity extends AppCompatActivity {
             + "  }"
             + "}catch(e){}"
             + "try{"
-            + "  Object.defineProperty(navigator,'languages',{get:function(){return ['en-US','en'];},configurable:true});"
-            + "}catch(e){}"
-            + "try{"
-            + "  if(!navigator.permissions)return;"
-            + "  var orig=navigator.permissions.query.bind(navigator.permissions);"
-            + "  navigator.permissions.query=function(p){"
-            + "    try{if(p&&p.name==='notifications')return Promise.resolve({state:Notification.permission});}catch(e){}"
-            + "    return orig(p);"
-            + "  };"
-            + "}catch(e){}"
-            + "try{"
-            + "  var ua=navigator.userAgent||'';"
-            + "  if(/;\\s*wv\\)/i.test(ua)||/Version\\/4\\.0/i.test(ua)){"
-            + "    var cleaned=ua.replace(/;\\s*wv\\)/i,')').replace(/\\s*Version\\/4\\.0\\s*/i,' ');"
-            + "    Object.defineProperty(navigator,'userAgent',{get:function(){return cleaned;},configurable:true});"
+            + "  if(navigator.permissions&&navigator.permissions.query){"
+            + "    var orig=navigator.permissions.query.bind(navigator.permissions);"
+            + "    navigator.permissions.query=function(p){"
+            + "      try{if(p&&p.name==='notifications')return Promise.resolve({state:Notification.permission});}catch(e){}"
+            + "      return orig(p);"
+            + "    };"
             + "  }"
+            + "}catch(e){}"
+            + "try{"
+            + "  var brands=[{brand:'Not A(Brand',version:'8'},{brand:'Chromium',version:'131'},{brand:'Google Chrome',version:'131'}];"
+            + "  var uad={brands:brands,mobile:MOBILE,platform:MOBILE? 'Android':'Windows',"
+            + "    getHighEntropyValues:function(hints){"
+            + "      return Promise.resolve({"
+            + "        brands:brands,mobile:MOBILE,platform:MOBILE?'Android':'Windows',"
+            + "        platformVersion:MOBILE?'14.0.0':'15.0.0',architecture:MOBILE?'':'x86',"
+            + "        bitness:MOBILE?'':'64',model:'',uaFullVersion:'131.0.0.0',"
+            + "        fullVersionList:brands"
+            + "      });"
+            + "    },toJSON:function(){return {brands:brands,mobile:MOBILE,platform:MOBILE?'Android':'Windows'};}"
+            + "  };"
+            + "  hide(navigator,'userAgentData',uad);"
             + "}catch(e){}"
             + "}catch(e){}"
             + "})();";
-        webView.evaluateJavascript(js, null);
     }
 
     private LinearLayout buildTopBar(String title) {
@@ -412,6 +484,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
         applyNativeScale();
         viewportApplied = false;
         if (pageReady) {
+            // Google Labs: keep desktop UA even if user taps Mobile — only reload layout.
             if (chatGptMode || directToolMode) {
                 webView.reload();
             } else {
@@ -629,6 +702,19 @@ public class ToolWebViewActivity extends AppCompatActivity {
             || h.endsWith(".chatgpt.com")
             || h.equals("chat.openai.com")
             || h.endsWith(".openai.com");
+    }
+
+    /** labs.google Flow / FX / Gemini — desktop Chrome cookies only. */
+    private boolean isGoogleLabsHost(String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(Locale.US);
+        return h.equals("labs.google")
+            || h.endsWith(".labs.google")
+            || h.contains("gemini.google.com")
+            || h.contains("bard.google.com")
+            || h.contains("aistudio.google.com")
+            || h.contains("notebooklm.google")
+            || (h.contains("google.com") && (h.contains("labs") || h.contains("flow")));
     }
 
     private boolean isDirectLegalHost(String host) {
