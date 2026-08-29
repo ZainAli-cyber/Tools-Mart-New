@@ -143,8 +143,8 @@ async function mergeCookieExtra(
     extra.panelReferrer = body.panelReferrer;
     extra.unlockReferrer = body.panelReferrer;
   }
-  if (body.apkDesktopDefault !== undefined) {
-    extra.apkDesktopDefault = Boolean(body.apkDesktopDefault);
+  if (body.apkExtensionOnly !== undefined) {
+    extra.apkExtensionOnly = Boolean(body.apkExtensionOnly);
   }
   if (body.showOnHome !== undefined) extra.showOnHome = body.showOnHome !== false;
   return extra;
@@ -1034,7 +1034,7 @@ function snakeToCamelTool(t: any) {
       'panelReferrer' in extra || 'unlockReferrer' in extra || 'panel_referrer' in extra
         ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || '')
         : String(t.panel_referrer || ''),
-    apkDesktopDefault: Boolean(extra.apkDesktopDefault ?? extra.apk_desktop_default),
+    apkExtensionOnly: Boolean(extra.apkExtensionOnly ?? extra.apk_extension_only),
   };
 }
 

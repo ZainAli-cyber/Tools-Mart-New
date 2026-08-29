@@ -12,6 +12,9 @@ export const EXTENSION_DISPLAY_NAME = 'ZynexTools';
 const NEED_EXTENSION_MSG =
   'Install the ZynexTools browser extension to open this tool. Download it from the Installation Guide, then try again.';
 
+export const APK_EXTENSION_ONLY_MSG =
+  'This tool needs the ZynexTools Chrome extension on desktop. Open your dashboard on a computer, install the extension from the Installation Guide, then open the tool there. The mobile app cannot run this tool.';
+
 export type LaunchProgressStep =
   | 'check'
   | 'authenticating'
@@ -143,10 +146,10 @@ export type ToolCookieFields = {
   /** Dashboard URL to spoof as Referer for *.toolaccess.click panels. */
   panelReferrer?: string;
   /**
-   * Mobile APK: open this tool in Desktop Chrome layout by default.
-   * Use for Google Flow / Labs and similar tools that flag mobile WebView.
+   * Mobile APK: do not open in-app — show extension install guide instead.
+   * Use for Google Flow / Labs and similar tools that need desktop Chrome.
    */
-  apkDesktopDefault?: boolean;
+  apkExtensionOnly?: boolean;
 };
 
 type FallbackMap = Record<string, ToolCookieFields>;
@@ -159,7 +162,7 @@ const EMPTY_COOKIE_FIELDS: ToolCookieFields = {
   toolUrl: '',
   cookiesJson: '',
   panelReferrer: '',
-  apkDesktopDefault: false,
+  apkExtensionOnly: false,
 };
 
 export function isOneClick(method?: string | null): boolean {
@@ -424,8 +427,11 @@ export function normalizeToolRow(row: any, fallback?: ToolCookieFields | null): 
       'panelReferrer' in extraObj || 'unlockReferrer' in extraObj || 'panel_referrer' in extraObj
         ? String(extraObj.panelReferrer || extraObj.unlockReferrer || extraObj.panel_referrer || '')
         : String(row.panel_referrer || row.panelReferrer || extra.panelReferrer || ''),
-    apkDesktopDefault: Boolean(
-      extraObj.apkDesktopDefault ?? extraObj.apk_desktop_default ?? extra.apkDesktopDefault ?? false,
+    apkExtensionOnly: Boolean(
+      extraObj.apkExtensionOnly ??
+        extraObj.apk_extension_only ??
+        extra.apkExtensionOnly ??
+        false,
     ),
   };
 }
@@ -707,7 +713,7 @@ export async function saveToolCookieSettings(
     toolUrl: fields.toolUrl || '',
     cookiesJson: fields.cookiesJson || '',
     panelReferrer: fields.panelReferrer || '',
-    apkDesktopDefault: Boolean(fields.apkDesktopDefault),
+    apkExtensionOnly: Boolean(fields.apkExtensionOnly),
   };
 
   for (const key of keys) {
@@ -861,7 +867,7 @@ export async function fetchLaunchPayload(
   name: string;
   panelReferrer?: string;
   unlockReferrer?: string;
-  apkDesktopDefault?: boolean;
+  apkExtensionOnly?: boolean;
 }> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -886,7 +892,7 @@ export async function fetchLaunchPayload(
     name: String(body.name || ''),
     panelReferrer: panelReferrer || undefined,
     unlockReferrer: panelReferrer || undefined,
-    apkDesktopDefault: Boolean(body.apkDesktopDefault ?? body.apk_desktop_default),
+    apkExtensionOnly: Boolean(body.apkExtensionOnly ?? body.apk_extension_only),
   };
 }
 
@@ -1120,7 +1126,6 @@ async function openViaMobileApp(
   opts: LaunchToolOptions | undefined,
   unlockReferrer: string | undefined,
   toolName: string,
-  apkDesktopDefault?: boolean,
 ) {
   const { launchToolNative } = await import('./mobile/toolLauncher');
   // ChatGPT / legal direct URLs must not carry panel unlock Referer (forces desktop panel layout).
@@ -1135,7 +1140,6 @@ async function openViaMobileApp(
     cookies: Array.isArray(cookies) ? cookies : [],
     referrer: referrer || undefined,
     title: toolName,
-    forceDesktop: Boolean(apkDesktopDefault),
   });
 }
 
@@ -1287,13 +1291,19 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
 
     const { isMobileApp } = await import('./mobile/toolLauncher');
     if (isMobileApp()) {
+      const extensionOnly = Boolean(
+        payload.apkExtensionOnly ?? (tool as any).apkExtensionOnly,
+      );
+      if (extensionOnly) {
+        opts?.onNeedExtension?.();
+        throw new NeedExtensionError(APK_EXTENSION_ONLY_MSG, { allowSessionApply: false });
+      }
       await openViaMobileApp(
         dest,
         cookies,
         opts,
         unlockReferrer || undefined,
         payload.name || tool.name,
-        Boolean(payload.apkDesktopDefault ?? (tool as any).apkDesktopDefault),
       );
       opts?.onProgress?.('done');
       return;
@@ -1325,15 +1335,19 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
           cookies = [];
         }
         const unlockReferrer = String(local.panelReferrer || tool.panelReferrer || '').trim();
+        const extensionOnly = Boolean(
+          (local as ToolCookieFields).apkExtensionOnly ?? (tool as any).apkExtensionOnly,
+        );
+        if (extensionOnly) {
+          opts?.onNeedExtension?.();
+          throw new NeedExtensionError(APK_EXTENSION_ONLY_MSG, { allowSessionApply: false });
+        }
         await openViaMobileApp(
           dest,
           cookies,
           opts,
           unlockReferrer || undefined,
           tool.name,
-          Boolean(
-            (local as ToolCookieFields).apkDesktopDefault ?? (tool as any).apkDesktopDefault,
-          ),
         );
         opts?.onProgress?.('done');
         return;

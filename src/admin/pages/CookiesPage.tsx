@@ -58,7 +58,7 @@ export const CookiesPage: React.FC = () => {
     toolUrl: '',
     cookiesJson: '',
     panelReferrer: '',
-    apkDesktopDefault: false,
+    apkExtensionOnly: false,
   });
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -118,7 +118,7 @@ export const CookiesPage: React.FC = () => {
       toolUrl: tool.toolUrl || '',
       cookiesJson: tool.cookiesJson || '',
       panelReferrer: tool.panelReferrer || '',
-      apkDesktopDefault: Boolean(tool.apkDesktopDefault),
+      apkExtensionOnly: Boolean(tool.apkExtensionOnly),
     });
   };
 
@@ -162,7 +162,7 @@ export const CookiesPage: React.FC = () => {
       toolUrl: form.toolUrl.trim(),
       cookiesJson: raw,
       panelReferrer: form.panelReferrer?.trim() || '',
-      apkDesktopDefault: Boolean(form.apkDesktopDefault),
+      apkExtensionOnly: Boolean(form.apkExtensionOnly),
     });
     setSaving(false);
     if (!result.ok) {
@@ -416,16 +416,17 @@ export const CookiesPage: React.FC = () => {
                 <input
                   type="checkbox"
                   className="mt-0.5 accent-red-500"
-                  checked={Boolean(form.apkDesktopDefault)}
-                  onChange={e => setForm(f => ({ ...f, apkDesktopDefault: e.target.checked }))}
+                  checked={Boolean(form.apkExtensionOnly)}
+                  onChange={e => setForm(f => ({ ...f, apkExtensionOnly: e.target.checked }))}
                 />
                 <span>
                   <span className="block text-xs font-extrabold text-white">
-                    APK: open as Desktop by default
+                    Extension based (mobile app)
                   </span>
                   <span className="block text-[10px] text-slate-500 mt-1 leading-relaxed">
-                    Turn ON for Google Flow / Labs / VEO and similar tools. Desktop Chrome cookies + mobile layout
-                    often trigger “unusual activity”. Members can still switch Mobile/Desktop in the app bar.
+                    Turn ON when this tool does not work inside the APK (e.g. Google Flow / VEO). Members on the
+                    mobile app will see the Installation Guide to install the ZynexTools Chrome extension and use the
+                    tool on desktop browser instead.
                   </span>
                 </span>
               </label>

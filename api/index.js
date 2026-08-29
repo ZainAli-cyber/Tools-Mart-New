@@ -993,8 +993,8 @@ async function mergeCookieExtra(sb, toolId, body, baseExtra) {
     extra.panelReferrer = body.panelReferrer;
     extra.unlockReferrer = body.panelReferrer;
   }
-  if (body.apkDesktopDefault !== void 0) {
-    extra.apkDesktopDefault = Boolean(body.apkDesktopDefault);
+  if (body.apkExtensionOnly !== void 0) {
+    extra.apkExtensionOnly = Boolean(body.apkExtensionOnly);
   }
   if (body.showOnHome !== void 0) extra.showOnHome = body.showOnHome !== false;
   return extra;
@@ -1720,7 +1720,7 @@ function snakeToCamelTool(t) {
     toolUrl: "toolUrl" in extra ? String(extra.toolUrl || "") : "tool_url" in extra ? String(extra.tool_url || "") : String(t.tool_url || ""),
     cookiesJson: "cookiesJson" in extra ? extra.cookiesJson ?? "" : "cookies_json" in extra ? extra.cookies_json ?? "" : t.cookies_json ?? "",
     panelReferrer: "panelReferrer" in extra || "unlockReferrer" in extra || "panel_referrer" in extra ? String(extra.panelReferrer || extra.unlockReferrer || extra.panel_referrer || "") : String(t.panel_referrer || ""),
-    apkDesktopDefault: Boolean(extra.apkDesktopDefault ?? extra.apk_desktop_default)
+    apkExtensionOnly: Boolean(extra.apkExtensionOnly ?? extra.apk_extension_only)
   };
 }
 function camelToSnakeTool(t) {
@@ -2637,7 +2637,7 @@ function cookieFields(tool) {
     url: String(url || "").trim(),
     cookiesRaw: String(cookiesRaw || ""),
     panelReferrer: String(panelReferrer || "").trim(),
-    apkDesktopDefault: Boolean(extra.apkDesktopDefault ?? extra.apk_desktop_default)
+    apkExtensionOnly: Boolean(extra.apkExtensionOnly ?? extra.apk_extension_only)
   };
 }
 router3.get("/launch/:toolId", async (req, res) => {
@@ -2680,7 +2680,7 @@ router3.get("/launch/:toolId", async (req, res) => {
       cookies,
       panelReferrer: fields.panelReferrer || void 0,
       unlockReferrer: fields.panelReferrer || void 0,
-      apkDesktopDefault: Boolean(fields.apkDesktopDefault)
+      apkExtensionOnly: Boolean(fields.apkExtensionOnly)
     });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Could not launch tool" });
@@ -5666,7 +5666,7 @@ function canDispatch(profile, items) {
 }
 router8.get("/info", (_req, res) => {
   const apkUrl = String(process.env.MOBILE_APK_URL || "/downloads/zynextools.apk").trim();
-  const version = String(process.env.MOBILE_APK_VERSION || "1.5.1").trim();
+  const version = String(process.env.MOBILE_APK_VERSION || "1.5.0").trim();
   res.json({
     ok: true,
     platform: "android",
