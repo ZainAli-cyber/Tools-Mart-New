@@ -5660,7 +5660,7 @@ function canDispatch(profile, items) {
 }
 router8.get("/info", (_req, res) => {
   const apkUrl = String(process.env.MOBILE_APK_URL || "/downloads/zynextools.apk").trim();
-  const version = String(process.env.MOBILE_APK_VERSION || "1.3.0").trim();
+  const version = String(process.env.MOBILE_APK_VERSION || "1.4.0").trim();
   res.json({
     ok: true,
     platform: "android",

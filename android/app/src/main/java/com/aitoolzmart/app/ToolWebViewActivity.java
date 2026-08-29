@@ -168,8 +168,18 @@ public class ToolWebViewActivity extends AppCompatActivity {
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
         cm.setAcceptThirdPartyCookies(webView, true);
+        // Wipe leftover WebView cookies (old tool account) before applying admin jar —
+        // otherwise SID/session cookies for "alfosh" can win over fresh "rizwanafzal".
+        clearExistingSiteCookies(cm, cookiesJson, destinationUrl);
         applyCookies(cm, cookiesJson, destinationUrl);
         cm.flush();
+        try {
+            webView.clearCache(true);
+            webView.clearFormData();
+            webView.clearHistory();
+        } catch (Exception ignored) {
+            /* best effort */
+        }
 
         applyNativeScale();
 
@@ -714,6 +724,155 @@ public class ToolWebViewActivity extends AppCompatActivity {
         String[] parts = host.toLowerCase(Locale.US).split("\\.");
         if (parts.length < 2) return host;
         return parts[parts.length - 2] + "." + parts[parts.length - 1];
+    }
+
+    /**
+     * Expire every cookie CookieManager still has for the destination + export
+     * hosts. Matches extension clearSiteCookies — only clearing names from the
+     * new JSON leaves older account cookies (different names) intact.
+     */
+    private void clearExistingSiteCookies(CookieManager cm, String cookiesJson, String destUrl) {
+        if (cm == null || destUrl == null || destUrl.isEmpty()) return;
+        Set<String> hosts = new HashSet<>();
+        Set<String> urls = new HashSet<>();
+
+        addCookieHost(hosts, hostFromUrl(destUrl));
+        addCookieUrl(urls, destUrl);
+
+        if (cookiesJson != null && !cookiesJson.trim().isEmpty()) {
+            try {
+                JSONArray list = new JSONArray(cookiesJson);
+                for (int i = 0; i < list.length(); i++) {
+                    JSONObject c = list.optJSONObject(i);
+                    if (c == null) continue;
+                    String domain = c.optString("domain", "").trim().replaceAll("^\\.", "");
+                    if (!domain.isEmpty()) addCookieHost(hosts, domain);
+                    String cookieUrl = c.optString("url", "").trim();
+                    if (!cookieUrl.isEmpty()) {
+                        addCookieHost(hosts, hostFromUrl(cookieUrl));
+                        addCookieUrl(urls, cookieUrl);
+                    }
+                }
+            } catch (Exception ignored) {
+                /* best effort */
+            }
+        }
+
+        boolean chatGpt = false;
+        boolean google = false;
+        for (String h : new HashSet<>(hosts)) {
+            if (h == null) continue;
+            String lower = h.toLowerCase(Locale.US);
+            if (lower.contains("chatgpt.com") || lower.contains("openai.com") || lower.contains("oaistatic.com")) {
+                chatGpt = true;
+            }
+            if (lower.contains("google.") || lower.contains("labs.google") || lower.endsWith(".google")) {
+                google = true;
+            }
+        }
+        String destHost = hostFromUrl(destUrl);
+        if (isChatGptHost(destHost)) chatGpt = true;
+        if (destHost != null) {
+            String dh = destHost.toLowerCase(Locale.US);
+            if (dh.contains("google.") || dh.contains("labs.google") || dh.contains("gemini.google")) {
+                google = true;
+            }
+        }
+
+        if (chatGpt) {
+            addCookieHost(hosts, "chatgpt.com");
+            addCookieHost(hosts, "www.chatgpt.com");
+            addCookieHost(hosts, "chat.openai.com");
+            addCookieHost(hosts, "auth0.openai.com");
+            addCookieHost(hosts, "auth.openai.com");
+            addCookieHost(hosts, "oaistatic.com");
+            urls.add("https://chatgpt.com/");
+            urls.add("https://www.chatgpt.com/");
+            urls.add("https://chat.openai.com/");
+            urls.add("https://auth0.openai.com/");
+            urls.add("https://auth.openai.com/");
+        }
+        if (google) {
+            addCookieHost(hosts, "google.com");
+            addCookieHost(hosts, "www.google.com");
+            addCookieHost(hosts, "accounts.google.com");
+            addCookieHost(hosts, "myaccount.google.com");
+            addCookieHost(hosts, "labs.google");
+            addCookieHost(hosts, "gemini.google.com");
+            urls.add("https://google.com/");
+            urls.add("https://www.google.com/");
+            urls.add("https://accounts.google.com/");
+            urls.add("https://myaccount.google.com/");
+            urls.add("https://labs.google/");
+            urls.add("https://gemini.google.com/");
+        }
+
+        for (String host : hosts) {
+            if (host == null || host.isEmpty()) continue;
+            urls.add("https://" + host + "/");
+            urls.add("http://" + host + "/");
+        }
+
+        for (String url : urls) {
+            expireCookiesAtUrl(cm, url);
+        }
+        try {
+            cm.flush();
+        } catch (Exception ignored) {
+            /* best effort */
+        }
+    }
+
+    private void addCookieHost(Set<String> hosts, String raw) {
+        if (raw == null || raw.isEmpty()) return;
+        String host = raw.replaceAll("^\\.", "").toLowerCase(Locale.US).trim();
+        if (host.isEmpty()) return;
+        hosts.add(host);
+        String[] parts = host.split("\\.");
+        if (parts.length >= 2) {
+            hosts.add(parts[parts.length - 2] + "." + parts[parts.length - 1]);
+        }
+    }
+
+    private void addCookieUrl(Set<String> urls, String raw) {
+        if (raw == null || raw.isEmpty()) return;
+        try {
+            URL u = new URL(raw);
+            urls.add(u.getProtocol() + "://" + u.getHost() + "/");
+        } catch (Exception ignored) {
+            /* ignore */
+        }
+    }
+
+    private void expireCookiesAtUrl(CookieManager cm, String url) {
+        if (url == null || url.isEmpty()) return;
+        String header;
+        try {
+            header = cm.getCookie(url);
+        } catch (Exception e) {
+            return;
+        }
+        if (header == null || header.isEmpty()) return;
+        String host = hostFromUrl(url);
+        String apex = registrableDomain(host);
+        String[] pairs = header.split(";");
+        for (String pair : pairs) {
+            String name = pair.split("=", 2)[0].trim();
+            if (name.isEmpty()) continue;
+            try {
+                cm.setCookie(url, name + "=; Max-Age=0; path=/");
+                if (host != null && !host.isEmpty()) {
+                    cm.setCookie(url, name + "=; Max-Age=0; path=/; domain=." + host);
+                    cm.setCookie("https://" + host + "/", name + "=; Max-Age=0; path=/");
+                    cm.setCookie("https://" + host + "/", name + "=; Max-Age=0; path=/; domain=." + host);
+                }
+                if (apex != null && !apex.isEmpty() && (host == null || !apex.equalsIgnoreCase(host))) {
+                    cm.setCookie("https://" + apex + "/", name + "=; Max-Age=0; path=/; domain=." + apex);
+                }
+            } catch (Exception ignored) {
+                /* best effort */
+            }
+        }
     }
 
     private void applyCookies(CookieManager cm, String cookiesJson, String destUrl) {
