@@ -17,7 +17,7 @@ __export(db_exports, {
   createPrivilegedSupabase: () => createPrivilegedSupabase,
   createServiceSupabase: () => createServiceSupabase,
   getSupabaseConfig: () => getSupabaseConfig,
-  logActivity: () => logActivity2,
+  logActivity: () => logActivity,
   readDb: () => readDb2,
   requireServiceRoleKey: () => requireServiceRoleKey,
   seedIfEmpty: () => seedIfEmpty,
@@ -222,7 +222,7 @@ async function writeDb(name, data) {
     console.error(`Supabase writeDb error [${name}]:`, e);
   }
 }
-async function logActivity2(action, detail) {
+async function logActivity(action, detail) {
   try {
     await supabase2.from("activity_log").insert({
       id: "ACT" + Date.now(),

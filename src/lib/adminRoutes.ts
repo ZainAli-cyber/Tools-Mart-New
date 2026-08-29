@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth, authenticateAdmin } from './auth';
-import { getSupabaseConfig, requireServiceRoleKey } from './db';
+import { getSupabaseConfig, requireServiceRoleKey, logActivity } from './db';
 import { notifyAdminAndOwner, notifyTicketCreated, notifyTicketReply } from './notifications';
 import { activateCustomerForApprovedOrder, buildApprovedOrderDates } from './subscriptionActivate';
 
