@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ZynexTools Access",
-  "version": "1.3.5",
-  "description": "Applies ZynexTools admin cookies (clears personal ChatGPT session first) and unlocks toolaccess panels.",
+  "name": "ZynexTools",
+  "version": "1.4.0",
+  "description": "Applies ZynexTools admin cookies and unlocks toolaccess panels for one-click tool access.",
   "permissions": [
     "storage",
     "cookies",
@@ -36,7 +36,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "ZynexTools Access",
+    "default_title": "ZynexTools",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

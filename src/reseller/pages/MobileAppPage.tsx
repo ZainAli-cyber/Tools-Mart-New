@@ -38,7 +38,7 @@ export const MobileAppPage: React.FC<{ customerId: string }> = ({ customerId }) 
   }, []);
 
   const apkPath = String(info?.apkUrl || DEFAULT_APK).trim();
-  const version = String(info?.version || '1.2.0');
+  const version = String(info?.version || '1.3.0');
   const apkBase = /^https?:\/\//i.test(apkPath) ? apkPath : apiUrl(apkPath);
   const apkHref = `${apkBase}${apkBase.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`;
 

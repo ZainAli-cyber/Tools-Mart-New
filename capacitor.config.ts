@@ -18,7 +18,7 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     ...(useRemote
       ? {
-          url: `${portalUrl}/reseller`,
+          url: `${portalUrl}/dashboard`,
           cleartext: false,
         }
       : {}),

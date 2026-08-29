@@ -41,8 +41,9 @@ import java.util.TimeZone;
  * In-app tool browser.
  * <ul>
  *   <li>Panel tools: desktop Chrome UA + scaled desktop layout (cookies).</li>
- *   <li>ChatGPT: real WebView/Chrome UA (no fake Windows UA / no scale shrink) so
- *       conversation streams work; fetch SSE is re-piped via XHR ReadableStream.</li>
+ *   <li>Direct SaaS (ChatGPT Labs, Canva, …): cleaned Chrome UA (no WebView “wv”
+ *       marker) + stealth patches so sites don’t flag “unusual activity”.</li>
+ *   <li>ChatGPT: fetch SSE re-piped via XHR ReadableStream when needed.</li>
  *   <li>Top-bar Desktop / Mobile / Refresh controls.</li>
  * </ul>
  */
@@ -54,7 +55,9 @@ public class ToolWebViewActivity extends AppCompatActivity {
     static final String EXTRA_COOKIES = "tool_cookies";
 
     private static final String UA_DESKTOP =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    private static final String UA_ANDROID_FALLBACK =
+        "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
 
     private enum ViewMode { DESKTOP, MOBILE }
 
@@ -72,6 +75,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
     private boolean viewportApplied;
     private String lastMainUrl = "";
     private boolean chatGptMode;
+    /** True for real SaaS destinations (not panels) — need Chrome-like WebView. */
+    private boolean directToolMode;
     /** Stock WebView UA (Chrome/Android) — required for ChatGPT live streams. */
     private String uaWebViewDefault = "";
 
@@ -97,10 +102,12 @@ public class ToolWebViewActivity extends AppCompatActivity {
         screenPx = getResources().getDisplayMetrics().widthPixels;
         phoneCssPx = Math.max(320, Math.round(screenPx / density));
 
-        // ChatGPT: mobile WebView UA + no desktop scale (streaming breaks with Windows UA).
-        // Panels: desktop UA + scaled layout for cookies / full UI.
-        chatGptMode = isChatGptHost(hostFromUrl(destinationUrl));
-        if (chatGptMode) {
+        // Direct SaaS (ChatGPT Labs, etc.): cleaned Chrome UA — WebView “wv” triggers
+        // “unusual activity”. Panels: desktop UA + scaled layout for cookies / full UI.
+        String destHost = hostFromUrl(destinationUrl);
+        chatGptMode = isChatGptHost(destHost);
+        directToolMode = isDirectLegalHost(destHost) || (!isPanelHost(destHost) && referrerUrl.isEmpty());
+        if (chatGptMode || directToolMode) {
             viewMode = ViewMode.MOBILE;
         } else if (prefersPanelDesktop()) {
             viewMode = ViewMode.DESKTOP;
@@ -125,10 +132,14 @@ public class ToolWebViewActivity extends AppCompatActivity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setSupportMultipleWindows(false);
-        uaWebViewDefault = String.valueOf(settings.getUserAgentString());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+        }
+        // Hide “WebView” hints in the UA string — many SaaS tools ban `; wv)`.
+        uaWebViewDefault = cleanChromeUa(String.valueOf(settings.getUserAgentString()));
         applyUserAgent(settings);
         settings.setUseWideViewPort(true);
-        settings.setLoadWithOverviewMode(!chatGptMode);
+        settings.setLoadWithOverviewMode(!(chatGptMode || directToolMode));
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
@@ -195,18 +206,20 @@ public class ToolWebViewActivity extends AppCompatActivity {
                     lastMainUrl = u;
                     viewportApplied = false;
                 }
-                // Patch fetch ASAP — ChatGPT boots conversation APIs during load.
+                // Always stealth — Labs / ChatGPT / Midjourney flag raw Android WebView.
+                injectBrowserStealth();
                 if (chatGptMode) injectChatGptStreamFix();
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 pageReady = true;
+                injectBrowserStealth();
                 if (chatGptMode) {
                     injectChatGptStreamFix();
                     return;
                 }
-                if (!viewportApplied) {
+                if (!directToolMode && !viewportApplied) {
                     viewportApplied = true;
                     injectLockedViewport();
                 }
@@ -230,16 +243,77 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private void applyUserAgent(WebSettings settings) {
         if (settings == null) return;
-        if (chatGptMode) {
-            // Real WebView Chrome UA — fake Windows UA breaks ChatGPT live streams.
+        if (chatGptMode || directToolMode) {
+            // Real Chrome-looking UA — fake Windows UA / raw WebView “wv” trips Labs bans.
             if (viewMode == ViewMode.DESKTOP) {
                 settings.setUserAgentString(UA_DESKTOP);
-            } else if (uaWebViewDefault != null && !uaWebViewDefault.isEmpty()) {
-                settings.setUserAgentString(uaWebViewDefault);
+            } else {
+                settings.setUserAgentString(
+                    (uaWebViewDefault != null && !uaWebViewDefault.isEmpty())
+                        ? uaWebViewDefault
+                        : UA_ANDROID_FALLBACK
+                );
             }
         } else {
             settings.setUserAgentString(UA_DESKTOP);
         }
+    }
+
+    /** Strip Android WebView markers that SaaS anti-bot systems key on. */
+    private static String cleanChromeUa(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return UA_ANDROID_FALLBACK;
+        String ua = raw
+            .replace("; wv)", ")")
+            .replace("; wv ", "; ")
+            .replace(" Version/4.0 ", " ")
+            .replace("Version/4.0 ", "");
+        if (!ua.contains("Chrome/")) {
+            return UA_ANDROID_FALLBACK;
+        }
+        return ua;
+    }
+
+    /**
+     * Generic anti-detection for ALL tools in the APK WebView.
+     * Makes navigator / chrome look like mobile Chrome so Labs and similar
+     * stop returning “unusual activity” for shared sessions.
+     */
+    private void injectBrowserStealth() {
+        if (webView == null) return;
+        String js = "(function(){"
+            + "try{"
+            + "if(window.__zynexStealth)return;"
+            + "window.__zynexStealth=true;"
+            + "try{Object.defineProperty(navigator,'webdriver',{get:function(){return undefined;},configurable:true});}catch(e){}"
+            + "try{if(!window.chrome){window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}}};}"
+            + "else if(!window.chrome.runtime){window.chrome.runtime={};}}catch(e){}"
+            + "try{"
+            + "  var desc=Object.getOwnPropertyDescriptor(navigator,'plugins');"
+            + "  if(!desc||desc.configurable){"
+            + "    Object.defineProperty(navigator,'plugins',{get:function(){return [1,2,3,4,5];},configurable:true});"
+            + "  }"
+            + "}catch(e){}"
+            + "try{"
+            + "  Object.defineProperty(navigator,'languages',{get:function(){return ['en-US','en'];},configurable:true});"
+            + "}catch(e){}"
+            + "try{"
+            + "  if(!navigator.permissions)return;"
+            + "  var orig=navigator.permissions.query.bind(navigator.permissions);"
+            + "  navigator.permissions.query=function(p){"
+            + "    try{if(p&&p.name==='notifications')return Promise.resolve({state:Notification.permission});}catch(e){}"
+            + "    return orig(p);"
+            + "  };"
+            + "}catch(e){}"
+            + "try{"
+            + "  var ua=navigator.userAgent||'';"
+            + "  if(/;\\s*wv\\)/i.test(ua)||/Version\\/4\\.0/i.test(ua)){"
+            + "    var cleaned=ua.replace(/;\\s*wv\\)/i,')').replace(/\\s*Version\\/4\\.0\\s*/i,' ');"
+            + "    Object.defineProperty(navigator,'userAgent',{get:function(){return cleaned;},configurable:true});"
+            + "  }"
+            + "}catch(e){}"
+            + "}catch(e){}"
+            + "})();";
+        webView.evaluateJavascript(js, null);
     }
 
     private LinearLayout buildTopBar(String title) {
@@ -319,7 +393,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private void setViewMode(ViewMode mode) {
         if (viewMode == mode) {
-            if (pageReady && !chatGptMode) injectLockedViewport();
+            if (pageReady && !chatGptMode && !directToolMode) injectLockedViewport();
             return;
         }
         viewMode = mode;
@@ -328,7 +402,7 @@ public class ToolWebViewActivity extends AppCompatActivity {
         applyNativeScale();
         viewportApplied = false;
         if (pageReady) {
-            if (chatGptMode) {
+            if (chatGptMode || directToolMode) {
                 webView.reload();
             } else {
                 injectLockedViewport();
@@ -355,8 +429,8 @@ public class ToolWebViewActivity extends AppCompatActivity {
 
     private void applyNativeScale() {
         if (webView == null) return;
-        // ChatGPT: never shrink — scale hacks break the live reply renderer.
-        if (chatGptMode) {
+        // Direct SaaS / ChatGPT: never shrink — scale hacks break live UIs & anti-bot checks.
+        if (chatGptMode || directToolMode) {
             webView.setInitialScale(100);
             return;
         }
@@ -370,11 +444,11 @@ public class ToolWebViewActivity extends AppCompatActivity {
     }
 
     /**
-     * Fixed viewport for panel / non-ChatGPT tools.
+     * Fixed viewport for panel tools only.
      * Never derives width from scrollWidth (typing shift).
      */
     private void injectLockedViewport() {
-        if (webView == null || chatGptMode) return;
+        if (webView == null || chatGptMode || directToolMode) return;
         final String content;
         if (viewMode == ViewMode.DESKTOP) {
             double scale = Math.min(1.0, (double) phoneCssPx / 1280.0);
@@ -550,13 +624,39 @@ public class ToolWebViewActivity extends AppCompatActivity {
     private boolean isDirectLegalHost(String host) {
         if (host == null) return false;
         String h = host.toLowerCase(Locale.US);
-        return isChatGptHost(h)
-            || h.equals("canva.com")
+        if (isChatGptHost(h)) return true;
+        if (isPanelHost(h)) return false;
+        // Broad coverage — any real SaaS host should use clean Chrome UA in the APK.
+        return h.equals("canva.com")
             || h.endsWith(".canva.com")
-            || h.equals("www.canva.com")
             || h.contains("grammarly.com")
             || h.contains("notion.so")
-            || h.contains("midjourney.com");
+            || h.contains("midjourney.com")
+            || h.contains("claude.ai")
+            || h.contains("anthropic.com")
+            || h.contains("gemini.google.com")
+            || h.contains("bard.google.com")
+            || h.contains("perplexity.ai")
+            || h.contains("copilot.microsoft.com")
+            || h.contains("bing.com")
+            || h.contains("gamma.app")
+            || h.contains("jasper.ai")
+            || h.contains("writesonic.com")
+            || h.contains("quillbot.com")
+            || h.contains("deepl.com")
+            || h.contains("leonardo.ai")
+            || h.contains("runwayml.com")
+            || h.contains("heygen.com")
+            || h.contains("elevenlabs.io")
+            || h.contains("suno.com")
+            || h.contains("udio.com")
+            || h.contains("character.ai")
+            || h.contains("poe.com")
+            || h.contains("you.com")
+            || h.contains("phind.com")
+            || h.contains("huggingface.co")
+            || h.contains("labs.")
+            || h.contains("openai.com");
     }
 
     private Map<String, String> unlockHeaders() {

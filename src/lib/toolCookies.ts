@@ -7,10 +7,10 @@ export type ToolAccessMethod = 'extension' | 'one_click';
 
 export const FALLBACK_COOKIE_KEY = 'atm_tool_cookie_fallback';
 export const EXTENSION_DOWNLOAD_URL = '/downloads/ai-toolz-mart-extension.zip';
-export const EXTENSION_DISPLAY_NAME = 'ZynexTools Access';
+export const EXTENSION_DISPLAY_NAME = 'ZynexTools';
 
 const NEED_EXTENSION_MSG =
-  'Install the ZynexTools Access browser extension to open this tool. Download it from the Installation Guide, then try again.';
+  'Install the ZynexTools browser extension to open this tool. Download it from the Installation Guide, then try again.';
 
 export type LaunchProgressStep =
   | 'check'
@@ -262,7 +262,7 @@ export const TOOLACCESS_NEED_EXTENSION_MSG =
 
 /** One-click auto-login needs the Access extension to write admin cookies into the browser. */
 export const COOKIES_NEED_EXTENSION_MSG =
-  'Install ZynexTools Access once so one-click can apply saved cookies and open the tool logged in. Without the extension, ChatGPT only shows the login page (browsers cannot set those cookies from the dashboard).';
+  'Install ZynexTools once so one-click can apply saved cookies and open the tool logged in. Without the extension, ChatGPT only shows the login page (browsers cannot set those cookies from the dashboard).';
 
 export function cookiesAreSet(raw?: string | null): boolean {
   const text = String(raw || '').trim();
@@ -1083,7 +1083,18 @@ function isDirectLegalToolUrl(url?: string | null): boolean {
       h.endsWith('.canva.com') ||
       h.includes('grammarly.com') ||
       h.includes('notion.so') ||
-      h.includes('midjourney.com')
+      h.includes('midjourney.com') ||
+      h.includes('claude.ai') ||
+      h.includes('anthropic.com') ||
+      h.includes('gemini.google.com') ||
+      h.includes('perplexity.ai') ||
+      h.includes('copilot.microsoft.com') ||
+      h.includes('gamma.app') ||
+      h.includes('leonardo.ai') ||
+      h.includes('elevenlabs.io') ||
+      h.includes('character.ai') ||
+      h.includes('poe.com') ||
+      h.includes('labs.')
     );
   } catch {
     return false;
@@ -1207,7 +1218,7 @@ async function openOneClick(
       if (err instanceof NeedExtensionError) throw err;
       throw new Error(
         err?.message ||
-          'Could not apply admin cookies. Enable Global Proxy Engine in Admin, or install ZynexTools Access v1.3.5+.',
+          'Could not apply admin cookies. Enable Global Proxy Engine in Admin, or install ZynexTools v1.4.0+.',
       );
     }
     await reportProgress(opts, 'launching');

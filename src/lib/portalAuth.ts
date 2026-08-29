@@ -8,7 +8,8 @@ import { readPortalSession } from './sessionStore';
 export type AuthResult = { ok: boolean; redirect?: string; error?: string };
 
 const ADMIN_DASHBOARD = '/admin';
-const MEMBER_DASHBOARD = '/reseller';
+/** Member portal (customers + resellers). Keep /reseller as a legacy redirect in App.tsx. */
+const MEMBER_DASHBOARD = '/dashboard';
 
 /** Signs in from a single set of credentials; redirects by account role. */
 export async function portalLogin(email: string, password: string): Promise<AuthResult> {

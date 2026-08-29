@@ -31,6 +31,16 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  // Legacy /reseller → /dashboard (keep bookmarks working)
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path === '/reseller' || path.startsWith('/reseller/')) {
+      const next = path.replace(/^\/reseller/, '/dashboard') || '/dashboard';
+      window.history.replaceState({}, '', next);
+      setCurrentPath(next);
+    }
+  }, []);
+
   const handleNavigate = (path: string) => {
     window.history.pushState({}, '', path);
     setCurrentPath(path);
@@ -49,9 +59,14 @@ export default function App() {
     return <AdminApp />;
   }
 
-  // ── /reseller → separate reseller panel, no public chrome ────────────────
-  // Must not swallow the public /resellers-portal marketing page.
-  if (currentPath === '/reseller' || currentPath.startsWith('/reseller/')) {
+  // ── Member portal (customers + resellers) — no public chrome ───────────
+  // /reseller is a legacy alias; marketing page stays at /resellers-portal.
+  if (
+    currentPath === '/dashboard' ||
+    currentPath.startsWith('/dashboard/') ||
+    currentPath === '/reseller' ||
+    currentPath.startsWith('/reseller/')
+  ) {
     return <ResellerApp />;
   }
 

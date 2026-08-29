@@ -4802,7 +4802,7 @@ router6.post("/launch", async (req, res) => {
     }
     if (fields.accessMethod !== "one_click") {
       return res.status(403).json({
-        error: "This tool requires the ZynexTools Access browser extension. Install it from the Installation Guide, then open again.",
+        error: "This tool requires the ZynexTools browser extension. Install it from the Installation Guide, then open again.",
         accessMethod: "extension"
       });
     }
@@ -5294,7 +5294,7 @@ function canDispatch(profile, items) {
 }
 router8.get("/info", (_req, res) => {
   const apkUrl = String(process.env.MOBILE_APK_URL || "/downloads/zynextools.apk").trim();
-  const version = String(process.env.MOBILE_APK_VERSION || "1.2.0").trim();
+  const version = String(process.env.MOBILE_APK_VERSION || "1.3.0").trim();
   res.json({
     ok: true,
     platform: "android",

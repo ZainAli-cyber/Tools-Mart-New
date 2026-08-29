@@ -41,7 +41,7 @@ export const LoginPage: React.FC<Props> = ({ onNavigate, onSuccess, embedded = f
       return;
     }
     const session = resellerAuth.session();
-    const redirect = session?.role === 'admin' ? '/admin' : '/reseller';
+    const redirect = session?.role === 'admin' ? '/admin' : '/dashboard';
     window.location.href = redirect;
   };
 

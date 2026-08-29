@@ -47,10 +47,10 @@ export const AdminApp: React.FC = () => {
     return () => clearInterval(iv);
   }, []);
 
-  // Mobile APK loads /reseller — send admins there for the native shell
+  // Mobile APK loads /dashboard — send admins there for the native shell
   useEffect(() => {
     if (authed && isMobileApp()) {
-      window.location.href = '/reseller';
+      window.location.href = '/dashboard';
     }
   }, [authed]);
 
@@ -66,7 +66,7 @@ export const AdminApp: React.FC = () => {
         onSuccess={async () => {
           const session = resellerAuth.session();
           if (String(session?.role || '').toLowerCase() !== 'admin') {
-            window.location.href = '/reseller';
+            window.location.href = '/dashboard';
             return;
           }
           try {

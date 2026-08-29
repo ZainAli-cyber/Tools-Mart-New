@@ -82,7 +82,7 @@ The APK only contains the app shell + native browser. **Cookies are never baked 
 
 ```bash
 npm install
-npm run build:mobile
+npm run build:mobile   # builds website + syncs Android (minimal shell when remote URL)
 npm run cap:open:android
 ```
 
@@ -94,7 +94,8 @@ In Android Studio:
 
 Command line (if Gradle works):
 ```bash
-npm run android:apk
+npm run build:apk
+# Copy: android/app/build/outputs/apk/debug/app-debug.apk → public/downloads/zynextools.apk
 ```
 
 ## Configuration
@@ -110,7 +111,7 @@ npm run android:apk
 
 ## Architecture
 
-- **Capacitor 6** wraps the portal (`/reseller` by default via remote URL).
+- **Capacitor 6** wraps the portal (`/dashboard` by default via remote URL).
 - **ToolLauncherPlugin** (Android Java) opens fullscreen WebView with cookie injection.
 - **Desktop web + extension** unchanged — mobile path only runs when `Capacitor.isNativePlatform()`.
 

@@ -45,7 +45,7 @@ Reseller panels start at Lite Rs 5,560 / mo. Visit /plans for full details, or t
 const INFO_COPY = `ZynexTools gives you shared access to 80+ premium SEO, AI, design & learning tools — Semrush, Ahrefs, Canva Pro, ChatGPT Plus, Envato and more — in one affordable plan.
 
 • Activation usually within ~5 minutes after payment confirmation
-• Use from your member dashboard (/reseller after login)
+• Use from your member dashboard (/dashboard after login)
 • Support via this chat or WhatsApp
 
 Need billing help or a tool that isn’t working? Choose Contact support and we’ll open a ticket for our team.`;

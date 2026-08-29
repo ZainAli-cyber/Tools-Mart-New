@@ -523,7 +523,7 @@ async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, re
     return {
       ok: false,
       error:
-        'Could not write session cookies for this tool. Reload ZynexTools Access v1.3.4+, confirm admin saved valid Copy Cookies JSON, then try again.',
+        'Could not write session cookies for this tool. Reload ZynexTools v1.4.0+, confirm admin saved valid Copy Cookies JSON, then try again.',
       count: list.length,
       setCount: 0,
       unlockMode,
