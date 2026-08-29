@@ -14,6 +14,7 @@ import {
 import { GROUP_BUY_TOOLS } from '../data/groupBuyTools';
 import { portalStatus } from '../lib/portalAuth';
 import { ChatBotWidget } from './ChatBotWidget';
+import { BrandLogo } from './BrandLogo';
 import { ThemeToggle } from './ThemeToggle';
 
 interface HeaderProps {
@@ -113,10 +114,9 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => onNavigate('/')}
             className="flex items-center gap-2 cursor-pointer group text-left shrink-0"
           >
-            <img
-              src="/logo.png"
-              alt="ZynexTools"
-              className="h-9 sm:h-10 w-auto max-w-[140px] object-contain object-left group-hover:scale-105 transition-transform duration-200"
+            <BrandLogo
+              variant="website"
+              className="w-auto object-contain object-left group-hover:scale-105 transition-transform duration-200"
             />
           </button>
 

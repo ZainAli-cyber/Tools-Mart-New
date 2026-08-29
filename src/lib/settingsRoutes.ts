@@ -10,6 +10,7 @@ import {
 } from './globalProxySettings';
 import { invalidateProxyAgentCache, testProxyUrl } from './proxyFetch';
 import { getShowToolAccessLabels, setShowToolAccessLabels } from './toolAccessLabels';
+import { getBrandingSettings, setBrandingSettings, normalizeBranding } from './brandingSettings';
 
 const router = Router();
 
@@ -191,6 +192,38 @@ router.patch('/tool-access-labels', async (req, res) => {
     const message = error?.message || 'Could not update setting';
     const setup = /app_settings|supabase_device_limits/i.test(message);
     return res.status(setup ? 503 : 500).json({ error: message, enabled: false });
+  }
+});
+
+/** GET /api/settings/branding — public (website + invoices need logos without login) */
+router.get('/branding', async (_req, res) => {
+  try {
+    const { admin } = clients();
+    const result = await getBrandingSettings(admin);
+    return res.json({
+      ok: true,
+      branding: result.branding,
+      ...(result.setupRequired ? { setupRequired: true } : {}),
+    });
+  } catch {
+    return res.json({ ok: true, branding: normalizeBranding(null) });
+  }
+});
+
+/** PATCH /api/settings/branding — admin only */
+router.patch('/branding', async (req, res) => {
+  try {
+    const current = await actor(req);
+    if (!current) return res.status(401).json({ error: 'Not authorized' });
+    if (current.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const { admin } = clients();
+    const body = req.body?.branding && typeof req.body.branding === 'object' ? req.body.branding : req.body;
+    const branding = await setBrandingSettings(body || {}, admin);
+    return res.json({ ok: true, branding });
+  } catch (error: any) {
+    const message = error?.message || 'Could not save branding';
+    const setup = /app_settings|supabase_device_limits/i.test(message);
+    return res.status(setup ? 503 : 500).json({ error: message });
   }
 });
 

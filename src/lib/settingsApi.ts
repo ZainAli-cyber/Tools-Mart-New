@@ -98,3 +98,28 @@ export function setToolAccessLabelsSetting(enabled: boolean) {
     body: JSON.stringify({ enabled }),
   }) as Promise<{ enabled: boolean }>;
 }
+
+export type BrandingSettingsDto = {
+  websiteLogoUrl: string;
+  websiteLogoHeight: number;
+  appLogoUrl: string;
+  appLogoHeight: number;
+  invoiceLogoUrl: string;
+  invoiceLogoHeight: number;
+};
+
+export function getBrandingSettingsApi() {
+  return fetch('/api/settings/branding')
+    .then(async res => {
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Could not load branding');
+      return body as { ok?: boolean; branding: BrandingSettingsDto; setupRequired?: boolean };
+    });
+}
+
+export function saveBrandingSettingsApi(branding: Partial<BrandingSettingsDto>) {
+  return authorizedFetch('/api/settings/branding', {
+    method: 'PATCH',
+    body: JSON.stringify({ branding }),
+  }) as Promise<{ ok?: boolean; branding: BrandingSettingsDto }>;
+}

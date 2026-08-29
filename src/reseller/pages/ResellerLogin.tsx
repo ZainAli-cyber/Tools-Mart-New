@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Eye, EyeOff, Lock, Mail, AlertCircle } from 'lucide-react';
 import { resellerAuth } from '../store/resellerAuth';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { BrandLogo } from '../../components/BrandLogo';
 
 export const ResellerLogin: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
@@ -31,7 +32,7 @@ export const ResellerLogin: React.FC<{ onLogin: () => void }> = ({ onLogin }) =>
           style={{ boxShadow: '0 0 60px rgba(204,26,26,0.15)' }}>
 
           <div className="text-center mb-8 space-y-3">
-            <img src="/logo.png" alt="ZynexTools" className="h-14 w-auto mx-auto object-contain" />
+            <BrandLogo variant="app" height={56} className="w-auto mx-auto object-contain" />
             <div>
               <h1 className="text-2xl font-black text-white">Reseller Panel</h1>
               <p className="text-sm text-slate-400 mt-1">ZynexTools · Partner Access</p>

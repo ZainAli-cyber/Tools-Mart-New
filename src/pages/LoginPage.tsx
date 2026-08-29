@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { portalLogin, portalSignup } from '../lib/portalAuth';
 import { resellerAuth } from '../reseller/store/resellerAuth';
+import { BrandLogo } from '../components/BrandLogo';
 import { isMobileApp } from '../lib/mobile/toolLauncher';
 
 type Tab = 'login' | 'signup';
@@ -85,7 +86,7 @@ export const LoginPage: React.FC<Props> = ({ onNavigate, onSuccess, embedded = f
       <div className="w-full max-w-md mx-auto">
         <div className="text-center mb-6 space-y-2">
           {native && (
-            <img src="/logo.png" alt="ZynexTools" className="h-14 w-auto mx-auto object-contain mb-2" />
+            <BrandLogo variant="app" height={56} className="w-auto mx-auto object-contain mb-2" />
           )}
           <h1 className="text-2xl sm:text-3xl font-black text-white">
             {tab === 'login' ? 'Sign in to your account' : 'Create your account'}

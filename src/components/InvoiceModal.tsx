@@ -12,6 +12,7 @@ import {
   User,
   X,
 } from 'lucide-react';
+import { BrandLogo, useBranding } from './BrandLogo';
 
 const BRAND = 'ZynexTools';
 const BRAND_SUBTITLE = 'Client Receipt Management Software';
@@ -59,6 +60,7 @@ export const InvoiceModal: React.FC<{
 }> = ({ order, onClose, autoAction }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const branding = useBranding();
 
   const downloadPDF = async () => {
     setDownloading('pdf');
@@ -244,19 +246,17 @@ export const InvoiceModal: React.FC<{
           >
             {/* Brand header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '18px' }}>
-              <img
-                src="/logo.png"
-                alt={BRAND}
+              <BrandLogo
+                variant="invoice"
+                crossOrigin="anonymous"
                 style={{
-                  width: '56px',
-                  height: '56px',
+                  width: 'auto',
+                  height: branding.invoiceLogoHeight,
                   borderRadius: '12px',
-                  background: '#fff',
+                  background: '#000',
                   objectFit: 'contain',
-                  padding: '4px',
                   flexShrink: 0,
                 }}
-                crossOrigin="anonymous"
               />
               <div>
                 <div style={{ fontSize: '20px', fontWeight: 900, color: RED, letterSpacing: '-0.02em', lineHeight: 1.15 }}>

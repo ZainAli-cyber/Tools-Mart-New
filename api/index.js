@@ -5110,6 +5110,107 @@ async function setShowToolAccessLabels(enabled, admin) {
   return value;
 }
 
+// src/lib/brandingSettings.ts
+init_db();
+var BRANDING_SETTINGS_KEY = "branding_logos";
+var DEFAULT_BRANDING = {
+  websiteLogoUrl: "/logo.png",
+  websiteLogoHeight: 40,
+  appLogoUrl: "/app-logo.png",
+  appLogoHeight: 36,
+  invoiceLogoUrl: "/app-logo.png",
+  invoiceLogoHeight: 56
+};
+var CACHE_MS3 = 2e4;
+var cache3 = null;
+function serviceClient4() {
+  return createPrivilegedSupabase();
+}
+function isAppSettingsMissing4(message) {
+  return /app_settings|does not exist|schema cache|Could not find the table/i.test(String(message || ""));
+}
+function clampHeight(n, fallback) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return fallback;
+  return Math.max(16, Math.min(160, Math.round(v)));
+}
+function asUrl(raw, fallback) {
+  const s = String(raw || "").trim();
+  if (!s) return fallback;
+  if (s.startsWith("data:image/")) return s;
+  if (s.startsWith("/") || /^https?:\/\//i.test(s)) return s;
+  return fallback;
+}
+function normalizeBranding(input) {
+  const src = input && typeof input === "object" ? input : {};
+  return {
+    websiteLogoUrl: asUrl(src.websiteLogoUrl, DEFAULT_BRANDING.websiteLogoUrl),
+    websiteLogoHeight: clampHeight(src.websiteLogoHeight, DEFAULT_BRANDING.websiteLogoHeight),
+    appLogoUrl: asUrl(src.appLogoUrl, DEFAULT_BRANDING.appLogoUrl),
+    appLogoHeight: clampHeight(src.appLogoHeight, DEFAULT_BRANDING.appLogoHeight),
+    invoiceLogoUrl: asUrl(src.invoiceLogoUrl, DEFAULT_BRANDING.invoiceLogoUrl),
+    invoiceLogoHeight: clampHeight(src.invoiceLogoHeight, DEFAULT_BRANDING.invoiceLogoHeight)
+  };
+}
+function parseStored(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object") return value;
+  return null;
+}
+async function getBrandingSettings(admin) {
+  const now = Date.now();
+  if (cache3 && now - cache3.at < CACHE_MS3 && !cache3.setupRequired) {
+    return { branding: cache3.value };
+  }
+  try {
+    const db2 = admin || serviceClient4();
+    const { data, error } = await db2.from("app_settings").select("value").eq("key", BRANDING_SETTINGS_KEY).maybeSingle();
+    if (error) {
+      const setupRequired = isAppSettingsMissing4(error.message);
+      const branding2 = DEFAULT_BRANDING;
+      cache3 = { value: branding2, at: now, setupRequired };
+      return { branding: branding2, setupRequired: setupRequired || void 0 };
+    }
+    const branding = normalizeBranding(parseStored(data?.value));
+    cache3 = { value: branding, at: now };
+    return { branding };
+  } catch (err) {
+    const setupRequired = isAppSettingsMissing4(err?.message);
+    cache3 = { value: DEFAULT_BRANDING, at: now, setupRequired };
+    return { branding: DEFAULT_BRANDING, setupRequired: setupRequired || void 0 };
+  }
+}
+async function setBrandingSettings(input, admin) {
+  const db2 = admin || serviceClient4();
+  const current = await getBrandingSettings(db2);
+  const next = normalizeBranding({ ...current.branding, ...input });
+  const { error } = await db2.from("app_settings").upsert(
+    {
+      key: BRANDING_SETTINGS_KEY,
+      value: next,
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    { onConflict: "key" }
+  );
+  if (error) {
+    if (isAppSettingsMissing4(error.message)) {
+      throw new Error(
+        "Run supabase_device_limits_toggle.sql (creates app_settings) in Supabase, then try again."
+      );
+    }
+    throw new Error(error.message);
+  }
+  cache3 = { value: next, at: Date.now() };
+  return next;
+}
+
 // src/lib/settingsRoutes.ts
 var router7 = Router7();
 function clients4() {
@@ -5267,6 +5368,34 @@ router7.patch("/tool-access-labels", async (req, res) => {
     const message = error?.message || "Could not update setting";
     const setup = /app_settings|supabase_device_limits/i.test(message);
     return res.status(setup ? 503 : 500).json({ error: message, enabled: false });
+  }
+});
+router7.get("/branding", async (_req, res) => {
+  try {
+    const { admin } = clients4();
+    const result = await getBrandingSettings(admin);
+    return res.json({
+      ok: true,
+      branding: result.branding,
+      ...result.setupRequired ? { setupRequired: true } : {}
+    });
+  } catch {
+    return res.json({ ok: true, branding: normalizeBranding(null) });
+  }
+});
+router7.patch("/branding", async (req, res) => {
+  try {
+    const current = await actor4(req);
+    if (!current) return res.status(401).json({ error: "Not authorized" });
+    if (current.role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const { admin } = clients4();
+    const body = req.body?.branding && typeof req.body.branding === "object" ? req.body.branding : req.body;
+    const branding = await setBrandingSettings(body || {}, admin);
+    return res.json({ ok: true, branding });
+  } catch (error) {
+    const message = error?.message || "Could not save branding";
+    const setup = /app_settings|supabase_device_limits/i.test(message);
+    return res.status(setup ? 503 : 500).json({ error: message });
   }
 });
 var settingsRoutes_default = router7;

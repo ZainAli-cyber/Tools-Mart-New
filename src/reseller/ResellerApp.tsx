@@ -31,6 +31,7 @@ import { TicketsInbox } from '../components/TicketsInbox';
 import { useLiveNotes } from '../lib/useLiveNotes';
 import { NoteAlertToast } from '../components/NoteAlertToast';
 import { ChatBotWidget } from '../components/ChatBotWidget';
+import { BrandLogo } from '../components/BrandLogo';
 import { isMobileApp } from '../lib/mobile/toolLauncher';
 import { MobileAppNav, mobileAppContentClass, type MobileRole } from './components/MobileAppNav';
 import { SupportPage } from './pages/SupportPage';
@@ -338,11 +339,7 @@ export const ResellerApp: React.FC = () => {
         <header className="sticky top-0 z-20 bg-[#0d0908]/95 backdrop-blur border-b border-[#2a1e1c] flex items-center justify-between gap-3 px-5 py-3">
           {nativeApp ? (
             <div className="flex flex-col items-start justify-center min-w-0 gap-0.5">
-              <img
-                src="/logo.png"
-                alt="ZynexTools"
-                className="h-9 w-auto max-w-[160px] object-contain object-left"
-              />
+              <BrandLogo variant="app" className="w-auto max-w-[160px] object-contain object-left" />
               <p className="text-[10px] text-slate-400 truncate max-w-[180px] leading-tight">
                 Hi, {session.name}
               </p>

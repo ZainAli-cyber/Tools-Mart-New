@@ -1,5 +1,6 @@
 import React from 'react';
 import { Sparkles, CheckCircle2, Lock, Globe, MessageCircle, Mail } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 interface FooterProps {
   onNavigate: (path: string) => void;
@@ -33,11 +34,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
         {/* Brand */}
         <div className="space-y-4">
           <button onClick={() => onNavigate('/')} className="cursor-pointer text-left">
-            <img
-              src="/logo.png"
-              alt="ZynexTools"
-              className="h-10 w-auto max-w-[150px] object-contain object-left"
-            />
+            <BrandLogo variant="website" className="w-auto object-contain object-left" />
           </button>
           <p className="text-xs text-slate-400 leading-relaxed">
             100+ premium SEO, AI and marketing tools in one affordable group buy. Trusted by 10,000+ clients worldwide. Instant activation & 24/7 support.

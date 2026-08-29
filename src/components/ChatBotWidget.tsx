@@ -16,6 +16,7 @@ import { readPortalSession } from '../lib/sessionStore';
 import { supabase } from '../lib/db';
 import { SUPPORT_CHAT_EVENT } from '../lib/supportChat';
 import { isMobileApp } from '../lib/mobile/toolLauncher';
+import { BrandLogo } from './BrandLogo';
 
 type GuestIdentity = { name: string; phone: string };
 type ChatRole = 'bot' | 'user' | 'staff';
@@ -506,7 +507,7 @@ export const ChatBotWidget: React.FC = () => {
         >
           <div className="px-4 py-3 border-b border-red-800/40 bg-red-700 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <img src="/logo.png" alt="" className="h-8 w-auto object-contain shrink-0" />
+              <BrandLogo variant="app" height={32} className="w-auto object-contain shrink-0" />
               <div className="min-w-0">
                 <div className="text-sm font-black truncate" style={{ color: '#ffffff' }}>ZynexTools</div>
                 <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.9)' }}>

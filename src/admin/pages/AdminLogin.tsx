@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Eye, EyeOff, Lock, Mail, AlertCircle } from 'lucide-react';
 import { authStore } from '../store/authStore';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { BrandLogo } from '../../components/BrandLogo';
 
 interface AdminLoginProps { onLogin: () => void; }
 
@@ -32,7 +33,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
         <div className="bg-[#130d0d]/90 border border-[#3a2a26] rounded-3xl p-8 shadow-2xl"
           style={{ boxShadow: '0 0 60px rgba(204,26,26,0.15)' }}>
           <div className="text-center mb-8 space-y-3">
-            <img src="/logo.png" alt="ZynexTools" className="h-14 w-auto mx-auto object-contain" />
+            <BrandLogo variant="app" height={56} className="w-auto mx-auto object-contain" />
             <div>
               <h1 className="text-2xl font-black text-white">Admin Panel</h1>
               <p className="text-sm text-slate-400 mt-1">ZynexTools · Secure Access</p>

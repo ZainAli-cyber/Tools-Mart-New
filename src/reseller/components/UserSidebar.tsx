@@ -1,6 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, ShoppingBag, Video, Briefcase, LogOut, ChevronsLeft, ChevronsRight, ArrowRight, Puzzle, Bell, Inbox, Smartphone } from 'lucide-react';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { BrandLogo } from '../../components/BrandLogo';
 
 export type UserPage =
   | 'dashboard'
@@ -58,10 +59,11 @@ export const UserSidebar: React.FC<Props> = ({
 
       {/* Brand */}
       <div className={`flex items-center ${collapsed ? 'justify-center' : ''} p-3 border-b border-[#2a1e1c] h-16`}>
-        <img
-          src="/logo.png"
-          alt="ZynexTools"
-          className={`${collapsed ? 'h-8 w-8 object-contain' : 'h-10 w-auto max-w-[160px] object-contain object-left'} shrink-0`}
+        <BrandLogo
+          variant="app"
+          height={collapsed ? 32 : undefined}
+          className={`${collapsed ? 'object-contain' : 'w-auto max-w-[160px] object-contain object-left'} shrink-0`}
+          style={collapsed ? { width: 32, height: 32 } : undefined}
         />
       </div>
 

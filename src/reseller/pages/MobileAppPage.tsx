@@ -3,6 +3,7 @@ import {
   Smartphone, Download, CheckCircle2, RefreshCw, ShieldCheck, Zap, Cookie, AlertTriangle,
 } from 'lucide-react';
 import { apiUrl } from '../../lib/mobile/portalBase';
+import { BrandLogo } from '../../components/BrandLogo';
 
 type MobileInfo = {
   ok?: boolean;
@@ -49,7 +50,7 @@ export const MobileAppPage: React.FC<{ customerId: string }> = ({ customerId }) 
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="" className="h-14 w-auto object-contain" />
+              <BrandLogo variant="app" height={56} className="w-auto object-contain" />
               <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-600/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-red-300">
                 <Smartphone className="h-3 w-3" /> Android App
               </span>

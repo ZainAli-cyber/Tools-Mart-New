@@ -1,6 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, Users, CreditCard, LogOut, ChevronLeft, Menu, MessageCircle, Home, ArrowRight, Bell, FileText, Inbox } from 'lucide-react';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { BrandLogo } from '../../components/BrandLogo';
 
 export type ResellerPage = 'overview' | 'members' | 'payments' | 'invoices' | 'notifications' | 'inbox';
 
@@ -36,9 +37,9 @@ export const ResellerSidebar: React.FC<Props> = ({
     {/* Brand */}
     <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} p-3 border-b border-[#2a1e1c] h-16`}>
       {!collapsed ? (
-        <img src="/logo.png" alt="ZynexTools" className="h-9 w-auto max-w-[140px] object-contain object-left" />
+        <BrandLogo variant="app" className="w-auto max-w-[140px] object-contain object-left" />
       ) : (
-        <img src="/logo.png" alt="ZynexTools" className="h-8 w-8 object-contain" />
+        <BrandLogo variant="app" height={32} className="object-contain" style={{ width: 32, height: 32 }} />
       )}
       <button onClick={onToggle} className="p-1.5 hover:bg-[#1a1210] rounded-xl transition cursor-pointer text-slate-400 hover:text-white">
         {collapsed ? <Menu className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
