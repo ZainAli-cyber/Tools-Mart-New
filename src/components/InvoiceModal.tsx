@@ -248,11 +248,12 @@ export const InvoiceModal: React.FC<{
                 src="/logo.png"
                 alt={BRAND}
                 style={{
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '14px',
-                  background: '#000000',
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '12px',
+                  background: '#fff',
                   objectFit: 'contain',
+                  padding: '4px',
                   flexShrink: 0,
                 }}
                 crossOrigin="anonymous"
