@@ -101,8 +101,15 @@ export function BrandLogo({
     <img
       src={src}
       alt={alt}
-      className={className || 'w-auto object-contain'}
-      style={{ height: h, width: 'auto', maxWidth: Math.max(120, h * 4), ...style }}
+      className={className}
+      style={{
+        height: h,
+        width: 'auto',
+        maxWidth: Math.max(120, h * 4),
+        objectFit: 'contain',
+        display: 'block',
+        ...style,
+      }}
       crossOrigin={crossOrigin}
       onError={e => {
         const el = e.currentTarget;

@@ -214,14 +214,14 @@ export const InvoiceModal: React.FC<{
         <img
           src={src}
           alt=""
-          width={14}
-          height={14}
+          width={16}
+          height={16}
           style={{
             position: 'absolute',
-            left: 7,
-            top: 7,
-            width: 14,
-            height: 14,
+            left: 6,
+            top: 6,
+            width: 16,
+            height: 16,
             display: 'block',
             border: 0,
           }}
@@ -420,28 +420,40 @@ export const InvoiceModal: React.FC<{
             >
               <tbody>
                 <tr>
-                  <td style={{ width: 44, verticalAlign: 'middle', padding: 0 }}>
+                  <td
+                    style={{
+                      width: topLogoH,
+                      height: topLogoH,
+                      verticalAlign: 'middle',
+                      padding: 0,
+                      lineHeight: 0,
+                    }}
+                  >
                     <BrandLogo
                       variant="invoice"
+                      height={topLogoH}
                       crossOrigin="anonymous"
+                      className=""
                       style={{
                         width: topLogoH,
                         height: topLogoH,
+                        maxWidth: topLogoH,
                         borderRadius: 8,
-                        background: '#000',
                         objectFit: 'contain',
                         display: 'block',
+                        verticalAlign: 'middle',
                       }}
                     />
                   </td>
-                  <td style={{ verticalAlign: 'middle', paddingLeft: 8 }}>
+                  <td style={{ verticalAlign: 'middle', paddingLeft: 10 }}>
                     <div
                       style={{
                         fontSize: 18,
                         fontWeight: 700,
                         color: GOLD,
                         letterSpacing: '0.1em',
-                        lineHeight: 1,
+                        lineHeight: '22px',
+                        height: 22,
                       }}
                     >
                       {BRAND}
@@ -450,10 +462,12 @@ export const InvoiceModal: React.FC<{
                       style={{
                         fontSize: 9,
                         color: GOLD,
-                        fontWeight: 700,
+                        fontWeight: 600,
                         letterSpacing: '0.12em',
                         textTransform: 'uppercase',
-                        marginTop: 3,
+                        lineHeight: '14px',
+                        height: 14,
+                        marginTop: 2,
                       }}
                     >
                       Client Receipt
@@ -501,17 +515,17 @@ export const InvoiceModal: React.FC<{
                     </td>
                   </tr>
                   <tr>
-                    <td colSpan={2} style={{ paddingTop: 8, textAlign: 'center' }}>
+                    <td colSpan={2} style={{ paddingTop: 8, textAlign: 'left' }}>
                       <img
                         src={STATUS_BADGES_SRC}
                         alt="Active Paid"
                         crossOrigin="anonymous"
                         style={{
                           display: 'block',
-                          margin: '0 auto',
-                          height: 26,
+                          margin: 0,
+                          height: 36,
                           width: 'auto',
-                          maxWidth: '92%',
+                          maxWidth: '100%',
                           objectFit: 'contain',
                         }}
                       />
@@ -573,10 +587,13 @@ export const InvoiceModal: React.FC<{
                   <td style={{ paddingTop: 8, textAlign: 'center' }}>
                     <BrandLogo
                       variant="invoiceFooter"
+                      height={footLogoH}
                       crossOrigin="anonymous"
+                      className=""
                       style={{
                         width: footLogoH,
                         height: footLogoH,
+                        maxWidth: footLogoH,
                         borderRadius: 6,
                         objectFit: 'contain',
                         display: 'inline-block',
@@ -592,6 +609,8 @@ export const InvoiceModal: React.FC<{
                         fontWeight: 700,
                         color: GOLD,
                         letterSpacing: '0.1em',
+                        lineHeight: `${footLogoH}px`,
+                        height: footLogoH,
                       }}
                     >
                       {BRAND}
