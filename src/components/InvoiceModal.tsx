@@ -51,22 +51,40 @@ const GOLD_SOFT = '#C9A84A';
 /** Thin light borders — not bold. */
 const GOLD_LINE = 'rgba(212, 175, 55, 0.38)';
 const GOLD_LINE_SOFT = 'rgba(212, 175, 55, 0.28)';
-const GREEN = '#22c55e';
-const AMBER = '#b45309';
 const CARD_RADIUS = 12;
 const CARD_BORDER = `1px solid ${GOLD_LINE}`;
 const OUTER_BORDER = `1px solid ${GOLD_LINE}`;
+const STATUS_BADGES_SRC = '/invoiceicons.png';
 
-/** Plain text glyphs — Lucide SVGs mis-align under html2canvas JPG export. */
+/** Gold SVG data-URIs — pixel-centered in circles; emoji/Lucide drift in html2canvas. */
+function goldSvg(paths: string): string {
+  return `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${GOLD}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`,
+  )}`;
+}
+
 const ICONS = {
-  user: '👤',
-  invoice: '📋',
-  store: '🏪',
-  phone: '📞',
-  tool: '📄',
-  calendar: '📅',
-  pay: '💳',
-  check: '✓',
+  user: goldSvg(
+    '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  ),
+  invoice: goldSvg(
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/>',
+  ),
+  store: goldSvg(
+    '<path d="M3 9l1-5h16l1 5"/><path d="M3 9v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9"/><path d="M10 21V12h4v9"/>',
+  ),
+  phone: goldSvg(
+    '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.35a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.75.34 1.54.57 2.35.7A2 2 0 0 1 22 16.92z"/>',
+  ),
+  tool: goldSvg(
+    '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+  ),
+  calendar: goldSvg(
+    '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+  ),
+  pay: goldSvg(
+    '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+  ),
 } as const;
 
 export const InvoiceModal: React.FC<{
@@ -80,7 +98,20 @@ export const InvoiceModal: React.FC<{
 
   const capture = async () => {
     await ensureLibs();
-    return (window as any).html2canvas(ref.current!, {
+    const root = ref.current!;
+    // Wait for logos + status PNG so JPG export includes them centered.
+    await Promise.all(
+      Array.from(root.querySelectorAll('img')).map(
+        img =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise<void>(resolve => {
+                img.addEventListener('load', () => resolve(), { once: true });
+                img.addEventListener('error', () => resolve(), { once: true });
+              }),
+      ),
+    );
+    return (window as any).html2canvas(root, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
@@ -151,19 +182,17 @@ export const InvoiceModal: React.FC<{
   }, [autoAction, order.id]);
 
   const total = order.finalAmount || order.amount || 0;
-  const isPaid = order.paymentStatus === 'paid';
-  const isActive = order.subStatus === 'active';
   const toolLabel =
     (order.tool || 'Subscription') + (order.duration ? ` · ${order.duration} Month(s)` : '');
 
   const topLogoH = Math.min(36, Number(branding.invoiceLogoHeight) || 36);
   const footLogoH = Math.min(28, Number(branding.invoiceFooterLogoHeight) || 28);
 
-  const iconBox = (glyph: string) => (
+  /** Absolute pixel center — survives html2canvas JPG export. */
+  const iconBox = (src: string) => (
     <td
       style={{
-        width: 30,
-        height: 30,
+        width: 32,
         verticalAlign: 'middle',
         textAlign: 'center',
         padding: 0,
@@ -177,39 +206,26 @@ export const InvoiceModal: React.FC<{
           borderRadius: '50%',
           border: `1px solid ${GOLD_LINE_SOFT}`,
           background: '#1a0f10',
-          lineHeight: '26px',
-          fontSize: 12,
-          textAlign: 'center',
-          color: GOLD,
+          position: 'relative',
+          overflow: 'hidden',
+          margin: '0 auto',
         }}
       >
-        {glyph}
-      </div>
-    </td>
-  );
-
-  /** Fixed-size pill so Active/Paid stay level and export cleanly. */
-  const StatusPill: React.FC<{ ok: boolean; label: string; mark: string }> = ({
-    ok,
-    label,
-    mark,
-  }) => (
-    <td style={{ padding: '0 3px', verticalAlign: 'middle' }}>
-      <div
-        style={{
-          background: ok ? GREEN : AMBER,
-          color: '#fff',
-          borderRadius: 999,
-          width: 64,
-          height: 22,
-          lineHeight: '22px',
-          fontSize: 10,
-          fontWeight: 700,
-          textAlign: 'center',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {mark} {label}
+        <img
+          src={src}
+          alt=""
+          width={14}
+          height={14}
+          style={{
+            position: 'absolute',
+            left: 7,
+            top: 7,
+            width: 14,
+            height: 14,
+            display: 'block',
+            border: 0,
+          }}
+        />
       </div>
     </td>
   );
@@ -245,7 +261,7 @@ export const InvoiceModal: React.FC<{
                         style={{
                           fontSize: 9,
                           color: GOLD,
-                          fontWeight: 700,
+                          fontWeight: 600,
                           letterSpacing: '0.06em',
                           textTransform: 'uppercase',
                           lineHeight: 1.2,
@@ -256,10 +272,10 @@ export const InvoiceModal: React.FC<{
                       </div>
                       <div
                         style={{
-                          fontSize: highlight ? 20 : 12,
-                          fontWeight: 800,
+                          fontSize: highlight ? 18 : 12,
+                          fontWeight: highlight ? 700 : 500,
                           color: '#ffffff',
-                          lineHeight: 1.2,
+                          lineHeight: 1.25,
                           wordBreak: 'break-word',
                         }}
                       >
@@ -300,7 +316,7 @@ export const InvoiceModal: React.FC<{
                   style={{
                     fontSize: 8,
                     color: GOLD,
-                    fontWeight: 700,
+                    fontWeight: 600,
                     letterSpacing: '0.04em',
                     textTransform: 'uppercase',
                     lineHeight: 1.15,
@@ -312,9 +328,9 @@ export const InvoiceModal: React.FC<{
                 <div
                   style={{
                     fontSize: 11,
-                    fontWeight: 800,
+                    fontWeight: 500,
                     color: '#fff',
-                    lineHeight: 1.2,
+                    lineHeight: 1.25,
                     wordBreak: 'break-word',
                   }}
                 >
@@ -422,7 +438,7 @@ export const InvoiceModal: React.FC<{
                     <div
                       style={{
                         fontSize: 18,
-                        fontWeight: 900,
+                        fontWeight: 700,
                         color: GOLD,
                         letterSpacing: '0.1em',
                         lineHeight: 1,
@@ -455,7 +471,7 @@ export const InvoiceModal: React.FC<{
               }}
             />
 
-            {/* Customer: name row + Active/Paid centered under name */}
+            {/* Customer: name + Active/Paid PNG badges (never coded pills) */}
             <div
               style={{
                 background: CARD_BG,
@@ -474,7 +490,7 @@ export const InvoiceModal: React.FC<{
                       <div
                         style={{
                           fontSize: 14,
-                          fontWeight: 900,
+                          fontWeight: 600,
                           color: '#fff',
                           lineHeight: '22px',
                           wordBreak: 'break-word',
@@ -486,26 +502,19 @@ export const InvoiceModal: React.FC<{
                   </tr>
                   <tr>
                     <td colSpan={2} style={{ paddingTop: 8, textAlign: 'center' }}>
-                      <table
-                        cellPadding={0}
-                        cellSpacing={0}
-                        style={{ borderCollapse: 'collapse', margin: '0 auto' }}
-                      >
-                        <tbody>
-                          <tr>
-                            <StatusPill
-                              ok={isActive}
-                              label={isActive ? 'Active' : order.subStatus || 'Pending'}
-                              mark="●"
-                            />
-                            <StatusPill
-                              ok={isPaid}
-                              label={isPaid ? 'Paid' : 'Pending'}
-                              mark={isPaid ? ICONS.check : '○'}
-                            />
-                          </tr>
-                        </tbody>
-                      </table>
+                      <img
+                        src={STATUS_BADGES_SRC}
+                        alt="Active Paid"
+                        crossOrigin="anonymous"
+                        style={{
+                          display: 'block',
+                          margin: '0 auto',
+                          height: 26,
+                          width: 'auto',
+                          maxWidth: '92%',
+                          objectFit: 'contain',
+                        }}
+                      />
                     </td>
                   </tr>
                 </tbody>
@@ -580,7 +589,7 @@ export const InvoiceModal: React.FC<{
                         display: 'inline-block',
                         verticalAlign: 'middle',
                         fontSize: 11,
-                        fontWeight: 800,
+                        fontWeight: 700,
                         color: GOLD,
                         letterSpacing: '0.1em',
                       }}
