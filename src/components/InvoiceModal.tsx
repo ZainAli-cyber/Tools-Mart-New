@@ -1,21 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  Calendar,
-  Check,
-  ClipboardList,
-  CreditCard,
-  Download,
-  FileText,
-  Phone,
-  Printer,
-  Store,
-  User,
-  X,
-} from 'lucide-react';
+import { Download, Printer, X } from 'lucide-react';
 import { BrandLogo, useBranding } from './BrandLogo';
 
 const BRAND = 'ZYNEX';
 const BRAND_TAGLINE = 'UPGRADE YOUR DIGITAL WORLD';
+
+/** Fixed export width — WhatsApp-friendly (readable in chat without opening). */
+const INVOICE_W = 360;
 
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -57,7 +48,19 @@ const CARD_BG = '#141010';
 const GOLD = '#d4af37';
 const GOLD_SOFT = '#c9a227';
 const GREEN = '#16a34a';
-const LABEL = GOLD;
+const AMBER = '#b45309';
+
+/** Plain text glyphs — Lucide SVGs mis-align under html2canvas JPG export. */
+const ICONS = {
+  user: '👤',
+  invoice: '📋',
+  store: '🏪',
+  phone: '📞',
+  tool: '📄',
+  calendar: '📅',
+  pay: '💳',
+  check: '✓',
+} as const;
 
 export const InvoiceModal: React.FC<{
   order: InvoiceOrder;
@@ -68,23 +71,35 @@ export const InvoiceModal: React.FC<{
   const [downloading, setDownloading] = useState<string | null>(null);
   const branding = useBranding();
 
+  const capture = async () => {
+    await ensureLibs();
+    return (window as any).html2canvas(ref.current!, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: PAGE_BG,
+      width: INVOICE_W,
+      windowWidth: INVOICE_W,
+      logging: false,
+      // Keep layout stable; foreignObject often breaks icon/text alignment.
+      foreignObjectRendering: false,
+    });
+  };
+
   const downloadPDF = async () => {
     setDownloading('pdf');
     try {
-      await ensureLibs();
-      const canvas = await (window as any).html2canvas(ref.current!, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: PAGE_BG,
-      });
+      const canvas = await capture();
       const imgData = canvas.toDataURL('image/png');
       const { jsPDF } = (window as any).jspdf;
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const imgH = (canvas.height * pageW) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, imgH < pageH ? (pageH - imgH) / 2 : 0, pageW, Math.min(imgH, pageH));
+      const margin = 14;
+      const maxW = pageW - margin * 2;
+      const imgH = (canvas.height * maxW) / canvas.width;
+      const y = imgH < pageH - margin * 2 ? (pageH - imgH) / 2 : margin;
+      pdf.addImage(imgData, 'PNG', margin, y, maxW, Math.min(imgH, pageH - margin * 2));
       pdf.save(`${order.invoiceNo || order.id}.pdf`);
     } catch (e) {
       console.error('PDF error:', e);
@@ -96,13 +111,7 @@ export const InvoiceModal: React.FC<{
   const downloadJPG = async () => {
     setDownloading('jpg');
     try {
-      await ensureLibs();
-      const canvas = await (window as any).html2canvas(ref.current!, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: PAGE_BG,
-      });
+      const canvas = await capture();
       canvas.toBlob(
         (blob: Blob | null) => {
           if (!blob) return;
@@ -116,7 +125,7 @@ export const InvoiceModal: React.FC<{
           URL.revokeObjectURL(url);
         },
         'image/jpeg',
-        0.95,
+        0.92,
       );
     } catch (e) {
       console.error('JPG error:', e);
@@ -140,105 +149,156 @@ export const InvoiceModal: React.FC<{
   const toolLabel =
     (order.tool || 'Subscription') + (order.duration ? ` · ${order.duration} Month(s)` : '');
 
-  const iconCircle = (node: React.ReactNode) => (
-    <span
+  const topLogoH = Math.min(36, Number(branding.invoiceLogoHeight) || 36);
+  const footLogoH = Math.min(28, Number(branding.invoiceFooterLogoHeight) || 28);
+
+  const iconBox = (glyph: string) => (
+    <td
       style={{
-        width: 40,
-        height: 40,
-        borderRadius: '999px',
-        border: `1px solid ${GOLD}55`,
-        background: '#1a1210',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: GOLD,
-        flexShrink: 0,
+        width: 28,
+        height: 28,
+        verticalAlign: 'middle',
+        textAlign: 'center',
+        padding: 0,
+        paddingRight: 8,
       }}
     >
-      {node}
-    </span>
+      <div
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          border: `1px solid ${GOLD}66`,
+          background: '#1a1210',
+          lineHeight: '26px',
+          fontSize: 12,
+          textAlign: 'center',
+          color: GOLD,
+        }}
+      >
+        {glyph}
+      </div>
+    </td>
   );
 
-  const FieldCard: React.FC<{
-    icon: React.ReactNode;
+  const FieldRow: React.FC<{
+    icon: string;
     label: string;
     value: string;
     highlight?: boolean;
   }> = ({ icon, label, value, highlight }) => (
-    <div
+    <table
+      cellPadding={0}
+      cellSpacing={0}
       style={{
+        width: '100%',
+        borderCollapse: 'collapse',
         background: highlight
-          ? 'linear-gradient(135deg, #2a1214 0%, #141010 55%, #1a1210 100%)'
+          ? 'linear-gradient(135deg, #2a1214 0%, #141010 60%, #1a1210 100%)'
           : CARD_BG,
-        borderRadius: 16,
         border: `1px solid ${GOLD}40`,
-        padding: highlight ? '18px 18px' : '14px 16px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14,
-        marginBottom: 10,
+        borderRadius: 10,
+        marginBottom: 6,
+        // table + borderRadius needs overflow hidden via wrapper
       }}
     >
-      {iconCircle(icon)}
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 11,
-            color: LABEL,
-            marginBottom: 4,
-            fontWeight: 700,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-          }}
-        >
-          {label}
-        </div>
-        <div
-          style={{
-            fontSize: highlight ? 28 : 16,
-            fontWeight: 800,
-            color: '#ffffff',
-            wordBreak: 'break-word',
-            lineHeight: 1.15,
-          }}
-        >
-          {value}
-        </div>
-      </div>
-    </div>
+      <tbody>
+        <tr>
+          <td
+            colSpan={2}
+            style={{
+              padding: highlight ? '10px 10px' : '7px 9px',
+              borderRadius: 10,
+            }}
+          >
+            <table cellPadding={0} cellSpacing={0} style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr>
+                  {iconBox(icon)}
+                  <td style={{ verticalAlign: 'middle', minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: GOLD,
+                        fontWeight: 700,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        lineHeight: 1.2,
+                        marginBottom: 2,
+                      }}
+                    >
+                      {label}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: highlight ? 20 : 12,
+                        fontWeight: 800,
+                        color: '#ffffff',
+                        lineHeight: 1.2,
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {value}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 
-  const DateCard: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-    <div
-      style={{
-        background: CARD_BG,
-        borderRadius: 16,
-        border: `1px solid ${GOLD}40`,
-        padding: '14px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        flex: 1,
-        minWidth: 0,
-      }}
-    >
-      {iconCircle(<Calendar size={18} strokeWidth={2} />)}
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 10,
-            color: LABEL,
-            marginBottom: 3,
-            fontWeight: 700,
-            letterSpacing: '0.05em',
-            textTransform: 'uppercase',
-          }}
-        >
-          {label}
-        </div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>{value || '—'}</div>
+  const HalfCell: React.FC<{ icon: string; label: string; value: string }> = ({
+    icon,
+    label,
+    value,
+  }) => (
+    <td style={{ width: '50%', verticalAlign: 'top', padding: 0 }}>
+      <div
+        style={{
+          background: CARD_BG,
+          border: `1px solid ${GOLD}40`,
+          borderRadius: 10,
+          padding: '7px 8px',
+        }}
+      >
+        <table cellPadding={0} cellSpacing={0} style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <tbody>
+            <tr>
+              {iconBox(icon)}
+              <td style={{ verticalAlign: 'middle', minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 8,
+                    color: GOLD,
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    lineHeight: 1.15,
+                    marginBottom: 2,
+                  }}
+                >
+                  {label}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: '#fff',
+                    lineHeight: 1.2,
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {value || '—'}
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>
+    </td>
   );
 
   return (
@@ -253,17 +313,17 @@ export const InvoiceModal: React.FC<{
           .invoice-modal-actions { display: none !important; }
           .invoice-print-root {
             position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
+            left: 50% !important;
+            top: 12px !important;
+            transform: translateX(-50%) !important;
             margin: 0 !important;
             border-radius: 0 !important;
           }
         }
       `}</style>
 
-      <div className="w-full max-w-sm flex flex-col gap-3 max-h-[95vh]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between invoice-modal-actions">
+      <div className="flex flex-col gap-3 max-h-[95vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between invoice-modal-actions" style={{ width: INVOICE_W }}>
           <div className="flex gap-2">
             <button
               onClick={downloadPDF}
@@ -300,222 +360,237 @@ export const InvoiceModal: React.FC<{
             className="invoice-print-root"
             style={{
               background: PAGE_BG,
-              borderRadius: 20,
-              padding: '28px 22px 24px',
-              fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-              width: '100%',
+              borderRadius: 14,
+              padding: '14px 12px 12px',
+              fontFamily: 'Arial, Helvetica, sans-serif',
+              width: INVOICE_W,
+              boxSizing: 'border-box',
               color: '#fff',
               border: `1px solid ${GOLD}22`,
             }}
           >
-            {/* Brand header */}
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                marginBottom: 18,
-                gap: 10,
-              }}
+            {/* Compact header: logo + brand side by side */}
+            <table
+              cellPadding={0}
+              cellSpacing={0}
+              style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}
             >
-              <BrandLogo
-                variant="invoice"
-                crossOrigin="anonymous"
-                style={{
-                  width: 'auto',
-                  height: branding.invoiceLogoHeight,
-                  borderRadius: 12,
-                  background: '#000',
-                  objectFit: 'contain',
-                }}
-              />
-              <div
-                style={{
-                  fontSize: 28,
-                  fontWeight: 900,
-                  color: GOLD,
-                  letterSpacing: '0.08em',
-                  lineHeight: 1,
-                }}
-              >
-                {BRAND}
-              </div>
-            </div>
+              <tbody>
+                <tr>
+                  <td style={{ width: 44, verticalAlign: 'middle', padding: 0 }}>
+                    <BrandLogo
+                      variant="invoice"
+                      crossOrigin="anonymous"
+                      style={{
+                        width: topLogoH,
+                        height: topLogoH,
+                        borderRadius: 8,
+                        background: '#000',
+                        objectFit: 'contain',
+                        display: 'block',
+                      }}
+                    />
+                  </td>
+                  <td style={{ verticalAlign: 'middle', paddingLeft: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 900,
+                        color: GOLD,
+                        letterSpacing: '0.1em',
+                        lineHeight: 1,
+                      }}
+                    >
+                      {BRAND}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: GOLD,
+                        fontWeight: 700,
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase',
+                        marginTop: 3,
+                      }}
+                    >
+                      Client Receipt
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-            {/* Client Receipt title */}
             <div
               style={{
-                borderBottom: `1px solid ${GOLD}55`,
-                paddingBottom: 12,
-                marginBottom: 18,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
+                height: 1,
+                background: `linear-gradient(90deg, transparent, ${GOLD_SOFT}, transparent)`,
+                marginBottom: 8,
               }}
-            >
-              <ClipboardList size={18} color={GOLD} strokeWidth={2.25} />
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: 800,
-                  color: GOLD,
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Client Receipt
-              </span>
-              <ClipboardList size={18} color={GOLD} strokeWidth={2.25} />
-            </div>
+            />
 
-            {/* Client + status */}
-            <div
+            {/* Customer + badges */}
+            <table
+              cellPadding={0}
+              cellSpacing={0}
               style={{
+                width: '100%',
+                borderCollapse: 'collapse',
                 background: CARD_BG,
                 border: `1px solid ${GOLD}40`,
-                borderRadius: 16,
-                padding: '14px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-                marginBottom: 10,
-                flexWrap: 'wrap',
+                borderRadius: 10,
+                marginBottom: 6,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                {iconCircle(<User size={18} strokeWidth={2.25} />)}
-                <span
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 900,
-                    color: '#ffffff',
-                    lineHeight: 1.2,
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {order.customerName || '—'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <span
-                  style={{
-                    background: isActive ? GREEN : '#b45309',
-                    color: '#fff',
-                    borderRadius: 999,
-                    padding: '5px 12px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      background: isActive ? '#4ade80' : '#fbbf24',
-                      display: 'inline-block',
-                    }}
-                  />
-                  {isActive ? 'Active' : order.subStatus || 'Pending'}
-                </span>
-                <span
-                  style={{
-                    background: isPaid ? GREEN : '#b45309',
-                    color: '#fff',
-                    borderRadius: 999,
-                    padding: '5px 12px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                  }}
-                >
-                  {isPaid ? <Check size={13} strokeWidth={3} /> : null}
-                  {isPaid ? 'Paid' : 'Pending'}
-                </span>
-              </div>
-            </div>
+              <tbody>
+                <tr>
+                  <td style={{ padding: '8px 9px', borderRadius: 10 }}>
+                    <table cellPadding={0} cellSpacing={0} style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <tbody>
+                        <tr>
+                          {iconBox(ICONS.user)}
+                          <td style={{ verticalAlign: 'middle' }}>
+                            <div
+                              style={{
+                                fontSize: 14,
+                                fontWeight: 900,
+                                color: '#fff',
+                                lineHeight: 1.2,
+                                wordBreak: 'break-word',
+                              }}
+                            >
+                              {order.customerName || '—'}
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  background: isActive ? GREEN : AMBER,
+                                  color: '#fff',
+                                  borderRadius: 999,
+                                  padding: '2px 8px',
+                                  fontSize: 9,
+                                  fontWeight: 700,
+                                  marginRight: 4,
+                                  lineHeight: '16px',
+                                }}
+                              >
+                                ● {isActive ? 'Active' : order.subStatus || 'Pending'}
+                              </span>
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  background: isPaid ? GREEN : AMBER,
+                                  color: '#fff',
+                                  borderRadius: 999,
+                                  padding: '2px 8px',
+                                  fontSize: 9,
+                                  fontWeight: 700,
+                                  lineHeight: '16px',
+                                }}
+                              >
+                                {isPaid ? `${ICONS.check} Paid` : 'Pending'}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-            <FieldCard
-              icon={<ClipboardList size={18} strokeWidth={2} />}
+            <FieldRow
+              icon={ICONS.invoice}
               label="Invoice Number"
               value={order.invoiceNo || order.id}
             />
-            {order.issuer ? (
-              <FieldCard icon={<Store size={18} strokeWidth={2} />} label="Issued by" value={order.issuer} />
-            ) : null}
-            {order.customerPhone ? (
-              <FieldCard
-                icon={<Phone size={18} strokeWidth={2} />}
-                label="Phone Number"
-                value={order.customerPhone}
-              />
-            ) : null}
-            <FieldCard icon={<FileText size={18} strokeWidth={2} />} label="Tool Name" value={toolLabel} />
 
-            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <DateCard label="Purchase Date" value={order.orderDate || '—'} />
-              <DateCard label="Expiry Date" value={order.expiryDate || '—'} />
-            </div>
+            {/* Two-column dense rows for WhatsApp height */}
+            <table cellPadding={0} cellSpacing={0} style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 6 }}>
+              <tbody>
+                <tr>
+                  <HalfCell icon={ICONS.store} label="Issued By" value={order.issuer || 'Zynex Tools'} />
+                  <td style={{ width: 6 }} />
+                  <HalfCell icon={ICONS.phone} label="Phone" value={order.customerPhone || '—'} />
+                </tr>
+              </tbody>
+            </table>
 
-            <FieldCard
-              icon={<CreditCard size={18} strokeWidth={2} />}
+            <FieldRow icon={ICONS.tool} label="Tool Name" value={toolLabel} />
+
+            <table cellPadding={0} cellSpacing={0} style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 6 }}>
+              <tbody>
+                <tr>
+                  <HalfCell icon={ICONS.calendar} label="Purchase Date" value={order.orderDate || '—'} />
+                  <td style={{ width: 6 }} />
+                  <HalfCell icon={ICONS.calendar} label="Expiry Date" value={order.expiryDate || '—'} />
+                </tr>
+              </tbody>
+            </table>
+
+            <FieldRow
+              icon={ICONS.pay}
               label="Paid Amount"
               value={`PKR ${total.toLocaleString()}`}
               highlight
             />
 
-            <div
+            {/* Compact footer */}
+            <table
+              cellPadding={0}
+              cellSpacing={0}
               style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                marginTop: 8,
                 borderTop: `1px solid ${GOLD}40`,
-                marginTop: 18,
-                paddingTop: 18,
-                textAlign: 'center',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 8,
               }}
             >
-              <BrandLogo
-                variant="invoiceFooter"
-                crossOrigin="anonymous"
-                style={{
-                  width: 'auto',
-                  height: branding.invoiceFooterLogoHeight,
-                  borderRadius: 10,
-                  objectFit: 'contain',
-                }}
-              />
-              <div style={{ fontSize: 14, fontWeight: 800, color: GOLD, letterSpacing: '0.12em' }}>
-                {BRAND}
-              </div>
-              <div
-                style={{
-                  width: '70%',
-                  height: 1,
-                  background: `linear-gradient(90deg, transparent, ${GOLD_SOFT}, transparent)`,
-                }}
-              />
-              <div
-                style={{
-                  fontSize: 11,
-                  color: GOLD,
-                  fontWeight: 700,
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                {BRAND_TAGLINE}
-              </div>
-            </div>
+              <tbody>
+                <tr>
+                  <td style={{ paddingTop: 8, textAlign: 'center' }}>
+                    <BrandLogo
+                      variant="invoiceFooter"
+                      crossOrigin="anonymous"
+                      style={{
+                        width: footLogoH,
+                        height: footLogoH,
+                        borderRadius: 6,
+                        objectFit: 'contain',
+                        display: 'inline-block',
+                        verticalAlign: 'middle',
+                        marginRight: 6,
+                      }}
+                    />
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        verticalAlign: 'middle',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        color: GOLD,
+                        letterSpacing: '0.1em',
+                      }}
+                    >
+                      {BRAND}
+                    </span>
+                    <div
+                      style={{
+                        fontSize: 8,
+                        color: GOLD,
+                        fontWeight: 700,
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                        marginTop: 4,
+                      }}
+                    >
+                      {BRAND_TAGLINE}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
