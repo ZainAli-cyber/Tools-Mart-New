@@ -45,15 +45,17 @@ export type InvoiceOrder = {
 
 const PAGE_BG = '#0a0706';
 const CARD_BG = '#141010';
-/** Bright metallic gold — matches client receipt reference. */
-const GOLD = '#E6C35C';
-const GOLD_SOFT = '#F0D078';
-const GOLD_BORDER = '#E8C547';
-const GREEN = '#16a34a';
+/** Soft gold text */
+const GOLD = '#D4AF37';
+const GOLD_SOFT = '#C9A84A';
+/** Thin light borders — not bold. */
+const GOLD_LINE = 'rgba(212, 175, 55, 0.38)';
+const GOLD_LINE_SOFT = 'rgba(212, 175, 55, 0.28)';
+const GREEN = '#22c55e';
 const AMBER = '#b45309';
 const CARD_RADIUS = 12;
-const CARD_BORDER = `1.5px solid ${GOLD_BORDER}`;
-const CARD_SHADOW = `0 0 0 1px ${GOLD_BORDER}33`;
+const CARD_BORDER = `1px solid ${GOLD_LINE}`;
+const OUTER_BORDER = `1px solid ${GOLD_LINE}`;
 
 /** Plain text glyphs — Lucide SVGs mis-align under html2canvas JPG export. */
 const ICONS = {
@@ -173,7 +175,7 @@ export const InvoiceModal: React.FC<{
           width: 28,
           height: 28,
           borderRadius: '50%',
-          border: CARD_BORDER,
+          border: `1px solid ${GOLD_LINE_SOFT}`,
           background: '#1a0f10',
           lineHeight: '26px',
           fontSize: 12,
@@ -186,29 +188,30 @@ export const InvoiceModal: React.FC<{
     </td>
   );
 
+  /** Fixed-size pill so Active/Paid stay level and export cleanly. */
   const StatusPill: React.FC<{ ok: boolean; label: string; mark: string }> = ({
     ok,
     label,
     mark,
   }) => (
-    <span
-      style={{
-        display: 'inline-block',
-        background: ok ? GREEN : AMBER,
-        color: '#fff',
-        borderRadius: 999,
-        padding: '0 10px',
-        fontSize: 10,
-        fontWeight: 700,
-        lineHeight: '20px',
-        height: 20,
-        textAlign: 'center',
-        verticalAlign: 'middle',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {mark} {label}
-    </span>
+    <td style={{ padding: '0 3px', verticalAlign: 'middle' }}>
+      <div
+        style={{
+          background: ok ? GREEN : AMBER,
+          color: '#fff',
+          borderRadius: 999,
+          width: 64,
+          height: 22,
+          lineHeight: '22px',
+          fontSize: 10,
+          fontWeight: 700,
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {mark} {label}
+      </div>
+    </td>
   );
 
   const FieldRow: React.FC<{
@@ -223,10 +226,9 @@ export const InvoiceModal: React.FC<{
         background: highlight
           ? 'linear-gradient(135deg, #2a1214 0%, #141010 55%, #1a1210 100%)'
           : CARD_BG,
-        border: highlight ? `2px solid ${GOLD_BORDER}` : CARD_BORDER,
+        border: highlight ? `1px solid ${GOLD}` : CARD_BORDER,
         borderRadius: CARD_RADIUS,
         marginBottom: 6,
-        boxShadow: highlight ? `0 0 10px ${GOLD_BORDER}33` : CARD_SHADOW,
         boxSizing: 'border-box',
       }}
     >
@@ -286,7 +288,6 @@ export const InvoiceModal: React.FC<{
           border: CARD_BORDER,
           borderRadius: CARD_RADIUS,
           padding: '7px 8px',
-          boxShadow: CARD_SHADOW,
           boxSizing: 'border-box',
         }}
       >
@@ -392,8 +393,7 @@ export const InvoiceModal: React.FC<{
               width: INVOICE_W,
               boxSizing: 'border-box',
               color: '#fff',
-              border: `2px solid ${GOLD_BORDER}`,
-              boxShadow: `0 0 0 1px ${GOLD_BORDER}55, inset 0 0 0 1px ${GOLD_BORDER}22`,
+              border: OUTER_BORDER,
             }}
           >
             {/* Compact header: logo + brand side by side */}
@@ -455,61 +455,57 @@ export const InvoiceModal: React.FC<{
               }}
             />
 
-            {/* Customer + badges: name left, Active/Paid vertically centered on right */}
+            {/* Customer: name row + Active/Paid centered under name */}
             <div
               style={{
                 background: CARD_BG,
                 border: CARD_BORDER,
                 borderRadius: CARD_RADIUS,
                 marginBottom: 6,
-                boxShadow: CARD_SHADOW,
                 boxSizing: 'border-box',
+                padding: '10px 10px 9px',
               }}
             >
               <table cellPadding={0} cellSpacing={0} style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr>
-                    <td style={{ padding: '8px 9px', verticalAlign: 'middle' }}>
-                      <table cellPadding={0} cellSpacing={0} style={{ borderCollapse: 'collapse' }}>
+                    {iconBox(ICONS.user)}
+                    <td style={{ verticalAlign: 'middle' }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 900,
+                          color: '#fff',
+                          lineHeight: '22px',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {order.customerName || '—'}
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colSpan={2} style={{ paddingTop: 8, textAlign: 'center' }}>
+                      <table
+                        cellPadding={0}
+                        cellSpacing={0}
+                        style={{ borderCollapse: 'collapse', margin: '0 auto' }}
+                      >
                         <tbody>
                           <tr>
-                            {iconBox(ICONS.user)}
-                            <td style={{ verticalAlign: 'middle' }}>
-                              <div
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: 900,
-                                  color: '#fff',
-                                  lineHeight: '20px',
-                                  wordBreak: 'break-word',
-                                }}
-                              >
-                                {order.customerName || '—'}
-                              </div>
-                            </td>
+                            <StatusPill
+                              ok={isActive}
+                              label={isActive ? 'Active' : order.subStatus || 'Pending'}
+                              mark="●"
+                            />
+                            <StatusPill
+                              ok={isPaid}
+                              label={isPaid ? 'Paid' : 'Pending'}
+                              mark={isPaid ? ICONS.check : '○'}
+                            />
                           </tr>
                         </tbody>
                       </table>
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 9px 8px 4px',
-                        verticalAlign: 'middle',
-                        textAlign: 'right',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <StatusPill
-                        ok={isActive}
-                        label={isActive ? 'Active' : order.subStatus || 'Pending'}
-                        mark="●"
-                      />
-                      <span style={{ display: 'inline-block', width: 4 }} />
-                      <StatusPill
-                        ok={isPaid}
-                        label={isPaid ? 'Paid' : 'Pending'}
-                        mark={isPaid ? ICONS.check : '○'}
-                      />
                     </td>
                   </tr>
                 </tbody>
