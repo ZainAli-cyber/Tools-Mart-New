@@ -226,7 +226,7 @@ export const InvoiceModal: React.FC<{
         background: highlight
           ? 'linear-gradient(135deg, #2a1214 0%, #141010 55%, #1a1210 100%)'
           : CARD_BG,
-        border: highlight ? `1px solid ${GOLD}` : CARD_BORDER,
+        border: highlight ? `1px solid ${GOLD_LINE}` : CARD_BORDER,
         borderRadius: CARD_RADIUS,
         marginBottom: 6,
         boxSizing: 'border-box',
