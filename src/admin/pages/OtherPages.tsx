@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Edit, Trash2, Plus, Eye, Check, X, Send, Download, Printer, RefreshCw, ClipboardList, Wrench, Ban, ChevronDown, ChevronRight, BarChart2, MoreHorizontal, FileText, MessageCircle, MonitorSmartphone } from 'lucide-react';
-import { db, Tool, bannerDb } from '../data/adminStore';
+import { db, Tool } from '../data/adminStore';
 import { saveCatalogTool, useCatalogTools } from '../../lib/toolCookies';
 import { SectionHeader, AdminTable, Th, Td, Tr, StatusBadge, AdminBtn, SearchInput, Badge, ProgressBar, DaysLeftBadge } from '../components/AdminUI';
 import { ToolEditor } from '../components/ToolEditor';
@@ -26,6 +26,8 @@ import { TicketsInbox } from '../../components/TicketsInbox';
 import { NotesInbox } from '../../components/NotesInbox';
 import { supabase } from '../../lib/db';
 import { deleteNote, deleteNotes, loadNotes, markNoteRead, markNotesRead, noteVisible, sendNotes, type InboxNote } from '../../lib/notifications';
+import { getAdminBannersApi, saveAdminBannersApi, type SiteBannerDto } from '../../lib/settingsApi';
+import { BANNERS_UPDATED_EVENT } from '../../lib/bannerSettings';
 
 const PIE_COLORS = ['#cc1a1a','#dc2626','#f97316','#ef4444','#b91c1c'];
 const Tip = ({active,payload,label}:any) => !active||!payload?.length ? null : (
@@ -39,14 +41,24 @@ const inpCls = 'w-full bg-[#0d0908] border border-[#2a1e1c] focus:border-red-500
 const lblCls = 'text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5';
 
 const ModalShell: React.FC<{ title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean }> = ({ title, onClose, children, footer, wide }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
-    <div className={`w-full ${wide ? 'max-w-lg' : 'max-w-md'} bg-[#130d0d] border border-[#3a2a26] rounded-3xl shadow-2xl`} onClick={e => e.stopPropagation()}>
-      <div className="flex items-center justify-between p-5 border-b border-[#2a1e1c]">
+  <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center px-0 sm:px-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className={`w-full ${wide ? 'max-w-lg' : 'max-w-md'} bg-[#130d0d] border border-[#3a2a26] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]`}
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between p-5 border-b border-[#2a1e1c] shrink-0">
         <h3 className="text-base font-extrabold text-white">{title}</h3>
         <button onClick={onClose} className="p-2 hover:bg-[#1a1210] rounded-xl text-slate-400 hover:text-white cursor-pointer"><X className="w-4 h-4"/></button>
       </div>
-      <div className="p-5">{children}</div>
-      {footer && <div className="p-5 border-t border-[#2a1e1c] flex gap-2 justify-end">{footer}</div>}
+      <div className="p-5 overflow-y-auto flex-1 min-h-0">{children}</div>
+      {footer && (
+        <div
+          className="p-5 border-t border-[#2a1e1c] flex gap-2 justify-end shrink-0 bg-[#130d0d]"
+          style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 72px), 20px)' }}
+        >
+          {footer}
+        </div>
+      )}
     </div>
   </div>
 );
@@ -103,11 +115,13 @@ const AddMemberModal: React.FC<{ onClose: () => void; onSaved: () => void }> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-black/80 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-md bg-[#130d0d] border border-[#3a2a26] rounded-3xl shadow-2xl my-auto"
-        style={{ boxShadow: '0 0 60px rgba(204,26,26,0.15)' }} onClick={e => e.stopPropagation()}>
-
-        <div className="flex items-start justify-between p-5 border-b border-[#2a1e1c]">
+    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center px-0 sm:px-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-md bg-[#130d0d] border border-[#3a2a26] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]"
+        style={{ boxShadow: '0 0 60px rgba(204,26,26,0.15)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between p-5 border-b border-[#2a1e1c] shrink-0">
           <div>
             <h3 className="text-xl font-black text-white">Add New Member</h3>
             <p className="text-xs text-slate-400 mt-0.5">Create an account and assign a plan</p>
@@ -118,7 +132,7 @@ const AddMemberModal: React.FC<{ onClose: () => void; onSaved: () => void }> = (
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
           {error && (
             <div className="bg-red-900/30 border border-red-500/40 rounded-xl px-3 py-2 text-xs text-red-300">{error}</div>
           )}
@@ -182,7 +196,10 @@ const AddMemberModal: React.FC<{ onClose: () => void; onSaved: () => void }> = (
           </div>
         </div>
 
-        <div className="p-5 border-t border-[#2a1e1c] flex gap-2 justify-end">
+        <div
+          className="p-5 border-t border-[#2a1e1c] flex gap-2 justify-end shrink-0 bg-[#130d0d]"
+          style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 72px), 20px)' }}
+        >
           <button onClick={onClose}
             className="px-5 py-2.5 bg-[#1a1210] hover:bg-[#231a18] border border-[#3a2a26] text-slate-300 hover:text-white text-sm font-bold rounded-xl transition cursor-pointer">
             Cancel
@@ -1781,20 +1798,56 @@ export const SettingsPage: React.FC = () => {
 
 /* ══ BANNERS ══ */
 export const BannersPage: React.FC = () => {
-  const [,r]=useState(0); const refresh=()=>r(n=>n+1);
-  const [form,setForm]=useState({imageUrl:'',link:'',active:true});
-  const [showForm,setShowForm]=useState(false);
-  const [uploadMode,setUploadMode]=useState<'url'|'file'>('url');
-  const [uploading,setUploading]=useState(false);
+  const [banners, setBanners] = useState<SiteBannerDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ imageUrl: '', link: '', active: true });
+  const [showForm, setShowForm] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'url' | 'file'>('url');
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
-  const banners = bannerDb.get();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await getAdminBannersApi();
+      setBanners(Array.isArray(data.banners) ? data.banners : []);
+    } catch (err: any) {
+      setError(err?.message || 'Could not load banners');
+      setBanners([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const persist = async (next: SiteBannerDto[]) => {
+    setSaving(true);
+    setError('');
+    try {
+      const data = await saveAdminBannersApi(next);
+      const saved = Array.isArray(data.banners) ? data.banners : next;
+      setBanners(saved);
+      window.dispatchEvent(new CustomEvent(BANNERS_UPDATED_EVENT, { detail: saved }));
+    } catch (err: any) {
+      setError(err?.message || 'Could not save banners');
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = ev => {
       const dataUrl = ev.target?.result as string;
       setForm(p => ({ ...p, imageUrl: dataUrl }));
       setUploading(false);
@@ -1802,44 +1855,79 @@ export const BannersPage: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleAdd = () => {
-    if (!form.imageUrl.trim()) { alert('Please add an image URL or upload a file'); return; }
-    bannerDb.add({ ...form, order: banners.length });
-    // Trigger storage event so homepage picks it up live
-    window.dispatchEvent(new Event('focus'));
-    setForm({ imageUrl:'', link:'', active:true });
-    setUploadMode('url');
-    setShowForm(false);
-    refresh();
+  const handleAdd = async () => {
+    if (!form.imageUrl.trim()) {
+      alert('Please add an image URL or upload a file');
+      return;
+    }
+    const next: SiteBannerDto[] = [
+      ...banners,
+      {
+        id: `BNR${Date.now()}`,
+        imageUrl: form.imageUrl.trim(),
+        link: form.link.trim(),
+        active: form.active !== false,
+        order: banners.length,
+      },
+    ];
+    try {
+      await persist(next);
+      setForm({ imageUrl: '', link: '', active: true });
+      setUploadMode('url');
+      setShowForm(false);
+    } catch {
+      /* error already set */
+    }
   };
 
-  const handleToggle = (b: any) => {
-    bannerDb.update(b.id, { active: !b.active });
-    window.dispatchEvent(new Event('focus'));
-    refresh();
+  const handleToggle = async (b: SiteBannerDto) => {
+    const next = banners.map(x => (x.id === b.id ? { ...x, active: !x.active } : x));
+    try {
+      await persist(next);
+    } catch {
+      /* error already set */
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Delete this banner?')) return;
-    bannerDb.remove(id);
-    window.dispatchEvent(new Event('focus'));
-    refresh();
+    const next = banners.filter(b => b.id !== id).map((b, i) => ({ ...b, order: i }));
+    try {
+      await persist(next);
+    } catch {
+      /* error already set */
+    }
   };
 
   return (
     <div className="space-y-5">
-      <SectionHeader title="Banner Management" sub="Banners appear full-width below the hero on the home page. Multiple banners auto-slide every 5s."
-        action={<AdminBtn variant="red" onClick={()=>setShowForm(!showForm)}><Plus className="w-3 h-3"/> Add Banner</AdminBtn>}/>
+      <SectionHeader
+        title="Banner Management"
+        sub="Banners appear full-width below the hero on the public home page. Multiple banners auto-slide every 5s."
+        action={
+          <AdminBtn variant="red" onClick={() => setShowForm(!showForm)}>
+            <Plus className="w-3 h-3" /> Add Banner
+          </AdminBtn>
+        }
+      />
+
+      {error && (
+        <div className="bg-red-900/30 border border-red-500/40 rounded-xl px-3 py-2 text-xs text-red-300">{error}</div>
+      )}
+      {saving && <div className="text-xs text-slate-400">Saving banners…</div>}
+      {loading && <div className="text-xs text-slate-500">Loading banners…</div>}
 
       {showForm && (
         <div className="bg-[#130d0d] border border-[#2a1e1c] rounded-2xl p-5 space-y-4">
           <h3 className="text-sm font-bold text-white">New Banner</h3>
 
-          {/* Mode toggle */}
           <div className="flex gap-2">
-            {(['url','file'] as const).map(m => (
-              <button key={m} onClick={()=>setUploadMode(m)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${uploadMode===m?'bg-red-600 text-white':'bg-[#1a1210] border border-[#2a1e1c] text-slate-400 hover:text-white'}`}>
+            {(['url', 'file'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setUploadMode(m)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${uploadMode === m ? 'bg-red-600 text-white' : 'bg-[#1a1210] border border-[#2a1e1c] text-slate-400 hover:text-white'}`}
+              >
                 {m === 'url' ? '🔗 Paste URL' : '📁 Upload from Device'}
               </button>
             ))}
@@ -1849,78 +1937,133 @@ export const BannersPage: React.FC = () => {
             {uploadMode === 'url' ? (
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Image URL *</label>
-                <input value={form.imageUrl} onChange={e=>setForm(p=>({...p,imageUrl:e.target.value}))}
+                <input
+                  value={form.imageUrl}
+                  onChange={e => setForm(p => ({ ...p, imageUrl: e.target.value }))}
                   placeholder="https://example.com/banner.jpg"
-                  className="w-full bg-[#0d0908] border border-[#2a1e1c] focus:border-red-500/60 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none transition"/>
+                  className="w-full bg-[#0d0908] border border-[#2a1e1c] focus:border-red-500/60 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none transition"
+                />
               </div>
             ) : (
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Upload Image *</label>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload}/>
-                <button onClick={()=>fileRef.current?.click()}
-                  className="w-full border-2 border-dashed border-[#3a2a26] hover:border-red-500/40 rounded-xl h-24 flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-slate-300 transition cursor-pointer">
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="w-full border-2 border-dashed border-[#3a2a26] hover:border-red-500/40 rounded-xl h-24 flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-slate-300 transition cursor-pointer"
+                >
                   {uploading ? (
-                    <><div className="w-5 h-5 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin"/><span className="text-xs">Processing…</span></>
-                  ) : form.imageUrl && uploadMode==='file' ? (
-                    <><span className="text-emerald-400 text-xs font-bold">✓ Image loaded — click to change</span></>
+                    <>
+                      <div className="w-5 h-5 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
+                      <span className="text-xs">Processing…</span>
+                    </>
+                  ) : form.imageUrl && uploadMode === 'file' ? (
+                    <span className="text-emerald-400 text-xs font-bold">✓ Image loaded — click to change</span>
                   ) : (
-                    <><span className="text-2xl">📂</span><span className="text-xs">Click to choose from gallery / device</span><span className="text-[10px] text-slate-600">JPG, PNG, GIF, WebP</span></>
+                    <>
+                      <span className="text-2xl">📂</span>
+                      <span className="text-xs">Click to choose from gallery / device</span>
+                      <span className="text-[10px] text-slate-600">JPG, PNG, GIF, WebP</span>
+                    </>
                   )}
                 </button>
               </div>
             )}
 
-            {/* Preview */}
             {form.imageUrl && (
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Preview</label>
-                <img src={form.imageUrl} alt="preview" className="w-full max-h-40 object-cover rounded-xl border border-[#2a1e1c]"
-                  onError={e=>(e.currentTarget.style.display='none')}/>
+                <img
+                  src={form.imageUrl}
+                  alt="preview"
+                  className="w-full max-h-40 object-cover rounded-xl border border-[#2a1e1c]"
+                  onError={e => (e.currentTarget.style.display = 'none')}
+                />
               </div>
             )}
 
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Click Link (optional — where banner takes user when clicked)</label>
-              <input value={form.link} onChange={e=>setForm(p=>({...p,link:e.target.value}))}
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                Click Link (optional — where banner takes user when clicked)
+              </label>
+              <input
+                value={form.link}
+                onChange={e => setForm(p => ({ ...p, link: e.target.value }))}
                 placeholder="https://yoursite.com/plans"
-                className="w-full bg-[#0d0908] border border-[#2a1e1c] focus:border-red-500/60 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none transition"/>
+                className="w-full bg-[#0d0908] border border-[#2a1e1c] focus:border-red-500/60 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none transition"
+              />
             </div>
 
             <div className="flex gap-2">
-              <AdminBtn variant="red" onClick={handleAdd} disabled={uploading}>
-                {uploading ? 'Processing…' : 'Add Banner to Site'}
+              <AdminBtn variant="red" onClick={() => void handleAdd()} disabled={uploading || saving}>
+                {uploading || saving ? 'Saving…' : 'Add Banner to Site'}
               </AdminBtn>
-              <AdminBtn onClick={()=>{setShowForm(false);setForm({imageUrl:'',link:'',active:true});setUploadMode('url');}}>Cancel</AdminBtn>
+              <AdminBtn
+                onClick={() => {
+                  setShowForm(false);
+                  setForm({ imageUrl: '', link: '', active: true });
+                  setUploadMode('url');
+                }}
+              >
+                Cancel
+              </AdminBtn>
             </div>
           </div>
         </div>
       )}
 
-      {!banners.length && !showForm && (
+      {!loading && !banners.length && !showForm && (
         <div className="text-center py-16 bg-[#130d0d] border border-[#2a1e1c] rounded-2xl text-slate-600 text-sm space-y-2">
-          <div className="text-4xl">🖼️</div><p>No banners yet. Click "Add Banner" above.</p>
+          <div className="text-4xl">🖼️</div>
+          <p>No banners yet. Click "Add Banner" above.</p>
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-4">
-        {banners.map((b:any)=>(
+        {banners.map(b => (
           <div key={b.id} className="bg-[#130d0d] border border-[#2a1e1c] rounded-2xl overflow-hidden">
-            <img src={b.imageUrl} alt="banner" className="w-full max-h-48 object-cover"
-              onError={e=>(e.currentTarget.style.display='none')}/>
+            <img
+              src={b.imageUrl}
+              alt="banner"
+              className="w-full max-h-48 object-cover"
+              onError={e => (e.currentTarget.style.display = 'none')}
+            />
             <div className="p-4 flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="text-[10px] text-slate-500 uppercase tracking-wider">
-                  {b.imageUrl.startsWith('data:') ? '📁 Uploaded file' : '🔗 ' + b.imageUrl.slice(0,50) + '…'}
+                  {b.imageUrl.startsWith('data:')
+                    ? '📁 Uploaded file'
+                    : '🔗 ' + b.imageUrl.slice(0, 50) + '…'}
                 </div>
-                {b.link ? <a href={b.link} target="_blank" rel="noopener noreferrer" className="text-xs text-red-400 hover:text-red-300 truncate block">→ {b.link}</a>
-                  : <span className="text-xs text-slate-600">No click link</span>}
+                {b.link ? (
+                  <a
+                    href={b.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-red-400 hover:text-red-300 truncate block"
+                  >
+                    → {b.link}
+                  </a>
+                ) : (
+                  <span className="text-xs text-slate-600">No click link</span>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button onClick={()=>handleToggle(b)} className="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-xl border transition"
-                  style={b.active?{background:'#16a34a22',color:'#4ade80',borderColor:'#16a34a44'}:{background:'#1a1210',color:'#666',borderColor:'#2a1e1c'}}>
+                <button
+                  onClick={() => void handleToggle(b)}
+                  disabled={saving}
+                  className="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-xl border transition disabled:opacity-50"
+                  style={
+                    b.active
+                      ? { background: '#16a34a22', color: '#4ade80', borderColor: '#16a34a44' }
+                      : { background: '#1a1210', color: '#666', borderColor: '#2a1e1c' }
+                  }
+                >
                   {b.active ? '● Active' : '○ Hidden'}
                 </button>
-                <AdminBtn variant="red" onClick={()=>handleDelete(b.id)}><Trash2 className="w-3 h-3"/></AdminBtn>
+                <AdminBtn variant="red" onClick={() => void handleDelete(b.id)}>
+                  <Trash2 className="w-3 h-3" />
+                </AdminBtn>
               </div>
             </div>
           </div>

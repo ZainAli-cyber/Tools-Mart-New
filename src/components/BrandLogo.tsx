@@ -59,7 +59,7 @@ export function useBranding(): BrandingSettings {
   return branding;
 }
 
-export type BrandLogoVariant = 'website' | 'app' | 'invoice';
+export type BrandLogoVariant = 'website' | 'app' | 'invoice' | 'invoiceFooter';
 
 type BrandLogoProps = {
   variant?: BrandLogoVariant;
@@ -84,14 +84,18 @@ export function BrandLogo({
       ? branding.appLogoUrl
       : variant === 'invoice'
         ? branding.invoiceLogoUrl
-        : branding.websiteLogoUrl;
+        : variant === 'invoiceFooter'
+          ? branding.invoiceFooterLogoUrl
+          : branding.websiteLogoUrl;
   const h =
     height ??
     (variant === 'app'
       ? branding.appLogoHeight
       : variant === 'invoice'
         ? branding.invoiceLogoHeight
-        : branding.websiteLogoHeight);
+        : variant === 'invoiceFooter'
+          ? branding.invoiceFooterLogoHeight
+          : branding.websiteLogoHeight);
 
   return (
     <img

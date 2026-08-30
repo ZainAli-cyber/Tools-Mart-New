@@ -22,6 +22,8 @@ interface Props {
   ownerName: string;
   /** Seller's own max_devices — ceiling for member limits. */
   ownerMaxDevices?: number;
+  /** Tools admin assigned to this reseller — only these can be sold. */
+  ownerTools?: string[];
   members: ResellerMember[];
   payments?: ResellerPayment[];
   onReload: () => void;
@@ -155,7 +157,13 @@ const MemberActionsMenu: React.FC<{
 };
 
 /* ── Add member ── */
-const AddMemberModal: React.FC<{ ownerId: string; ownerName: string; onClose: () => void; onSaved: () => void }> = ({ ownerId, ownerName, onClose, onSaved }) => {
+const AddMemberModal: React.FC<{
+  ownerId: string;
+  ownerName: string;
+  ownerTools: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}> = ({ ownerId, ownerName, ownerTools, onClose, onSaved }) => {
   const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', plan: '' });
   const [customName, setCustomName] = useState('');
   const [fee, setFee] = useState(0);
@@ -164,6 +172,8 @@ const AddMemberModal: React.FC<{ ownerId: string; ownerName: string; onClose: ()
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const allTools = useCatalogTools();
+  const allowed = new Set((ownerTools || []).map(t => String(t).trim().toLowerCase()).filter(Boolean));
+  const assignable = allTools.filter(t => allowed.has(String(t.name).trim().toLowerCase()));
 
   const set = (k: string, v: string) => { setForm(f => ({ ...f, [k]: v })); setError(''); };
   const pickPlan = (value: string) => {
@@ -185,6 +195,7 @@ const AddMemberModal: React.FC<{ ownerId: string; ownerName: string; onClose: ()
 
     setSaving(true);
     const join = today();
+    const clampedTools = tools.filter(n => allowed.has(String(n).trim().toLowerCase()));
     try {
       await createAccount({
         name: form.name.trim(),
@@ -196,7 +207,7 @@ const AddMemberModal: React.FC<{ ownerId: string; ownerName: string; onClose: ()
         fee,
         planDays: days,
         expiry: planExpiryDate(join, days),
-        tools,
+        tools: clampedTools,
       });
     } catch (error: any) {
       setSaving(false);
@@ -248,9 +259,12 @@ const AddMemberModal: React.FC<{ ownerId: string; ownerName: string; onClose: ()
 
         <div>
           <label className={lblCls}>Assign Tools</label>
+          <p className="text-[10px] text-slate-500 mb-1.5">Only tools assigned to you by admin can be sold.</p>
           <div className="bg-[#0d0908] border border-[#2a1e1c] rounded-xl p-3 max-h-40 overflow-y-auto space-y-2">
-            {allTools.length === 0 && <p className="text-xs text-slate-600">No tools available</p>}
-            {allTools.map(t => (
+            {assignable.length === 0 && (
+              <p className="text-xs text-slate-600">No tools available. Ask admin to assign tools to your seller account.</p>
+            )}
+            {assignable.map(t => (
               <label key={t.id} className="flex items-center gap-2 text-sm text-slate-300 hover:text-white cursor-pointer">
                 <input type="checkbox" checked={tools.includes(t.name)} onChange={() => toggleTool(t.name)}
                   className="w-4 h-4 rounded border-[#3a2a26] bg-[#1a1210] accent-red-600 cursor-pointer" />
@@ -360,23 +374,38 @@ const PlanModal: React.FC<{ ownerId: string; member: ResellerMember; onClose: ()
 };
 
 /* ── Tools ── */
-const ToolsModal: React.FC<{ member: ResellerMember; onClose: () => void; onSaved: () => void }> = ({ member, onClose, onSaved }) => {
+const ToolsModal: React.FC<{
+  member: ResellerMember;
+  ownerTools: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}> = ({ member, ownerTools, onClose, onSaved }) => {
   const allTools = useCatalogTools();
-  const [selected, setSelected] = useState<string[]>(Array.isArray(member.tools) ? member.tools : []);
+  const allowed = new Set((ownerTools || []).map(t => String(t).trim().toLowerCase()).filter(Boolean));
+  const assignable = allTools.filter(t => allowed.has(String(t.name).trim().toLowerCase()));
+  const [selected, setSelected] = useState<string[]>(
+    (Array.isArray(member.tools) ? member.tools : []).filter(n =>
+      allowed.has(String(n).trim().toLowerCase()),
+    ),
+  );
   const [saving, setSaving] = useState(false);
   const toggle = (n: string) => setSelected(s => s.includes(n) ? s.filter(x => x !== n) : [...s, n]);
 
   const save = async () => {
     setSaving(true);
-    await supabase.from('customers').update({ tools: selected }).eq('id', member.id);
+    const clamped = selected.filter(n => allowed.has(String(n).trim().toLowerCase()));
+    await supabase.from('customers').update({ tools: clamped }).eq('id', member.id);
     setSaving(false); onSaved(); onClose();
   };
 
   return (
-    <RModal title={`Tools Access — ${member.name}`} sub={`${selected.length} tool(s) selected`} onClose={onClose}
+    <RModal title={`Tools Access — ${member.name}`} sub={`${selected.length} tool(s) selected · only your assigned tools`} onClose={onClose}
       footer={<><GhostBtn onClick={onClose}>Cancel</GhostBtn><RedBtn onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Tools'}</RedBtn></>}>
       <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto">
-        {allTools.map(t => (
+        {assignable.length === 0 && (
+          <p className="col-span-2 text-xs text-slate-600">No tools available. Ask admin to assign tools to your seller account.</p>
+        )}
+        {assignable.map(t => (
           <button key={t.id} type="button" onClick={() => toggle(t.name)}
             className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left text-xs font-semibold transition cursor-pointer ${
               selected.includes(t.name) ? 'bg-red-600/20 border-red-500/40 text-red-300' : 'bg-[#0d0908] border-[#2a1e1c] text-slate-400 hover:text-white'
@@ -390,7 +419,15 @@ const ToolsModal: React.FC<{ member: ResellerMember; onClose: () => void; onSave
   );
 };
 
-export const MyMembersPage: React.FC<Props> = ({ ownerId, ownerName, ownerMaxDevices = 1, members, payments = [], onReload }) => {
+export const MyMembersPage: React.FC<Props> = ({
+  ownerId,
+  ownerName,
+  ownerMaxDevices = 1,
+  ownerTools = [],
+  members,
+  payments = [],
+  onReload,
+}) => {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
@@ -533,7 +570,15 @@ export const MyMembersPage: React.FC<Props> = ({ ownerId, ownerName, ownerMaxDev
         </div>
       </div>
 
-      {showAdd && <AddMemberModal ownerId={ownerId} ownerName={ownerName} onClose={() => setShowAdd(false)} onSaved={onReload} />}
+      {showAdd && (
+        <AddMemberModal
+          ownerId={ownerId}
+          ownerName={ownerName}
+          ownerTools={ownerTools}
+          onClose={() => setShowAdd(false)}
+          onSaved={onReload}
+        />
+      )}
       {editTarget && (
         <RModal title="Edit Member" sub="Unique ID and email stay locked" onClose={() => setEditTarget(null)}>
           <AccountProfileForm
@@ -573,7 +618,14 @@ export const MyMembersPage: React.FC<Props> = ({ ownerId, ownerName, ownerMaxDev
       )}
       {renewTarget && <RenewModal ownerId={ownerId} member={renewTarget} onClose={() => setRenewTarget(null)} onSaved={onReload} />}
       {planTarget && <PlanModal ownerId={ownerId} member={planTarget} onClose={() => setPlanTarget(null)} onSaved={onReload} />}
-      {toolsTarget && <ToolsModal member={toolsTarget} onClose={() => setToolsTarget(null)} onSaved={onReload} />}
+      {toolsTarget && (
+        <ToolsModal
+          member={toolsTarget}
+          ownerTools={ownerTools}
+          onClose={() => setToolsTarget(null)}
+          onSaved={onReload}
+        />
+      )}
       {invoiceTarget && (
         <InvoiceModal order={invoiceTarget} onClose={() => setInvoiceTarget(null)} />
       )}

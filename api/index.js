@@ -1999,6 +1999,17 @@ router2.post("/", async (req, res) => {
     const assignedRole = current.role === "admin" && ["admin", "reseller", "user"].includes(role) ? role : "user";
     const ownerId = current.role === "reseller" ? current.id : null;
     const { admin } = clients();
+    let allowedTools = Array.isArray(tools) ? tools : [];
+    if (current.role === "reseller") {
+      const { data: seller } = await admin.from("customers").select("tools").eq("id", current.id).maybeSingle();
+      const sellerTools = Array.isArray(seller?.tools) ? seller.tools : [];
+      const allowed = new Set(
+        sellerTools.map((t) => String(t || "").trim().toLowerCase()).filter(Boolean)
+      );
+      allowedTools = (Array.isArray(tools) ? tools : []).filter(
+        (t) => allowed.has(String(t || "").trim().toLowerCase())
+      );
+    }
     const { data: created, error: authError } = await admin.auth.admin.createUser({
       email: email.trim().toLowerCase(),
       password,
@@ -2020,7 +2031,7 @@ router2.post("/", async (req, res) => {
       plan_days: Number(planDays) || 0,
       expiry: expiry || null,
       owner_id: ownerId,
-      tools: Array.isArray(tools) ? tools : [],
+      tools: allowedTools,
       total_orders: 0,
       total_spend: Number(fee) || 0,
       notes: ownerId ? "Created by reseller" : "Created by administrator"
@@ -5125,7 +5136,9 @@ var DEFAULT_BRANDING = {
   appLogoUrl: "/app-logo.png",
   appLogoHeight: 36,
   invoiceLogoUrl: "/app-logo.png",
-  invoiceLogoHeight: 56
+  invoiceLogoHeight: 56,
+  invoiceFooterLogoUrl: "/app-logo.png",
+  invoiceFooterLogoHeight: 36
 };
 var CACHE_MS3 = 2e4;
 var cache3 = null;
@@ -5155,7 +5168,15 @@ function normalizeBranding(input) {
     appLogoUrl: asUrl(src.appLogoUrl, DEFAULT_BRANDING.appLogoUrl),
     appLogoHeight: clampHeight(src.appLogoHeight, DEFAULT_BRANDING.appLogoHeight),
     invoiceLogoUrl: asUrl(src.invoiceLogoUrl, DEFAULT_BRANDING.invoiceLogoUrl),
-    invoiceLogoHeight: clampHeight(src.invoiceLogoHeight, DEFAULT_BRANDING.invoiceLogoHeight)
+    invoiceLogoHeight: clampHeight(src.invoiceLogoHeight, DEFAULT_BRANDING.invoiceLogoHeight),
+    invoiceFooterLogoUrl: asUrl(
+      src.invoiceFooterLogoUrl || src.invoiceLogoUrl,
+      DEFAULT_BRANDING.invoiceFooterLogoUrl
+    ),
+    invoiceFooterLogoHeight: clampHeight(
+      src.invoiceFooterLogoHeight,
+      DEFAULT_BRANDING.invoiceFooterLogoHeight
+    )
   };
 }
 function parseStored(value) {
@@ -5426,6 +5447,89 @@ async function setColorSchemeSettings(input, admin) {
   return next;
 }
 
+// src/lib/bannerSettings.ts
+init_db();
+var BANNERS_SETTINGS_KEY = "site_banners";
+var CACHE_MS5 = 15e3;
+var cache5 = null;
+function serviceClient6() {
+  return createPrivilegedSupabase();
+}
+function isAppSettingsMissing6(message) {
+  return /app_settings|does not exist|schema cache|Could not find the table/i.test(String(message || ""));
+}
+function normalizeBanner(raw, index) {
+  if (!raw || typeof raw !== "object") return null;
+  const imageUrl = String(raw.imageUrl || raw.image_url || "").trim();
+  if (!imageUrl) return null;
+  return {
+    id: String(raw.id || `BNR${Date.now()}-${index}`),
+    imageUrl,
+    link: String(raw.link || "").trim(),
+    active: raw.active !== false,
+    order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : index
+  };
+}
+function normalizeBanners(input) {
+  const list = Array.isArray(input) ? input : [];
+  return list.map((item, i) => normalizeBanner(item, i)).filter((b) => Boolean(b)).sort((a, b) => a.order - b.order);
+}
+function parseStored3(value) {
+  if (!value) return [];
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  return value;
+}
+async function getSiteBanners(admin) {
+  const now = Date.now();
+  if (cache5 && now - cache5.at < CACHE_MS5 && !cache5.setupRequired) {
+    return { banners: cache5.value };
+  }
+  try {
+    const db2 = admin || serviceClient6();
+    const { data, error } = await db2.from("app_settings").select("value").eq("key", BANNERS_SETTINGS_KEY).maybeSingle();
+    if (error) {
+      const setupRequired = isAppSettingsMissing6(error.message);
+      cache5 = { value: [], at: now, setupRequired };
+      return { banners: [], setupRequired: setupRequired || void 0 };
+    }
+    const banners = normalizeBanners(parseStored3(data?.value));
+    cache5 = { value: banners, at: now };
+    return { banners };
+  } catch (err) {
+    const setupRequired = isAppSettingsMissing6(err?.message);
+    cache5 = { value: [], at: now, setupRequired };
+    return { banners: [], setupRequired: setupRequired || void 0 };
+  }
+}
+async function setSiteBanners(input, admin) {
+  const db2 = admin || serviceClient6();
+  const next = normalizeBanners(input).map((b, i) => ({ ...b, order: i }));
+  const { error } = await db2.from("app_settings").upsert(
+    {
+      key: BANNERS_SETTINGS_KEY,
+      value: next,
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    { onConflict: "key" }
+  );
+  if (error) {
+    if (isAppSettingsMissing6(error.message)) {
+      throw new Error(
+        "Run supabase_device_limits_toggle.sql (creates app_settings) in Supabase, then try again."
+      );
+    }
+    throw new Error(error.message);
+  }
+  cache5 = { value: next, at: Date.now() };
+  return next;
+}
+
 // src/lib/settingsRoutes.ts
 var router7 = Router7();
 function clients4() {
@@ -5637,6 +5741,46 @@ router7.patch("/colors", async (req, res) => {
     return res.json({ ok: true, scheme });
   } catch (error) {
     const message = error?.message || "Could not save color scheme";
+    const setup = /app_settings|supabase_device_limits/i.test(message);
+    return res.status(setup ? 503 : 500).json({ error: message });
+  }
+});
+router7.get("/banners", async (req, res) => {
+  try {
+    const { admin } = clients4();
+    const result = await getSiteBanners(admin);
+    const wantAll = String(req.query.all || "") === "1";
+    if (wantAll) {
+      const current = await actor4(req);
+      if (!current || current.role !== "admin") {
+        return res.status(403).json({ error: "Admin only" });
+      }
+      return res.json({
+        ok: true,
+        banners: result.banners,
+        ...result.setupRequired ? { setupRequired: true } : {}
+      });
+    }
+    return res.json({
+      ok: true,
+      banners: result.banners.filter((b) => b.active),
+      ...result.setupRequired ? { setupRequired: true } : {}
+    });
+  } catch {
+    return res.json({ ok: true, banners: normalizeBanners([]) });
+  }
+});
+router7.put("/banners", async (req, res) => {
+  try {
+    const current = await actor4(req);
+    if (!current) return res.status(401).json({ error: "Not authorized" });
+    if (current.role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const { admin } = clients4();
+    const list = Array.isArray(req.body?.banners) ? req.body.banners : req.body;
+    const banners = await setSiteBanners(Array.isArray(list) ? list : [], admin);
+    return res.json({ ok: true, banners });
+  } catch (error) {
+    const message = error?.message || "Could not save banners";
     const setup = /app_settings|supabase_device_limits/i.test(message);
     return res.status(setup ? 503 : 500).json({ error: message });
   }

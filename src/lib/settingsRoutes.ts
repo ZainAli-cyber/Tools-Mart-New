@@ -16,6 +16,7 @@ import {
   setColorSchemeSettings,
   normalizeColorScheme,
 } from './colorSchemeSettings';
+import { getSiteBanners, setSiteBanners, normalizeBanners } from './bannerSettings';
 
 const router = Router();
 
@@ -259,6 +260,50 @@ router.patch('/colors', async (req, res) => {
     return res.json({ ok: true, scheme });
   } catch (error: any) {
     const message = error?.message || 'Could not save color scheme';
+    const setup = /app_settings|supabase_device_limits/i.test(message);
+    return res.status(setup ? 503 : 500).json({ error: message });
+  }
+});
+
+/** GET /api/settings/banners — public active banners; ?all=1 admin list */
+router.get('/banners', async (req, res) => {
+  try {
+    const { admin } = clients();
+    const result = await getSiteBanners(admin);
+    const wantAll = String(req.query.all || '') === '1';
+    if (wantAll) {
+      const current = await actor(req);
+      if (!current || current.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin only' });
+      }
+      return res.json({
+        ok: true,
+        banners: result.banners,
+        ...(result.setupRequired ? { setupRequired: true } : {}),
+      });
+    }
+    return res.json({
+      ok: true,
+      banners: result.banners.filter(b => b.active),
+      ...(result.setupRequired ? { setupRequired: true } : {}),
+    });
+  } catch {
+    return res.json({ ok: true, banners: normalizeBanners([]) });
+  }
+});
+
+/** PUT /api/settings/banners — admin only (replace full list) */
+router.put('/banners', async (req, res) => {
+  try {
+    const current = await actor(req);
+    if (!current) return res.status(401).json({ error: 'Not authorized' });
+    if (current.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const { admin } = clients();
+    const list = Array.isArray(req.body?.banners) ? req.body.banners : req.body;
+    const banners = await setSiteBanners(Array.isArray(list) ? list : [], admin);
+    return res.json({ ok: true, banners });
+  } catch (error: any) {
+    const message = error?.message || 'Could not save banners';
     const setup = /app_settings|supabase_device_limits/i.test(message);
     return res.status(setup ? 503 : 500).json({ error: message });
   }

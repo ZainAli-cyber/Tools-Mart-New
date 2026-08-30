@@ -7,25 +7,41 @@ import { HERO_TICKER_TOOLS } from '../data/groupBuyTools';
 import { loadTools } from '../data/toolStore';
 import { nameToId, type Tool } from '../admin/data/adminStore';
 import { loadCatalogTools } from '../lib/toolCookies';
+import { getPublicBannersApi } from '../lib/settingsApi';
+import { BANNERS_UPDATED_EVENT } from '../lib/bannerSettings';
 
 /* ── Banner Slider ── */
 const BannerSection: React.FC = () => {
   const [banners, setBanners] = useState<any[]>([]);
   const [idx, setIdx] = useState(0);
 
-  // Re-read from localStorage every time component mounts or window gains focus
   const load = () => {
-    try {
-      const raw = localStorage.getItem('atm_banners');
-      const all = raw ? JSON.parse(raw) : [];
-      setBanners(all.filter((b: any) => b.active));
-    } catch { setBanners([]); }
+    void getPublicBannersApi()
+      .then(data => {
+        const list = Array.isArray(data.banners) ? data.banners.filter((b: any) => b.active !== false) : [];
+        setBanners(list);
+        setIdx(0);
+      })
+      .catch(() => setBanners([]));
   };
 
   useEffect(() => {
     load();
+    const onUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (Array.isArray(detail)) {
+        setBanners(detail.filter((b: any) => b.active !== false));
+        setIdx(0);
+        return;
+      }
+      load();
+    };
     window.addEventListener('focus', load);
-    return () => window.removeEventListener('focus', load);
+    window.addEventListener(BANNERS_UPDATED_EVENT, onUpdate);
+    return () => {
+      window.removeEventListener('focus', load);
+      window.removeEventListener(BANNERS_UPDATED_EVENT, onUpdate);
+    };
   }, []);
 
   useEffect(() => {

@@ -106,6 +106,8 @@ export type BrandingSettingsDto = {
   appLogoHeight: number;
   invoiceLogoUrl: string;
   invoiceLogoHeight: number;
+  invoiceFooterLogoUrl: string;
+  invoiceFooterLogoHeight: number;
 };
 
 export function getBrandingSettingsApi() {
@@ -122,6 +124,38 @@ export function saveBrandingSettingsApi(branding: Partial<BrandingSettingsDto>) 
     method: 'PATCH',
     body: JSON.stringify({ branding }),
   }) as Promise<{ ok?: boolean; branding: BrandingSettingsDto }>;
+}
+
+export type SiteBannerDto = {
+  id: string;
+  imageUrl: string;
+  link: string;
+  active: boolean;
+  order: number;
+};
+
+export function getPublicBannersApi() {
+  return fetch('/api/settings/banners')
+    .then(async res => {
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Could not load banners');
+      return body as { ok?: boolean; banners: SiteBannerDto[] };
+    });
+}
+
+export function getAdminBannersApi() {
+  return authorizedFetch('/api/settings/banners?all=1') as Promise<{
+    ok?: boolean;
+    banners: SiteBannerDto[];
+    setupRequired?: boolean;
+  }>;
+}
+
+export function saveAdminBannersApi(banners: SiteBannerDto[]) {
+  return authorizedFetch('/api/settings/banners', {
+    method: 'PUT',
+    body: JSON.stringify({ banners }),
+  }) as Promise<{ ok?: boolean; banners: SiteBannerDto[] }>;
 }
 
 export function getColorSchemeSettingsApi() {

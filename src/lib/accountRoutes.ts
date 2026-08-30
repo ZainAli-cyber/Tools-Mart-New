@@ -144,6 +144,23 @@ router.post('/', async (req, res) => {
       : 'user';
     const ownerId = current.role === 'reseller' ? current.id : null;
     const { admin } = clients();
+
+    let allowedTools: string[] = Array.isArray(tools) ? tools : [];
+    if (current.role === 'reseller') {
+      const { data: seller } = await admin
+        .from('customers')
+        .select('tools')
+        .eq('id', current.id)
+        .maybeSingle();
+      const sellerTools = Array.isArray(seller?.tools) ? seller.tools : [];
+      const allowed = new Set(
+        sellerTools.map((t: any) => String(t || '').trim().toLowerCase()).filter(Boolean),
+      );
+      allowedTools = (Array.isArray(tools) ? tools : []).filter((t: any) =>
+        allowed.has(String(t || '').trim().toLowerCase()),
+      );
+    }
+
     const { data: created, error: authError } = await admin.auth.admin.createUser({
       email: email.trim().toLowerCase(),
       password,
@@ -166,7 +183,7 @@ router.post('/', async (req, res) => {
       plan_days: Number(planDays) || 0,
       expiry: expiry || null,
       owner_id: ownerId,
-      tools: Array.isArray(tools) ? tools : [],
+      tools: allowedTools,
       total_orders: 0,
       total_spend: Number(fee) || 0,
       notes: ownerId ? 'Created by reseller' : 'Created by administrator',

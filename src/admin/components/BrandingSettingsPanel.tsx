@@ -8,7 +8,7 @@ import {
 } from '../../lib/brandingSettings';
 import { getBrandingSettingsApi, saveBrandingSettingsApi } from '../../lib/settingsApi';
 
-type SlotKey = 'website' | 'app' | 'invoice';
+type SlotKey = 'website' | 'app' | 'invoice' | 'invoiceFooter';
 
 const SLOTS: {
   key: SlotKey;
@@ -36,11 +36,19 @@ const SLOTS: {
   },
   {
     key: 'invoice',
-    title: 'Invoice logo',
-    hint: 'Shown on PDF / print invoices. Defaults to the app logo.',
+    title: 'Invoice top logo',
+    hint: 'Shown at the top of PDF / print invoices.',
     urlKey: 'invoiceLogoUrl',
     heightKey: 'invoiceLogoHeight',
     defaultUrl: DEFAULT_BRANDING.invoiceLogoUrl,
+  },
+  {
+    key: 'invoiceFooter',
+    title: 'Invoice footer logo',
+    hint: 'Shown at the bottom of PDF / print invoices.',
+    urlKey: 'invoiceFooterLogoUrl',
+    heightKey: 'invoiceFooterLogoHeight',
+    defaultUrl: DEFAULT_BRANDING.invoiceFooterLogoUrl,
   },
 ];
 
@@ -90,6 +98,7 @@ export const BrandingSettingsPanel: React.FC = () => {
     website: null,
     app: null,
     invoice: null,
+    invoiceFooter: null,
   });
 
   useEffect(() => {

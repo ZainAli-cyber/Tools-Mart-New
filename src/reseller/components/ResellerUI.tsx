@@ -82,7 +82,7 @@ export const RModal: React.FC<{
   const fullScreen = isMobileApp();
   if (fullScreen) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg-page)]" role="dialog" aria-modal="true">
+      <div className="fixed inset-0 z-[80] flex flex-col bg-[var(--bg-page)]" role="dialog" aria-modal="true">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-page)] px-4 py-3"
           style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
           <div className="min-w-0">
@@ -94,10 +94,12 @@ export const RModal: React.FC<{
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: 24 }}>{children}</div>
         {footer && (
-          <div className="border-t border-[var(--border-subtle)] px-4 py-3 flex gap-2 justify-end"
-            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}>
+          <div
+            className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-page)] px-4 py-3 flex gap-2 justify-end"
+            style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 72px), 84px)' }}
+          >
             {footer}
           </div>
         )}
@@ -106,7 +108,7 @@ export const RModal: React.FC<{
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-black/80 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-4 py-6 bg-black/80 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-md bg-[var(--bg-surface)] border border-[var(--border)] rounded-3xl shadow-2xl my-auto"
         style={{ boxShadow: '0 0 60px var(--red-glow)' }} onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 border-b border-[var(--border-subtle)]">
@@ -118,8 +120,8 @@ export const RModal: React.FC<{
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-5">{children}</div>
-        {footer && <div className="p-5 border-t border-[var(--border-subtle)] flex gap-2 justify-end">{footer}</div>}
+        <div className="p-5 max-h-[60vh] overflow-y-auto">{children}</div>
+        {footer && <div className="p-5 border-t border-[var(--border-subtle)] flex gap-2 justify-end shrink-0">{footer}</div>}
       </div>
     </div>
   );

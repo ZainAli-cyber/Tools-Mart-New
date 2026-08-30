@@ -5,8 +5,6 @@ export type LaunchToolNativeOptions = {
   cookies?: any[];
   referrer?: string;
   title?: string;
-  /** Force Desktop Chrome layout in the APK tool browser. */
-  forceDesktop?: boolean;
 };
 
 export interface ToolLauncherPlugin {
@@ -46,7 +44,6 @@ export async function launchToolNative(opts: LaunchToolNativeOptions): Promise<v
     cookies: Array.isArray(opts.cookies) ? opts.cookies : [],
     referrer: String(opts.referrer || '').trim() || undefined,
     title: String(opts.title || 'Tool').trim() || 'Tool',
-    forceDesktop: Boolean(opts.forceDesktop),
   });
   if (!result?.ok) throw new Error('Could not open the tool in the mobile browser.');
 }

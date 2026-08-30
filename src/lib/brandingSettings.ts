@@ -9,6 +9,8 @@ export type BrandingSettings = {
   appLogoHeight: number;
   invoiceLogoUrl: string;
   invoiceLogoHeight: number;
+  invoiceFooterLogoUrl: string;
+  invoiceFooterLogoHeight: number;
 };
 
 /** Matches current live sizes (header ~40px, app chrome ~36px, invoice 56px). */
@@ -19,6 +21,8 @@ export const DEFAULT_BRANDING: BrandingSettings = {
   appLogoHeight: 36,
   invoiceLogoUrl: '/app-logo.png',
   invoiceLogoHeight: 56,
+  invoiceFooterLogoUrl: '/app-logo.png',
+  invoiceFooterLogoHeight: 36,
 };
 
 const CACHE_MS = 20_000;
@@ -55,6 +59,14 @@ export function normalizeBranding(input?: Partial<BrandingSettings> | null): Bra
     appLogoHeight: clampHeight(src.appLogoHeight, DEFAULT_BRANDING.appLogoHeight),
     invoiceLogoUrl: asUrl(src.invoiceLogoUrl, DEFAULT_BRANDING.invoiceLogoUrl),
     invoiceLogoHeight: clampHeight(src.invoiceLogoHeight, DEFAULT_BRANDING.invoiceLogoHeight),
+    invoiceFooterLogoUrl: asUrl(
+      src.invoiceFooterLogoUrl || src.invoiceLogoUrl,
+      DEFAULT_BRANDING.invoiceFooterLogoUrl,
+    ),
+    invoiceFooterLogoHeight: clampHeight(
+      src.invoiceFooterLogoHeight,
+      DEFAULT_BRANDING.invoiceFooterLogoHeight,
+    ),
   };
 }
 

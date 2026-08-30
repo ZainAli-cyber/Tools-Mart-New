@@ -232,7 +232,7 @@ export const ResellerApp: React.FC = () => {
   if (section === 'panel' && isReseller && !nativeApp) {
     const renderPanel = () => {
       switch (panelPage) {
-        case 'members':  return <MyMembersPage ownerId={session.id} ownerName={session.name} ownerMaxDevices={self.max_devices} members={members} payments={payments} onReload={load} />;
+        case 'members':  return <MyMembersPage ownerId={session.id} ownerName={session.name} ownerMaxDevices={self.max_devices} ownerTools={self.tools} members={members} payments={payments} onReload={load} />;
         case 'payments': return <PaymentsPage payments={payments} members={members} />;
         case 'invoices': return <InvoicesPage ownerName={session.name} members={members} payments={payments} />;
         case 'notifications':
@@ -442,7 +442,7 @@ export const ResellerApp: React.FC = () => {
                 onOpenSettings={isAdmin ? () => setUserPage('settings') : undefined}
               />
             ) : userPage === 'members' && isReseller ? (
-              <MyMembersPage ownerId={session.id} ownerName={session.name} ownerMaxDevices={self.max_devices} members={members} payments={payments} onReload={load} />
+              <MyMembersPage ownerId={session.id} ownerName={session.name} ownerMaxDevices={self.max_devices} ownerTools={self.tools} members={members} payments={payments} onReload={load} />
             ) : userPage === 'orders' && isAdmin ? (
               <AdminOrdersPage />
             ) : userPage === 'accounts' && isAdmin ? (
