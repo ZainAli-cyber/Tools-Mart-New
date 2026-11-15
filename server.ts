@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import path from 'path';
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { createApiApp } from './src/lib/createApiApp';
 
 async function startServer() {
@@ -9,6 +8,8 @@ async function startServer() {
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   if (process.env.NODE_ENV !== 'production') {
+    // Dev-only: never static-import vite — bundling it into dist/server.cjs crashes Hostinger (Invalid URL).
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {

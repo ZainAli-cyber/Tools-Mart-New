@@ -54,6 +54,7 @@ const pkg = {
   version: '1.0.0',
   description: 'ZynexTools Hostinger Node web app (Express + Vite dist)',
   engines: { node: '>=20' },
+  main: 'dist/server.cjs',
   scripts: {
     start: 'node dist/server.cjs',
   },
@@ -72,6 +73,15 @@ const pkg = {
 };
 
 fs.writeFileSync(path.join(outDir, 'package.json'), JSON.stringify(pkg, null, 2));
+// Hostinger Express default looks for index.js / server.js at root.
+fs.writeFileSync(
+  path.join(outDir, 'index.js'),
+  "require('./dist/server.cjs');\n",
+);
+fs.writeFileSync(
+  path.join(outDir, 'server.js'),
+  "require('./dist/server.cjs');\n",
+);
 fs.copyFileSync(path.join(root, 'DEPLOY-HOSTINGER.md'), path.join(outDir, 'DEPLOY-HOSTINGER.md'));
 fs.copyFileSync(path.join(root, '.env.example'), path.join(outDir, '.env.example'));
 
