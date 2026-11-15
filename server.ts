@@ -6,16 +6,22 @@ import { createApiApp } from './src/lib/createApiApp';
 
 async function startServer() {
   const app = createApiApp();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
+    // Hostinger / VPS: one long-lived Node process serves API + SPA.
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.use(express.static(distPath, { index: false, maxAge: '1h' }));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/backend-api') || req.path.startsWith('/fx') || req.path.startsWith('/go')) {
+        return next();
+      }
+      res.sendFile(path.join(distPath, 'index.html'), err => {
+        if (err) next(err);
+      });
     });
   }
 

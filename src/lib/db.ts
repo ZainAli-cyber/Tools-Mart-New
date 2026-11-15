@@ -31,7 +31,10 @@ export function serviceRoleMissingMessage() {
   if (nodeEnv.VERCEL) {
     return 'SUPABASE_SERVICE_ROLE_KEY is missing on Vercel. Project → Settings → Environment Variables → Production → paste the service_role key → Redeploy.';
   }
-  return 'SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env in the project root, then restart the server (npm run dev).';
+  if (nodeEnv.HOSTINGER || nodeEnv.HOSTINGER_SITE_HOSTNAME) {
+    return 'SUPABASE_SERVICE_ROLE_KEY is missing on Hostinger. Set Node.js environment variables for this site (full replace), then rebuild/restart.';
+  }
+  return 'SUPABASE_SERVICE_ROLE_KEY is missing. Add it to .env (local) or Hostinger Node env (production), then restart the server.';
 }
 
 export function requireServiceRoleKey(): string {

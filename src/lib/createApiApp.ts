@@ -15,8 +15,8 @@ import settingsRouter from './settingsRoutes';
 import mobileRouter from './mobileRoutes';
 
 /**
- * Express app with all /api/* routes. Used by local server.ts and Vercel api/index.ts.
- * Does not serve static assets or SPA fallback — Vercel serves dist/ separately.
+ * Express app with all /api/* routes. Used by local/Hostinger server.ts and Vercel api/index.ts.
+ * Does not serve static assets or SPA fallback — server.ts (Hostinger) or Vercel does that.
  *
  * Heavy deps (e.g. @google/genai) are lazy-loaded so importing this module does not
  * pull Gemini into every cold start before routes run.

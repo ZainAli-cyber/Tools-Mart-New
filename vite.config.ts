@@ -5,12 +5,17 @@ import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  // Hostinger/CI inject VITE_* into process.env (no .env file on the server).
+  const viteSupabaseUrl =
+    env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+  const viteSupabaseAnon =
+    env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
   return {
     plugins: [react(), tailwindcss()],
-    // db.ts reads process.env.VITE_* (no import.meta — safe for Vercel CJS API).
+    // db.ts reads process.env.VITE_* (no import.meta — safe for Node API bundles).
     define: {
-      'process.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ''),
-      'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY || ''),
+      'process.env.VITE_SUPABASE_URL': JSON.stringify(viteSupabaseUrl),
+      'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(viteSupabaseAnon),
     },
     resolve: {
       alias: {
