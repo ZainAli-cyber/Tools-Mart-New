@@ -16,8 +16,9 @@
     "lint": "tsc --noEmit",
     "migrate:accounts": "tsx scripts/migrate-accounts.ts",
     "verify:logins": "tsx scripts/verify-logins.ts",
-    "build:mobile": "vite build && npm run build:api && npx cap sync android",
-    "build:apk": "npm run build:api && npx cap sync android && cd android && gradlew.bat assembleDebug",
+    "build:mobile": "npx cap sync android",
+    "build:apk": "npx cap sync android && cd android && gradlew.bat assembleDebug",
+    "pack:hostinger": "node scripts/pack-hostinger.mjs",
     "cap:sync": "npx cap sync android",
     "cap:open:android": "npx cap open android",
     "android:apk": "cd android && gradlew.bat assembleDebug"

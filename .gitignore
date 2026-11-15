@@ -10,3 +10,9 @@ coverage/
 .contrast-shots/
 tools-mart/
 *.bak*
+
+# Hostinger / APK build artifacts (generate locally)
+zynextools-hostinger/
+zynextools-hostinger.zip
+zynextools.apk
+gradle-build.log

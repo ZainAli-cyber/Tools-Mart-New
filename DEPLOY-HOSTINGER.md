@@ -2,6 +2,15 @@
 
 Keep the **existing Supabase project**. Hostinger only runs the Node web app.
 
+## Manual upload (client Hostinger)
+
+1. Build zip on your PC: `npm run pack:hostinger`
+2. Upload **`zynextools-hostinger.zip`** in client hPanel → Create site → **Web App** → Upload.
+3. Install: `npm install --omit=dev` · Start: `npm start` · Node **20/22**
+4. Set env vars (Supabase + `APP_URL`) — see `README-UPLOAD.md` inside the zip.
+
+Do **not** deploy from the personal Hostinger API token; use the **client** account.
+
 ## Hostinger build settings
 
 | Setting | Value |
