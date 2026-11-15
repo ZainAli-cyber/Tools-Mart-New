@@ -106,15 +106,14 @@ Keep Vercel live until this Hostinger app is verified.
 `,
 );
 
-// Prefer system tar/Compress-Archive via PowerShell for Windows zip
+// IMPORTANT: Do NOT use PowerShell Compress-Archive — it stores Windows
+// backslash paths (dist\server.cjs) which break Hostinger's Linux unzip.
 rm(zipPath);
 if (process.platform === 'win32') {
-  execSync(
-    `powershell -NoProfile -Command "Compress-Archive -Path '${outDir}\\*' -DestinationPath '${zipPath}' -Force"`,
-    { stdio: 'inherit' },
-  );
+  // Windows tar -a creates a zip with forward-slash entry names.
+  execSync(`tar.exe -a -c -f "${zipPath}" -C "${outDir}" .`, { stdio: 'inherit' });
 } else {
-  execSync(`cd "${root}" && zip -r zynextools-hostinger.zip zynextools-hostinger`, { stdio: 'inherit' });
+  execSync(`cd "${outDir}" && zip -r "${zipPath}" .`, { stdio: 'inherit' });
 }
 
 const st = fs.statSync(zipPath);
