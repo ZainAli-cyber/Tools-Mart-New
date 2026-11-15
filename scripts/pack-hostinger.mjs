@@ -36,8 +36,14 @@ function copyDir(src, dest) {
   }
 }
 
+// Always rebuild server.prod.ts → dist/server.cjs for Hostinger (never ship a Vite-linked server).
 if (process.env.SKIP_BUILD === '1' && fs.existsSync(path.join(root, 'dist', 'server.cjs'))) {
-  console.log('→ SKIP_BUILD=1 (reusing existing dist/)');
+  console.log('→ SKIP_BUILD=1 (reusing existing dist/) — prefer a full build for Hostinger');
+  execSync('npm run build:server', {
+    cwd: root,
+    stdio: 'inherit',
+    env: { ...process.env, NODE_ENV: 'production' },
+  });
 } else {
   console.log('→ npm run build');
   execSync('npm run build', { cwd: root, stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' } });
@@ -56,20 +62,13 @@ const pkg = {
   engines: { node: '>=20' },
   main: 'dist/server.cjs',
   scripts: {
+    // Hostinger runs this after install; server is fully prebundled.
     start: 'node dist/server.cjs',
+    // No build step — dist/ is already in the zip.
+    build: 'node -e "console.log(\'prebuilt\')"',
   },
-  dependencies: {
-    // server.cjs is mostly bundled; keep runtime peers Hostinger may need after npm install
-    express: '^4.21.2',
-    dotenv: '^17.2.3',
-    '@supabase/supabase-js': '^2.111.0',
-    bcryptjs: '^3.0.3',
-    jsonwebtoken: '^9.0.3',
-    undici: '^6.28.0',
-    uuid: '^14.0.1',
-    '@google/genai': '^2.4.0',
-    'firebase-admin': '^14.3.0',
-  },
+  // Fully bundled in dist/server.cjs — empty deps = fast/reliable Hostinger npm install.
+  dependencies: {},
 };
 
 fs.writeFileSync(path.join(outDir, 'package.json'), JSON.stringify(pkg, null, 2));
