@@ -10,7 +10,7 @@
  */
 import { Readable } from 'stream';
 import { proxyAwareFetch } from './proxyFetch';
-import { chatgptPrivacyScript } from './chatgptPrivacyInject';
+import { chatgptAccountLockScript, chatgptPrivacyScript } from './chatgptPrivacyInject';
 
 export const PROXY_BASE = '/fx';
 const CROSS_HOST_MARKER = '~';
@@ -760,11 +760,14 @@ function runtimeScript(target: ProxyTarget): string {
   try { document.title = ${JSON.stringify('ZynexTools')}; } catch(e){}
 })();
 </script>${
-    target.hideSharedHistory && /chatgpt\.com|openai\.com/i.test(String(target.origin || ''))
-      ? chatgptPrivacyScript({
-          isolationKey: target.isolationKey || target.token,
-          brandName: target.brandName || 'ZynexTools',
-        })
+    /chatgpt\.com|openai\.com/i.test(String(target.origin || ''))
+      ? chatgptAccountLockScript() +
+        (target.hideSharedHistory
+          ? chatgptPrivacyScript({
+              isolationKey: target.isolationKey || target.token,
+              brandName: target.brandName || 'ZynexTools',
+            })
+          : '')
       : ''
   }`;
 }

@@ -432,6 +432,70 @@ function sleep(ms) {
  * When unlockReferrer is set (or panel dest), install temporary DNR Referer
  * rules and wait for cookie apply + settle before opening the tab.
  */
+/** Always hide ChatGPT Account/Settings so members cannot change shared email. */
+async function injectChatGptAccountLock(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        if (window.__ZYNEX_ACCOUNT_LOCK__) return;
+        window.__ZYNEX_ACCOUNT_LOCK__ = true;
+        const BLOCK = [
+          'Settings', 'Account settings', 'Account', 'My plan', 'Plan', 'Upgrade plan',
+          'Get ChatGPT Plus', 'Get Plus', 'Manage subscription', 'Subscription',
+          'Billing', 'Payment', 'Email', 'Change email', 'Profile', 'Log out', 'Logout',
+          'Sign out', 'Delete account', 'Data controls', 'Builder profile', 'Help',
+          'Custom instructions', 'General', 'Security', 'Connected apps',
+        ];
+        const isAccountUrl = href =>
+          /\/settings|\/account|account\.openai|auth0\.openai|pay\.openai|chatgpt\.com\/#settings|chatgpt\.com\/settings/i.test(
+            String(href || ''),
+          );
+        const style = document.createElement('style');
+        style.textContent =
+          'a[href*="/account"],a[href*="account.openai.com"],a[href*="/settings"],a[href*="auth0.openai.com"],a[href*="pay.openai.com"],[data-zynex-account-hide="1"]{display:none!important;visibility:hidden!important}';
+        (document.head || document.documentElement).appendChild(style);
+        const mark = () => {
+          document.querySelectorAll('a,button,div[role="menuitem"],div[role="option"]').forEach(el => {
+            const href = el.getAttribute?.('href') || '';
+            const t = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (isAccountUrl(href) || (t && t.length < 48 && BLOCK.includes(t))) {
+              const box =
+                el.closest('[role="menuitem"]') || el.closest('a') || el.closest('button') || el;
+              if (box && box !== document.body) box.setAttribute('data-zynex-account-hide', '1');
+            }
+          });
+          const path = String(location.pathname || '') + String(location.hash || '');
+          if (isAccountUrl(path) || isAccountUrl(location.href)) {
+            location.replace('https://chatgpt.com/');
+          }
+        };
+        document.addEventListener(
+          'click',
+          ev => {
+            const el = ev.target;
+            const node =
+              el?.closest?.('a') || el?.closest?.('button') || el?.closest?.('[role="menuitem"]') || el;
+            const href = node?.getAttribute?.('href') || '';
+            const t = String(node?.textContent || '').replace(/\s+/g, ' ').trim();
+            if (isAccountUrl(href) || (t && BLOCK.includes(t))) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              ev.stopImmediatePropagation?.();
+            }
+          },
+          true,
+        );
+        setInterval(mark, 700);
+        mark();
+      },
+    });
+  } catch (e) {
+    console.warn('[zynex] account lock inject failed', e);
+  }
+}
+
 async function injectChatGptPrivacy(tabId, isolationKey, brandName) {
   const key = String(isolationKey || 'anon');
   const brand = String(brandName || 'ZynexTools');
@@ -472,7 +536,7 @@ async function injectChatGptPrivacy(tabId, isolationKey, brandName) {
         } catch {}
         const style = document.createElement('style');
         style.textContent =
-          'a[href="/library"],a[href*="/library"],a[href="/projects"],a[href*="/projects"],a[href*="/gpts"],[data-zynex-hide="1"]{display:none!important}';
+          'a[href="/library"],a[href*="/library"],a[href="/projects"],a[href*="/projects"],a[href*="/gpts"],a[href*="/settings"],a[href*="/account"],[data-zynex-hide="1"],[data-zynex-account-hide="1"]{display:none!important}';
         (document.head || document.documentElement).appendChild(style);
         const filter = () => {
           const allowed = Object.create(null);
@@ -632,16 +696,16 @@ async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, re
       setTimeout(() => removeUnlockRules(ruleIds), UNLOCK_RULE_TTL_MS);
     }
 
-    if (
-      tab?.id != null &&
-      privacy?.hideSharedHistory &&
-      /chatgpt\.com|openai\.com/i.test(String(destinationUrl || ''))
-    ) {
+    if (tab?.id != null && /chatgpt\.com|openai\.com/i.test(String(destinationUrl || ''))) {
       const tabId = tab.id;
       const onReady = (id, info) => {
         if (id !== tabId || info.status !== 'complete') return;
         chrome.tabs.onUpdated.removeListener(onReady);
-        void injectChatGptPrivacy(tabId, privacy.isolationKey, privacy.brandName);
+        // Always lock account/settings (prevent shared-email change).
+        void injectChatGptAccountLock(tabId);
+        if (privacy?.hideSharedHistory) {
+          void injectChatGptPrivacy(tabId, privacy.isolationKey, privacy.brandName);
+        }
       };
       chrome.tabs.onUpdated.addListener(onReady);
       setTimeout(() => chrome.tabs.onUpdated.removeListener(onReady), 60000);
