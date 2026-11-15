@@ -57,6 +57,9 @@ type ProxySession = {
   referrer: string;
   referrerCandidates: string[];
   expiresAt: number;
+  hideSharedHistory?: boolean;
+  isolationKey?: string;
+  brandName?: string;
 };
 
 const sessions = new Map<string, ProxySession>();
@@ -329,18 +332,28 @@ async function profileForToken(token: string) {
   if (authError || !authData.user) return null;
 
   const db = toolsDb();
-  const { data: profile, error } = await db
+  const withPrivacy = 'id,customer_code,name,email,role,status,plan,expiry,tools,hide_shared_history';
+  const basic = 'id,customer_code,name,email,role,status,plan,expiry,tools';
+  let { data: profile, error } = await db
     .from('customers')
-    .select('id,customer_code,name,email,role,status,plan,expiry,tools')
+    .select(withPrivacy)
     .eq('auth_user_id', authData.user.id)
     .maybeSingle();
+  if (error && /hide_shared_history/i.test(error.message || '')) {
+    const retry = await db.from('customers').select(basic).eq('auth_user_id', authData.user.id).maybeSingle();
+    profile = retry.data;
+    error = retry.error;
+  }
   if (!error && profile) return profile;
 
-  const fallback = await supabase
+  let fallback = await supabase
     .from('customers')
-    .select('id,customer_code,name,email,role,status,plan,expiry,tools')
+    .select(withPrivacy)
     .eq('auth_user_id', authData.user.id)
     .single();
+  if (fallback.error && /hide_shared_history/i.test(fallback.error.message || '')) {
+    fallback = await supabase.from('customers').select(basic).eq('auth_user_id', authData.user.id).single();
+  }
   if (fallback.error || !fallback.data) return null;
   return fallback.data;
 }
@@ -624,6 +637,9 @@ async function proxyThrough(session: ProxySession, req: any, res: any, url: stri
       cookies: session.cookies,
       referrer: panelMode ? session.referrer : '',
       referrerCandidates: panelMode ? session.referrerCandidates : [],
+      hideSharedHistory: Boolean(session.hideSharedHistory),
+      isolationKey: session.isolationKey,
+      brandName: session.brandName || 'ZynexTools',
     };
 
     const before = session.cookies.length;
@@ -727,6 +743,11 @@ router.post('/launch', async (req, res) => {
       });
     }
 
+    const hideSharedHistory = profile.hide_shared_history !== false;
+    const isolationKey = String(profile.email || profile.id || token)
+      .trim()
+      .toLowerCase();
+
     const session: ProxySession = {
       token,
       accountId: String(profile.id),
@@ -742,16 +763,23 @@ router.post('/launch', async (req, res) => {
         ? panelUnlockReferrerCandidates(fields.panelReferrer || referrer || DEFAULT_PANEL_REFERRER)
         : [],
       expiresAt: Date.now() + SESSION_TTL_MS,
+      hideSharedHistory,
+      isolationKey,
+      brandName: 'ZynexTools',
     };
     const sealed = await rememberSession(session);
     setProxyCookie(res, token, sealed);
 
     return res.json({
       mode: 'proxy',
+      /** Zynex-branded destination (portal /fx/…), not chatgpt.com in the address bar. */
       viewUrl: publicFxPath(token),
       url: dest,
       name: tool.name,
+      brandName: 'ZynexTools',
       toolId: tool.id,
+      hideSharedHistory,
+      isolationKey,
       expiresInSec: Math.floor(SESSION_TTL_MS / 1000),
       viaGlobalProxy: proxyStatus.ready,
       fingerprint: createHash('sha256').update(session.cookieHeader || dest).digest('hex').slice(0, 12),
@@ -802,6 +830,9 @@ export async function handleFxProxy(req: any, res: any) {
       origin: session.origin,
       cookies: session.cookies,
       referrer: session.referrer,
+      hideSharedHistory: Boolean(session.hideSharedHistory),
+      isolationKey: session.isolationKey,
+      brandName: session.brandName || 'ZynexTools',
     };
     const url = isRoot
       ? session.targetUrl

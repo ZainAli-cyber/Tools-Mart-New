@@ -432,7 +432,81 @@ function sleep(ms) {
  * When unlockReferrer is set (or panel dest), install temporary DNR Referer
  * rules and wait for cookie apply + settle before opening the tab.
  */
-async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, referrerCandidates) {
+async function injectChatGptPrivacy(tabId, isolationKey, brandName) {
+  const key = String(isolationKey || 'anon');
+  const brand = String(brandName || 'ZynexTools');
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: (KEY_RAW, BRAND) => {
+        if (window.__ZYNEX_PRIVACY__) return;
+        window.__ZYNEX_PRIVACY__ = true;
+        const KEY = 'zynex_hist_' + KEY_RAW;
+        const mine = () => {
+          try {
+            return JSON.parse(localStorage.getItem(KEY) || '[]');
+          } catch {
+            return [];
+          }
+        };
+        const save = ids => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify(ids.slice(-300)));
+          } catch {}
+        };
+        const remember = id => {
+          if (!id) return;
+          const a = mine();
+          if (!a.includes(id)) {
+            a.push(id);
+            save(a);
+          }
+        };
+        const currentId = () => {
+          const m = String(location.pathname || '').match(/\/c\/([a-zA-Z0-9_-]+)/);
+          return m ? m[1] : '';
+        };
+        try {
+          document.title = BRAND;
+        } catch {}
+        const style = document.createElement('style');
+        style.textContent =
+          'a[href="/library"],a[href*="/library"],a[href="/projects"],a[href*="/projects"],a[href*="/gpts"],[data-zynex-hide="1"]{display:none!important}';
+        (document.head || document.documentElement).appendChild(style);
+        const filter = () => {
+          const allowed = Object.create(null);
+          mine().forEach(id => {
+            allowed[id] = true;
+          });
+          const cur = currentId();
+          if (cur) remember(cur);
+          document.querySelectorAll('a[href*="/c/"]').forEach(a => {
+            const m = (a.getAttribute('href') || '').match(/\/c\/([a-zA-Z0-9_-]+)/);
+            if (!m) return;
+            const id = m[1];
+            const row = a.closest('li') || a.parentElement;
+            if (!row) return;
+            if (allowed[id] || id === cur) {
+              row.removeAttribute('data-zynex-hide');
+              row.style.display = '';
+            } else {
+              row.setAttribute('data-zynex-hide', '1');
+              row.style.display = 'none';
+            }
+          });
+        };
+        setInterval(filter, 900);
+        filter();
+      },
+      args: [key, brand],
+    });
+  } catch (e) {
+    console.warn('[zynex] privacy inject failed', e);
+  }
+}
+
+async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, referrerCandidates, privacy) {
   const list = Array.isArray(cookies) ? cookies : [];
   const destHost = destinationHost(destinationUrl);
   const destIsHttps = !/^http:\/\//i.test(destinationUrl || '');
@@ -557,6 +631,21 @@ async function applyCookies(cookies, destinationUrl, openTab, unlockReferrer, re
     } else if (ruleIds.length && !tab) {
       setTimeout(() => removeUnlockRules(ruleIds), UNLOCK_RULE_TTL_MS);
     }
+
+    if (
+      tab?.id != null &&
+      privacy?.hideSharedHistory &&
+      /chatgpt\.com|openai\.com/i.test(String(destinationUrl || ''))
+    ) {
+      const tabId = tab.id;
+      const onReady = (id, info) => {
+        if (id !== tabId || info.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(onReady);
+        void injectChatGptPrivacy(tabId, privacy.isolationKey, privacy.brandName);
+      };
+      chrome.tabs.onUpdated.addListener(onReady);
+      setTimeout(() => chrome.tabs.onUpdated.removeListener(onReady), 60000);
+    }
   } else if (ruleIds.length) {
     setTimeout(() => removeUnlockRules(ruleIds), UNLOCK_RULE_TTL_MS);
   }
@@ -603,6 +692,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     Boolean(message.openTab),
     unlockReferrer,
     referrerCandidates,
+    {
+      hideSharedHistory: Boolean(message.hideSharedHistory),
+      isolationKey: message.isolationKey || '',
+      brandName: message.brandName || 'ZynexTools',
+    },
   )
     .then(sendResponse)
     .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));

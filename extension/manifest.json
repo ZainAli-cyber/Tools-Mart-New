@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "ZynexTools",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Applies ZynexTools admin cookies and unlocks toolaccess panels for one-click tool access.",
   "permissions": [
     "storage",
     "cookies",
     "tabs",
+    "scripting",
     "browsingData",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess"

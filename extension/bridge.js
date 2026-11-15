@@ -54,6 +54,9 @@ window.addEventListener('message', (event) => {
         panelReferrer: unlockReferrer,
         referrer: unlockReferrer,
         referrerCandidates,
+        hideSharedHistory: Boolean(data.hideSharedHistory),
+        isolationKey: data.isolationKey || '',
+        brandName: data.brandName || 'ZynexTools',
       },
       (response) => {
         const err = chrome.runtime.lastError;

@@ -473,9 +473,30 @@ router.delete('/tools/:id', requireAuth, async (req, res) => {
     const sb = toolsAdminDb();
     const toolId = (await resolveToolId(sb, req.params.id)) || req.params.id;
     const { data: tool } = await sb.from('tools').select('name').eq('id', toolId).maybeSingle();
+    const toolName = String(tool?.name || '').trim();
     const { error } = await sb.from('tools').delete().eq('id', toolId);
     if (error) return res.status(500).json({ error: error.message });
-    logActivity('Tool Deleted', `Deleted tool: ${tool?.name}`);
+
+    // Cookies live on the tools row (deleted above). Also scrub assigned tool lists.
+    try {
+      const { data: customers } = await sb.from('customers').select('id,tools');
+      for (const row of customers || []) {
+        const list = Array.isArray(row.tools) ? row.tools : [];
+        const next = list.filter((entry: any) => {
+          const v = String(entry || '').trim();
+          if (!v) return false;
+          const low = v.toLowerCase();
+          return low !== toolId.toLowerCase() && low !== toolName.toLowerCase();
+        });
+        if (next.length !== list.length) {
+          await sb.from('customers').update({ tools: next }).eq('id', row.id);
+        }
+      }
+    } catch (scrubErr) {
+      console.warn('[admin] tool delete: customer tools scrub failed', scrubErr);
+    }
+
+    logActivity('Tool Deleted', `Deleted tool + cookies: ${toolName || toolId}`);
     res.json({ ok: true });
   } catch (e: any) {
     return res.status(500).json({ error: e.message || 'Could not delete tool' });
@@ -1083,6 +1104,14 @@ function snakeToCamelCustomer(c: any) {
     status:      c.status,
     tools:       c.tools,
     notes:       c.notes,
+    plan:        c.plan,
+    fee:         c.fee,
+    planDays:    c.plan_days,
+    expiry:      c.expiry,
+    role:        c.role,
+    customerCode: c.customer_code,
+    /** true = hide shared ChatGPT history (default private). */
+    hideSharedHistory: c.hide_shared_history !== false,
   };
 }
 
@@ -1100,6 +1129,12 @@ function camelToSnakeCustomer(c: any) {
   if (c.status      !== undefined) r.status       = c.status;
   if (c.tools       !== undefined) r.tools        = c.tools;
   if (c.notes       !== undefined) r.notes        = c.notes;
+  if (c.plan        !== undefined) r.plan         = c.plan;
+  if (c.fee         !== undefined) r.fee          = c.fee;
+  if (c.planDays    !== undefined) r.plan_days    = c.planDays;
+  if (c.expiry      !== undefined) r.expiry       = c.expiry;
+  if (c.role        !== undefined) r.role         = c.role;
+  if (c.hideSharedHistory !== undefined) r.hide_shared_history = Boolean(c.hideSharedHistory);
   return r;
 }
 

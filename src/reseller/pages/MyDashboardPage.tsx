@@ -54,26 +54,29 @@ export const MyDashboardPage: React.FC<Props> = ({
 
   const now = new Date();
   const owned = useMemo(() => new Set(ownedTools.map(t => t.toLowerCase())), [ownedTools]);
-
-  const decorated = useMemo(
-    () => allTools.map(t => ({ tool: t, unlocked: owned.has(t.name.toLowerCase()) })),
-    [allTools, owned],
-  );
-
-  const accessibleCount = decorated.filter(d => d.unlocked).length;
-  const lockedCount = decorated.length - accessibleCount;
-
-  const visible = decorated
-    .filter(d => tab === 'all' || (tab === 'accessible' ? d.unlocked : !d.unlocked))
-    .filter(d => !search || d.tool.name.toLowerCase().includes(search.toLowerCase()));
-
   const left = daysLeft(meta.expiry);
   const planActive = planIsActive(meta.plan, meta.expiry);
 
+  /** Only tools admin/reseller assigned — even if plan expired (shown for renew/purchase). */
+  const decorated = useMemo(
+    () =>
+      allTools
+        .filter(t => owned.has(String(t.name || '').toLowerCase()))
+        .map(t => ({ tool: t, unlocked: true, needsRenew: !planActive })),
+    [allTools, owned, planActive],
+  );
+
+  const accessibleCount = decorated.filter(d => !d.needsRenew).length;
+  const renewCount = decorated.filter(d => d.needsRenew).length;
+
+  const visible = decorated
+    .filter(d => tab === 'all' || (tab === 'accessible' ? !d.needsRenew : d.needsRenew))
+    .filter(d => !search || d.tool.name.toLowerCase().includes(search.toLowerCase()));
+
   const tabs: { id: ToolTab; label: string; count: number }[] = [
-    { id: 'all',        label: 'All Tools',  count: decorated.length },
-    { id: 'accessible', label: 'Accessible', count: accessibleCount },
-    { id: 'locked',     label: 'Locked',     count: lockedCount },
+    { id: 'all',        label: 'My Tools',   count: decorated.length },
+    { id: 'accessible', label: 'Active',     count: accessibleCount },
+    { id: 'locked',     label: 'Renew',      count: renewCount },
   ];
 
   const heroBtn = 'px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/15 text-white text-[11px] font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5';
@@ -190,24 +193,23 @@ export const MyDashboardPage: React.FC<Props> = ({
       {/* Tool grid */}
       {visible.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {visible.map(({ tool, unlocked }) => {
-            // A tool the member owns is only usable while their plan is live.
-            const usable = unlocked && planActive;
+          {visible.map(({ tool, needsRenew }) => {
+            const usable = !needsRenew && planActive;
             const methodLabel = showAccessLabels ? accessMethodLabel(tool.accessMethod) : null;
             return (
               <div key={tool.id}
                 className={`bg-[#130d0d] border rounded-2xl overflow-hidden flex flex-col transition ${
-                  unlocked ? 'border-red-500/25 hover:border-red-500/50' : 'border-[#2a1e1c] hover:border-[#3a2a26]'
+                  usable ? 'border-red-500/25 hover:border-red-500/50' : 'border-amber-500/25 hover:border-amber-500/40'
                 }`}>
                 {/* Logo area */}
                 <div className="relative bg-[#1a1210] border-b border-[#2a1e1c] p-5 flex items-center justify-center">
                   <span className={`absolute top-2 right-2 text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                    unlocked ? 'bg-red-600 text-white border-red-500' : 'bg-slate-700/40 text-slate-400 border-slate-600/40'
+                    usable ? 'bg-red-600 text-white border-red-500' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                   }`}>
-                    {unlocked ? 'Premium' : 'Locked'}
+                    {usable ? 'Premium' : 'Renew'}
                   </span>
 
-                  <div className={`w-16 h-16 rounded-2xl bg-white p-2.5 flex items-center justify-center shadow-lg ${unlocked ? '' : 'grayscale opacity-50'}`}>
+                  <div className={`w-16 h-16 rounded-2xl bg-white p-2.5 flex items-center justify-center shadow-lg ${usable ? '' : 'opacity-80'}`}>
                     {tool.favicon
                       ? <img src={tool.favicon} alt={tool.name} className="w-full h-full object-contain"
                           onError={e => { (e.target as any).style.display = 'none'; }} />
@@ -226,30 +228,21 @@ export const MyDashboardPage: React.FC<Props> = ({
                           ? 'bg-red-600/15 text-red-400 border-red-500/35'
                           : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                       }`}
-                      title={
-                        methodLabel === 'ONE CLICK'
-                          ? 'One click from dashboard. Cookie auto-login still needs Access extension when admin saved cookies.'
-                          : 'Requires ZynexTools extension for cookie auto-login'
-                      }
                     >
                       {methodLabel}
                     </span>
                   )}
                 </div>
 
-                {/* Status + launch */}
+                {/* Status + launch / purchase */}
                 <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-t border-[#1a1210]">
-                  {!unlocked ? (
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
-                      <Lock className="w-3 h-3" /> Locked
-                    </span>
-                  ) : usable ? (
+                  {usable ? (
                     <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400">
                       <Check className="w-3 h-3" /> Access
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
-                      <Check className="w-3 h-3" /> Offline
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-400">
+                      <Lock className="w-3 h-3" /> Purchase
                     </span>
                   )}
 
@@ -262,16 +255,12 @@ export const MyDashboardPage: React.FC<Props> = ({
                     >
                       <ArrowUpRight className="w-4 h-4" />
                     </button>
-                  ) : unlocked ? (
-                    <span title="Your plan is not active — renew to restore access"
-                      className="w-7 h-7 rounded-lg bg-[#1a1210] border border-[#2a1e1c] flex items-center justify-center text-slate-600 shrink-0 cursor-not-allowed">
-                      <ArrowUpRight className="w-4 h-4" />
-                    </span>
                   ) : (
-                    <a href={waLink(adminWhatsapp, `Hi, I want to subscribe to ${tool.name}.`)}
-                      target="_blank" rel="noopener noreferrer" title={`Subscribe to ${tool.name}`}
+                    <a href={waLink(adminWhatsapp, `Hi, I want to renew/purchase ${tool.name} (assigned on my account).`)}
+                      target="_blank" rel="noopener noreferrer" title={`Purchase ${tool.name}`}
+                      onClick={() => onShop?.()}
                       className="px-2 h-7 rounded-lg bg-red-600/15 hover:bg-red-600/25 border border-red-500/30 flex items-center justify-center text-[9px] font-black text-red-400 transition shrink-0">
-                      SUBSCRIBE
+                      BUY
                     </a>
                   )}
                 </div>
@@ -285,8 +274,8 @@ export const MyDashboardPage: React.FC<Props> = ({
             <Search className="w-5 h-5 text-red-400" />
           </div>
           <div>
-            <p className="text-sm font-bold text-white">No tools available</p>
-            <p className="text-xs text-slate-500 mt-1">There are no tools in this category.</p>
+            <p className="text-sm font-bold text-white">No tools assigned</p>
+            <p className="text-xs text-slate-500 mt-1">Ask admin to assign tools to your account.</p>
           </div>
         </div>
       )}

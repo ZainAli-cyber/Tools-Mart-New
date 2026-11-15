@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Edit, Trash2, Plus, Eye, Check, X, Send, Download, Printer, RefreshCw, ClipboardList, Wrench, Ban, ChevronDown, ChevronRight, BarChart2, MoreHorizontal, FileText, MessageCircle, MonitorSmartphone } from 'lucide-react';
 import { db, Tool } from '../data/adminStore';
-import { saveCatalogTool, useCatalogTools } from '../../lib/toolCookies';
+import { deleteCatalogTool, saveCatalogTool, useCatalogTools } from '../../lib/toolCookies';
 import { SectionHeader, AdminTable, Th, Td, Tr, StatusBadge, AdminBtn, SearchInput, Badge, ProgressBar, DaysLeftBadge } from '../components/AdminUI';
 import { ToolEditor } from '../components/ToolEditor';
 import { DeviceLimitsToggle } from '../components/DeviceLimitsToggle';
@@ -69,6 +69,8 @@ const AddMemberModal: React.FC<{ onClose: () => void; onSaved: () => void }> = (
   const [fee, setFee] = useState(0);
   const [days, setDays] = useState(30);
   const [tools, setTools] = useState<string[]>([]);
+  /** Checked = member can see shared ChatGPT history. Unchecked = private (default). */
+  const [canSeeHistory, setCanSeeHistory] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const allTools = useCatalogTools();
@@ -106,6 +108,7 @@ const AddMemberModal: React.FC<{ onClose: () => void; onSaved: () => void }> = (
         planDays: days,
         expiry: planExpiryDate(join, days),
         tools,
+        hideSharedHistory: !canSeeHistory,
       });
     } catch (error: any) {
       setSaving(false);
@@ -194,6 +197,21 @@ const AddMemberModal: React.FC<{ onClose: () => void; onSaved: () => void }> = (
               ))}
             </div>
           </div>
+
+          <label className="flex items-start gap-2.5 text-sm text-slate-300 cursor-pointer rounded-xl border border-[#2a1e1c] bg-[#0d0908] p-3">
+            <input
+              type="checkbox"
+              checked={canSeeHistory}
+              onChange={e => setCanSeeHistory(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded border-[#3a2a26] bg-[#1a1210] accent-red-600 cursor-pointer"
+            />
+            <span>
+              <span className="font-semibold text-white">Can see ChatGPT history</span>
+              <span className="block text-[11px] text-slate-500 mt-0.5 leading-4">
+                Off = private account look (hide other users’ chats, projects, library, pinned). Same email keeps their own history.
+              </span>
+            </span>
+          </label>
         </div>
 
         <div
@@ -294,13 +312,24 @@ const PlanModal: React.FC<{ account: any; onClose: () => void; onSaved: () => vo
 const ToolsModal: React.FC<{ account: any; onClose: () => void; onSaved: () => void }> = ({ account, onClose, onSaved }) => {
   const allTools = useCatalogTools();
   const [selected, setSelected] = useState<string[]>(Array.isArray(account.tools) ? account.tools : []);
+  const [canSeeHistory, setCanSeeHistory] = useState(account.hideSharedHistory === false);
   const [saving, setSaving] = useState(false);
   const toggle = (name: string) => setSelected(s => s.includes(name) ? s.filter(x => x !== name) : [...s, name]);
   const save = async () => {
     setSaving(true);
     const { supabase } = await import('../../lib/db');
-    await supabase.from('customers').update({ tools: selected }).eq('id', account.id);
-    setSaving(false); onSaved(); onClose();
+    const payload: any = { tools: selected, hide_shared_history: !canSeeHistory };
+    let { error } = await supabase.from('customers').update(payload).eq('id', account.id);
+    if (error && /hide_shared_history/i.test(error.message || '')) {
+      const retry = await supabase.from('customers').update({ tools: selected }).eq('id', account.id);
+      error = retry.error;
+    }
+    setSaving(false);
+    if (error) {
+      alert(error.message || 'Could not save tools');
+      return;
+    }
+    onSaved(); onClose();
   };
   return (
     <ModalShell title={`Tools Access — ${account.name}`} onClose={onClose} wide footer={
@@ -318,6 +347,20 @@ const ToolsModal: React.FC<{ account: any; onClose: () => void; onSaved: () => v
           </button>
         ))}
       </div>
+      <label className="mt-4 flex items-start gap-2.5 text-sm text-slate-300 cursor-pointer rounded-xl border border-[#2a1e1c] bg-[#0d0908] p-3">
+        <input
+          type="checkbox"
+          checked={canSeeHistory}
+          onChange={e => setCanSeeHistory(e.target.checked)}
+          className="mt-0.5 w-4 h-4 rounded border-[#3a2a26] bg-[#1a1210] accent-red-600 cursor-pointer"
+        />
+        <span>
+          <span className="font-semibold text-white">Can see ChatGPT history</span>
+          <span className="block text-[11px] text-slate-500 mt-0.5 leading-4">
+            Off = hide other users’ chats, projects, library, and pinned items. This email keeps only their own history.
+          </span>
+        </span>
+      </label>
     </ModalShell>
   );
 };
@@ -838,10 +881,16 @@ export const ToolsPage: React.FC<{ onNavigateToPreview?: (id: string) => void }>
     showToast(`✅ "${normalized.name}" saved — /tools/${normalized.id} is live`);
     setEditor('none'); refresh();
   };
-  const handleDelete=(id:string)=>{
-    if(!confirm('Delete this tool from the site?')) return;
-    db.deleteTool(id); db.log('Tool Deleted',`Deleted tool ${id}`);
-    showToast('🗑️ Tool deleted'); refresh();
+  const handleDelete=async (id:string)=>{
+    if(!confirm('Delete this tool from the site? Cookies for this tool will also be removed.')) return;
+    const result = await deleteCatalogTool(id);
+    if (!result.ok) {
+      showToast(result.error || 'Could not delete tool');
+      return;
+    }
+    db.log('Tool Deleted',`Deleted tool + cookies ${id}`);
+    showToast('🗑️ Tool and cookies deleted');
+    refresh();
   };
 
   return (

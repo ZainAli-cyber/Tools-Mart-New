@@ -134,7 +134,7 @@ router.post('/', async (req, res) => {
     }
 
     const { name, email, phone = '', password, role = 'user', plan = '', fee = 0,
-      planDays = 0, expiry = '', tools = [] } = req.body || {};
+      planDays = 0, expiry = '', tools = [], hideSharedHistory } = req.body || {};
     if (!name?.trim() || !/^\S+@\S+\.\S+$/.test(email || '') || String(password || '').length < 8) {
       return res.status(400).json({ error: 'Valid name, email and 8-character password are required' });
     }
@@ -171,7 +171,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: authError?.message || 'Could not create login' });
     }
 
-    const profile = {
+    const profile: Record<string, any> = {
       auth_user_id: created.user.id,
       name: name.trim(),
       email: email.trim().toLowerCase(),
@@ -187,16 +187,28 @@ router.post('/', async (req, res) => {
       total_orders: 0,
       total_spend: Number(fee) || 0,
       notes: ownerId ? 'Created by reseller' : 'Created by administrator',
+      hide_shared_history: hideSharedHistory !== false,
     };
 
     // The auth trigger creates the base row. Update it with the fields that
     // only an administrator/reseller is allowed to assign.
-    const { data: row, error: profileError } = await admin
+    let { data: row, error: profileError } = await admin
       .from('customers')
       .update(profile)
       .eq('auth_user_id', created.user.id)
       .select()
       .single();
+    if (profileError && /hide_shared_history/i.test(profileError.message || '')) {
+      const { hide_shared_history: _drop, ...without } = profile;
+      const retry = await admin
+        .from('customers')
+        .update(without)
+        .eq('auth_user_id', created.user.id)
+        .select()
+        .single();
+      row = retry.data;
+      profileError = retry.error;
+    }
     if (profileError) {
       await admin.auth.admin.deleteUser(created.user.id);
       return res.status(400).json({ error: profileError.message });

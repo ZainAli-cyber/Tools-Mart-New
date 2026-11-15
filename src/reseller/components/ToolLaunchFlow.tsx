@@ -51,8 +51,8 @@ const INSTALL_STEPS = [
   },
   {
     icon: Puzzle,
-    title: 'Load unpacked',
-    text: 'Enable Developer mode, click Load unpacked, and select the extracted folder.',
+    title: 'Drag & drop install',
+    text: 'Enable Developer mode, then drag the extracted folder onto the chrome://extensions page (or use Load unpacked).'
   },
   {
     icon: PackageCheck,

@@ -147,18 +147,38 @@ async function profileForToken(token: string) {
 
   // Prefer service-role read so launch isn't blocked by customer RLS edge cases
   const db = toolsDb();
-  const { data: profile, error } = await db
+  const colsWithPrivacy =
+    'id,customer_code,name,email,role,status,plan,expiry,tools,hide_shared_history';
+  const colsBasic = 'id,customer_code,name,email,role,status,plan,expiry,tools';
+
+  let { data: profile, error } = await db
     .from('customers')
-    .select('id,customer_code,name,email,role,status,plan,expiry,tools')
+    .select(colsWithPrivacy)
     .eq('auth_user_id', authData.user.id)
     .maybeSingle();
+  if (error && /hide_shared_history/i.test(error.message || '')) {
+    const retry = await db
+      .from('customers')
+      .select(colsBasic)
+      .eq('auth_user_id', authData.user.id)
+      .maybeSingle();
+    profile = retry.data;
+    error = retry.error;
+  }
   if (!error && profile) return profile;
 
-  const fallback = await supabase
+  let fallback = await supabase
     .from('customers')
-    .select('id,customer_code,name,email,role,status,plan,expiry,tools')
+    .select(colsWithPrivacy)
     .eq('auth_user_id', authData.user.id)
     .single();
+  if (fallback.error && /hide_shared_history/i.test(fallback.error.message || '')) {
+    fallback = await supabase
+      .from('customers')
+      .select(colsBasic)
+      .eq('auth_user_id', authData.user.id)
+      .single();
+  }
   if (fallback.error || !fallback.data) return null;
   return fallback.data;
 }
@@ -355,15 +375,33 @@ router.get('/launch/:toolId', async (req, res) => {
       String(req.headers['x-omit-cookies'] || '').trim() === '1';
     const cookies = omitCookies ? [] : parseCookiesPayload(fields.cookiesRaw);
 
+    const hideSharedHistory = profile.hide_shared_history !== false;
+    const isolationKey = String(profile.email || profile.id || '')
+      .trim()
+      .toLowerCase();
+
+    // Prefer Zynex portal destination for one-click; extension still gets real URL + cookies.
+    const portalOrigin = String(process.env.APP_URL || process.env.VITE_PORTAL_URL || '')
+      .trim()
+      .replace(/\/$/, '');
+
     return res.json({
       name: tool.name,
+      brandName: 'ZynexTools',
       accessMethod: fields.accessMethod,
       url: fields.url,
       toolUrl: fields.url,
+      /** Open via portal proxy when available so the address bar stays on Zynex. */
+      portalLaunchHint: portalOrigin || undefined,
       cookies,
       panelReferrer: fields.panelReferrer || undefined,
       unlockReferrer: fields.panelReferrer || undefined,
       apkExtensionOnly: Boolean(fields.apkExtensionOnly),
+      hideSharedHistory,
+      isolationKey,
+      privacyScript: hideSharedHistory
+        ? true
+        : false,
     });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Could not launch tool' });

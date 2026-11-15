@@ -169,6 +169,7 @@ const AddMemberModal: React.FC<{
   const [fee, setFee] = useState(0);
   const [days, setDays] = useState(30);
   const [tools, setTools] = useState<string[]>([]);
+  const [canSeeHistory, setCanSeeHistory] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const allTools = useCatalogTools();
@@ -208,6 +209,7 @@ const AddMemberModal: React.FC<{
         planDays: days,
         expiry: planExpiryDate(join, days),
         tools: clampedTools,
+        hideSharedHistory: !canSeeHistory,
       });
     } catch (error: any) {
       setSaving(false);
@@ -273,6 +275,21 @@ const AddMemberModal: React.FC<{
             ))}
           </div>
         </div>
+
+        <label className="flex items-start gap-2.5 text-sm text-slate-300 cursor-pointer rounded-xl border border-[#2a1e1c] bg-[#0d0908] p-3">
+          <input
+            type="checkbox"
+            checked={canSeeHistory}
+            onChange={e => setCanSeeHistory(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-[#3a2a26] bg-[#1a1210] accent-red-600 cursor-pointer"
+          />
+          <span>
+            <span className="font-semibold text-white">Can see ChatGPT history</span>
+            <span className="block text-[11px] text-slate-500 mt-0.5 leading-4">
+              Off = private look (hide other chats/projects/library). Same email keeps their own history.
+            </span>
+          </span>
+        </label>
       </div>
     </RModal>
   );
@@ -388,14 +405,25 @@ const ToolsModal: React.FC<{
       allowed.has(String(n).trim().toLowerCase()),
     ),
   );
+  const [canSeeHistory, setCanSeeHistory] = useState((member as any).hideSharedHistory === false || (member as any).hide_shared_history === false);
   const [saving, setSaving] = useState(false);
   const toggle = (n: string) => setSelected(s => s.includes(n) ? s.filter(x => x !== n) : [...s, n]);
 
   const save = async () => {
     setSaving(true);
     const clamped = selected.filter(n => allowed.has(String(n).trim().toLowerCase()));
-    await supabase.from('customers').update({ tools: clamped }).eq('id', member.id);
-    setSaving(false); onSaved(); onClose();
+    const payload: any = { tools: clamped, hide_shared_history: !canSeeHistory };
+    let { error } = await supabase.from('customers').update(payload).eq('id', member.id);
+    if (error && /hide_shared_history/i.test(error.message || '')) {
+      const retry = await supabase.from('customers').update({ tools: clamped }).eq('id', member.id);
+      error = retry.error;
+    }
+    setSaving(false);
+    if (error) {
+      alert(error.message || 'Could not save');
+      return;
+    }
+    onSaved(); onClose();
   };
 
   return (
@@ -415,6 +443,20 @@ const ToolsModal: React.FC<{
           </button>
         ))}
       </div>
+      <label className="mt-4 flex items-start gap-2.5 text-sm text-slate-300 cursor-pointer rounded-xl border border-[#2a1e1c] bg-[#0d0908] p-3">
+        <input
+          type="checkbox"
+          checked={canSeeHistory}
+          onChange={e => setCanSeeHistory(e.target.checked)}
+          className="mt-0.5 w-4 h-4 rounded border-[#3a2a26] bg-[#1a1210] accent-red-600 cursor-pointer"
+        />
+        <span>
+          <span className="font-semibold text-white">Can see ChatGPT history</span>
+          <span className="block text-[11px] text-slate-500 mt-0.5 leading-4">
+            Off = private look. Same email keeps only their own history.
+          </span>
+        </span>
+      </label>
     </RModal>
   );
 };

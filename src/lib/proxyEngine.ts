@@ -10,6 +10,7 @@
  */
 import { Readable } from 'stream';
 import { proxyAwareFetch } from './proxyFetch';
+import { chatgptPrivacyScript } from './chatgptPrivacyInject';
 
 export const PROXY_BASE = '/fx';
 const CROSS_HOST_MARKER = '~';
@@ -35,6 +36,10 @@ export type ProxyTarget = {
   referrer?: string;
   /** Ordered Referer fallbacks for panel unlock (Pak SEO style). */
   referrerCandidates?: string[];
+  /** Hide shared ChatGPT history / projects / library for this member. */
+  hideSharedHistory?: boolean;
+  isolationKey?: string;
+  brandName?: string;
 };
 
 const HOP_BY_HOP = new Set([
@@ -751,8 +756,17 @@ function runtimeScript(target: ProxyTarget): string {
   }
   setInterval(unlockComposer, 1500);
   document.addEventListener('input', unlockComposer, true);
+
+  try { document.title = ${JSON.stringify('ZynexTools')}; } catch(e){}
 })();
-</script>`;
+</script>${
+    target.hideSharedHistory && /chatgpt\.com|openai\.com/i.test(String(target.origin || ''))
+      ? chatgptPrivacyScript({
+          isolationKey: target.isolationKey || target.token,
+          brandName: target.brandName || 'ZynexTools',
+        })
+      : ''
+  }`;
 }
 
 export function rewriteHtml(target: ProxyTarget, html: string, pageUrl: string): string {

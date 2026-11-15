@@ -29,6 +29,8 @@ export function createAccount(input: {
   planDays?: number;
   expiry?: string;
   tools?: string[];
+  /** When true (default), hide shared ChatGPT history for this member. */
+  hideSharedHistory?: boolean;
 }) {
   return authorizedFetch('/api/accounts', {
     method: 'POST',

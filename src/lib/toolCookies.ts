@@ -300,6 +300,44 @@ export function writeCookieFallback(id: string, fields: ToolCookieFields) {
   localStorage.setItem(FALLBACK_COOKIE_KEY, JSON.stringify(all));
 }
 
+export function clearCookieFallback(id: string) {
+  const all = readCookieFallback();
+  delete all[id];
+  try {
+    localStorage.setItem(FALLBACK_COOKIE_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Delete tool from Supabase (cookies live on the same row) + local caches. */
+export async function deleteCatalogTool(id: string): Promise<{ ok: boolean; error?: string }> {
+  const toolId = String(id || '').trim();
+  if (!toolId) return { ok: false, error: 'Missing tool id' };
+
+  const adminJwt = await getAdminAccessToken();
+  if (!adminJwt) {
+    return { ok: false, error: 'Admin session expired. Sign in again, then delete the tool.' };
+  }
+
+  try {
+    const res = await fetch(`/api/admin/tools/${encodeURIComponent(toolId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminJwt}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: body.error || `Delete failed (${res.status})` };
+    }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Could not reach delete API' };
+  }
+
+  db.deleteTool(toolId);
+  clearCookieFallback(toolId);
+  return { ok: true };
+}
+
 export function parseExtraObject(raw: any): Record<string, any> {
   if (!raw) return {};
   if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -868,6 +906,9 @@ export async function fetchLaunchPayload(
   panelReferrer?: string;
   unlockReferrer?: string;
   apkExtensionOnly?: boolean;
+  hideSharedHistory?: boolean;
+  isolationKey?: string;
+  brandName?: string;
 }> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -893,6 +934,9 @@ export async function fetchLaunchPayload(
     panelReferrer: panelReferrer || undefined,
     unlockReferrer: panelReferrer || undefined,
     apkExtensionOnly: Boolean(body.apkExtensionOnly ?? body.apk_extension_only),
+    hideSharedHistory: body.hideSharedHistory !== false,
+    isolationKey: String(body.isolationKey || '').trim() || undefined,
+    brandName: String(body.brandName || 'ZynexTools'),
   };
 }
 
@@ -952,6 +996,9 @@ async function applyCookiesViaExtension(
     referrerCandidates?: string[];
     /** When false, extension applies cookies only — portal navigates reserved tab. */
     openTab?: boolean;
+    hideSharedHistory?: boolean;
+    isolationKey?: string;
+    brandName?: string;
   },
 ): Promise<void> {
   const requestId = nextRequestId();
@@ -980,6 +1027,9 @@ async function applyCookiesViaExtension(
       url,
       openTab,
       waitForAck: true,
+      hideSharedHistory: Boolean(opts?.hideSharedHistory),
+      isolationKey: opts?.isolationKey || '',
+      brandName: opts?.brandName || 'ZynexTools',
       ...(unlockReferrer || panelDest
         ? {
             referrer: unlockReferrer || DEFAULT_PANEL_REFERRER,
@@ -1066,11 +1116,18 @@ export function needsPanelUnlockExtension(dest: string, unlockReferrer?: string)
  * By-extension path: extension REQUIRED. Never Session Apply / window.open fallback.
  * Cookies applied with openTab=false; reserved click-tab is navigated after ACK.
  */
+type PrivacyLaunchOpts = {
+  hideSharedHistory?: boolean;
+  isolationKey?: string;
+  brandName?: string;
+};
+
 async function openViaExtension(
   dest: string,
   cookies: any[],
   opts?: LaunchToolOptions,
   unlockReferrer?: string,
+  privacy?: PrivacyLaunchOpts,
 ) {
   const list = Array.isArray(cookies) ? cookies : [];
   const panelDest = isToolAccessUrl(dest);
@@ -1083,6 +1140,9 @@ async function openViaExtension(
     unlockReferrer: referrer || undefined,
     referrerCandidates: panelDest ? candidates : undefined,
     openTab: false,
+    hideSharedHistory: privacy?.hideSharedHistory,
+    isolationKey: privacy?.isolationKey,
+    brandName: privacy?.brandName,
   });
   await reportProgress(opts, 'launching');
   finishOpen(dest, opts, false);
@@ -1149,6 +1209,7 @@ async function openOneClick(
   cookies: any[],
   opts?: LaunchToolOptions,
   unlockReferrer?: string,
+  privacy?: PrivacyLaunchOpts,
 ) {
   const list = Array.isArray(cookies) ? cookies : [];
   const panelDest = isToolAccessUrl(dest);
@@ -1210,6 +1271,9 @@ async function openOneClick(
         unlockReferrer: referrer || undefined,
         referrerCandidates: panelUnlockReferrerCandidates(unlockReferrer || referrer),
         openTab: false,
+        hideSharedHistory: privacy?.hideSharedHistory,
+        isolationKey: privacy?.isolationKey,
+        brandName: privacy?.brandName,
       });
     } catch (err: any) {
       if (err instanceof NeedExtensionError) throw err;
@@ -1231,7 +1295,12 @@ async function openOneClick(
     // Cookies saved but Global Proxy Engine OFF → extension (or Session Apply).
     await ensureExtension(opts, COOKIES_NEED_EXTENSION_MSG, true);
     try {
-      await applyCookiesViaExtension(list, dest, { openTab: false });
+      await applyCookiesViaExtension(list, dest, {
+        openTab: false,
+        hideSharedHistory: privacy?.hideSharedHistory,
+        isolationKey: privacy?.isolationKey,
+        brandName: privacy?.brandName,
+      });
     } catch (err: any) {
       if (err instanceof NeedExtensionError) throw err;
       throw new Error(
@@ -1288,6 +1357,11 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
       payload.unlockReferrer || payload.panelReferrer || tool.panelReferrer || '',
     ).trim();
     const cookies = Array.isArray(payload.cookies) ? payload.cookies : [];
+    const privacy: PrivacyLaunchOpts = {
+      hideSharedHistory: payload.hideSharedHistory !== false,
+      isolationKey: payload.isolationKey,
+      brandName: payload.brandName || 'ZynexTools',
+    };
 
     const { isMobileApp } = await import('./mobile/toolLauncher');
     if (isMobileApp()) {
@@ -1310,9 +1384,9 @@ export async function launchAssignedTool(tool: Tool, opts?: LaunchToolOptions) {
     }
 
     if (method === 'one_click') {
-      await openOneClick(key, dest, cookies, opts, unlockReferrer);
+      await openOneClick(key, dest, cookies, opts, unlockReferrer, privacy);
     } else {
-      await openViaExtension(dest, cookies, opts, unlockReferrer);
+      await openViaExtension(dest, cookies, opts, unlockReferrer, privacy);
     }
     opts?.onProgress?.('done');
     return;
